@@ -118,10 +118,98 @@ class KomnivoRepository {
     return List<Map<String, dynamic>>.from(rows);
   }
 
-  Future<void> sendMessage(String channelId, String body) async {
+  Future<String> sendMessage(
+    String channelId,
+    String body, {
+    String? parentMessageId,
+  }) async {
     final text = body.trim();
-    if (text.isEmpty) return;
-    await client.from('messages').insert({'channel_id': channelId, 'sender_id': userId, 'body': text});
+    if (text.isEmpty) throw Exception('Message cannot be empty.');
+    final row = await client.from('messages').insert({
+      'channel_id': channelId,
+      'sender_id': userId,
+      'body': text,
+      'parent_message_id': parentMessageId,
+    }).select('id').single();
+    return row['id'] as String;
+  }
+
+  Future<String> sendMessageAttachment(
+    String channelId,
+    PlatformFile file, {
+    String? parentMessageId,
+  }) async {
+    final contentType = _contentTypeFor(file.extension);
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) throw Exception('The selected attachment is empty.');
+    if (bytes.length > 10 * 1024 * 1024) {
+      throw Exception('Attachments must be 10 MB or smaller.');
+    }
+
+    final messageId = await sendMessage(
+      channelId,
+      'Shared a file: ${file.name}',
+      parentMessageId: parentMessageId,
+    );
+    final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final path = '$userId/$channelId/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+
+    await client.storage.from('community-media').uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(contentType: contentType, upsert: false),
+    );
+    await client.from('message_attachments').insert({
+      'message_id': messageId,
+      'uploaded_by': userId,
+      'storage_path': path,
+      'content_type': contentType,
+      'file_size': bytes.length,
+    });
+    return messageId;
+  }
+
+  Future<List<Map<String, dynamic>>> messageAttachments(String messageId) async {
+    final rows = await client.from('message_attachments')
+      .select('id,storage_path,content_type,file_size')
+      .eq('message_id', messageId)
+      .order('created_at');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<String> messageAttachmentUrl(String storagePath) async {
+    final result = await client.storage.from('community-media')
+      .createSignedUrl(storagePath, 3600);
+    return result;
+  }
+
+  Future<List<Map<String, dynamic>>> messageReactions(String messageId) async {
+    final rows = await client.from('message_reactions')
+      .select('emoji,user_id')
+      .eq('message_id', messageId);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> toggleMessageReaction(String messageId, String emoji) async {
+    final existing = await client.from('message_reactions')
+      .select('message_id')
+      .eq('message_id', messageId)
+      .eq('user_id', userId)
+      .eq('emoji', emoji)
+      .maybeSingle();
+
+    if (existing != null) {
+      await client.from('message_reactions').delete()
+        .eq('message_id', messageId)
+        .eq('user_id', userId)
+        .eq('emoji', emoji);
+    } else {
+      await client.from('message_reactions').insert({
+        'message_id': messageId,
+        'user_id': userId,
+        'emoji': emoji,
+      });
+    }
   }
 
   Stream<List<Map<String, dynamic>>> messageStream(String channelId) {
