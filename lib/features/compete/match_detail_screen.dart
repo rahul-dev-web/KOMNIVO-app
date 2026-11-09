@@ -117,13 +117,12 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () async {
-                  final picked = await FilePicker.platform.pickFiles(
+                  final picked = await FilePicker.pickFiles(
                     type: FileType.custom,
                     allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
-                    withData: false,
                   );
-                  if (picked != null && picked.files.isNotEmpty) {
-                    setDialogState(() => evidence = picked.files.first);
+                  if (picked.isNotEmpty) {
+                    setDialogState(() => evidence = picked.first);
                   }
                 },
                 icon: const Icon(Icons.attach_file),
