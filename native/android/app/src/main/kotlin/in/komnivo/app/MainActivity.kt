@@ -1,4 +1,4 @@
-package in.komnivo.app
+package `in`.komnivo.app
 
 import android.app.Activity
 import android.content.Context
