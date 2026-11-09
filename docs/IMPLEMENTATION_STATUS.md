@@ -1,45 +1,76 @@
 # KOMNIVO implementation status
 
-This document separates what is present in the repository from what still depends on external providers or needs engineering/QA. It does not change the agreed full-product scope in Notion.
+Last verified: 9 November 2026.
+
+This file distinguishes work deployed to the connected Supabase project from owner-controlled external credentials and remaining product engineering.
+
+## Live backend deployment
+
+Connected Supabase project:
+- Project: `KOMNIVO-app`
+- Ref: `krqysdkbyhshwpfmimfw`
+- Region: Singapore (`ap-southeast-1`)
+- URL: `https://krqysdkbyhshwpfmimfw.supabase.co`
+- Database: PostgreSQL 17.11
+
+Verified on the project:
+- 11 migrations applied successfully.
+- 43 application tables in `public`; all 43 have RLS enabled.
+- Least-privilege grants applied: anonymous users can read only the active `games` catalogue; authenticated access is granted per table and column under RLS. Future `public` tables, sequences and functions created by the postgres migration owner no longer receive broad anon/authenticated default privileges.
+- Two private Storage buckets: `community-media` and `match-evidence`, both limited to 10 MB and JPG/PNG/WebP/PDF.
+- `public.messages` is enabled in the `supabase_realtime` publication.
+- All 13 repository Edge Functions deployed and ACTIVE. User-facing functions have JWT verification enabled; `notification-push` uses its dedicated `x-webhook-secret` check.
 
 ## Implemented in source
 
-- Flutter app shell, dark responsive visual system, Google sign-in entry point and local preview.
-- Community creation/discovery/join entry points and default channels.
-- Direct/group conversation creation, persistent realtime text messages, message replies, emoji reactions, secure private attachments, local message search and LiveKit voice-room token flow.
-- Notification centre with read states and per-category push preferences; server-side FCM webhook respects those preferences.
-- Player profile editing and server-side Free Fire UID lookup through a replaceable provider adapter.
-- Team creation, member invitations and invitation acceptance.
-- Event publishing, public event discovery, team registration, public match schedule, event standings and player match detail.
-- Match-level check-in, time-released room credentials, evidence upload, opponent confirmation/dispute and player result submission.
-- Organiser registration review, roster locking, balanced group allocation, match creation, room setup, dispute review, result approval and standings.
-- Supabase schema, RLS policies, audit records, private evidence/media buckets and privileged tournament RPC implementations in the non-exposed `app_private` schema.
-- Server-side Edge Functions for community actions, invitations, DMs/groups, team invitations, Free Fire lookup, check-in, result submission/approval, LiveKit token issuance and FCM webhook delivery.
-- Android Kotlin MediaProjection bridge and one-frame-per-second starting-point local ML Kit text recognition. Extracted screen text is currently a local preview and is not uploaded as official match evidence.
-- GitHub Actions workflows for Flutter analysis/test/build and Web staging artifact generation.
+- Flutter app shell, responsive dark theme, Google sign-in flow and local preview.
+- Community discovery/create/join entry points and default channels.
+- Direct/group conversation creation, persisted realtime text messages, replies, emoji reactions, secure attachments, local message search and LiveKit voice-room token issuance.
+- Notification centre with read states and notification preferences; server-side FCM push function.
+- Player profile and server-side Free Fire UID lookup adapter.
+- Team creation, invitations and membership acceptance.
+- Event discovery/publishing, team registration, match schedule, standings, check-in, time-released room credentials, evidence upload, opponent confirmation/dispute and result submission.
+- Organiser approval, roster lock, group generation, match operations, dispute review, result approval and scoring/standings backend.
+- Supabase schema, RLS, audit records, private buckets and privileged tournament RPC implementations.
+- Android MediaProjection bridge and local ML Kit OCR preview; the raw OCR text is not used as an official result.
+- GitHub Actions build workflows for Flutter analysis/tests/Android APK/Web and a Web staging artifact workflow.
 
-## Still dependent on owner setup
+## Still requires owner-controlled external setup
 
-- A dedicated KOMNIVO Supabase project and application of migrations 001–009.
-- Google Cloud OAuth Web Client creation and adding its ID/secret to Supabase Auth.
-- Firebase project and Android app registration for FCM; server service-account JSON and webhook secret must be added to Edge Function secrets.
-- LiveKit Cloud project and its URL/key/secret for voice rooms.
-- Free Fire provider API key and confirmation of current terms, quotas and commercial-use permission. The integration is unofficial and is not affiliated with Garena.
-- GitHub Pages enablement in repository settings and `ENABLE_GITHUB_PAGES=true` Actions variable.
-- Android app signing credentials and Play Console configuration.
+- Google Cloud OAuth Web Client ID/Secret and enabling Google provider in Supabase Auth.
+- Active Supabase publishable key supplied as local build value and GitHub Actions variable.
+- Firebase project/app registration, client identifiers, FCM HTTP v1 service account, Edge Function secrets and database INSERT webhook.
+- LiveKit Cloud project URL/API key/API secret if voice rooms are to be tested.
+- Free Fire provider API key and confirmation of current terms, quotas and commercial-use permissions.
+- GitHub Pages source setting, Actions variables and `ENABLE_GITHUB_PAGES=true`.
+- Android upload-keystore/release signing and Play Console/legal setup.
 
-## Remaining product engineering before production launch
+See [EXTERNAL_SETUP.md](EXTERNAL_SETUP.md) for the owner configuration walkthrough.
 
-- Complete community features: threads, reactions and attachment presentation, message search, pins, mentions, read receipts/presence, notification preference UI, full moderation queue and member/role administration.
-- Complete member-to-member media: video calls and member-initiated screen/stream sharing with correct Android permission, foreground-service, WebRTC and abuse/report controls.
-- Complete tournament configuration breadth: custom game modes, all rule fields, AI-assisted rulebook/roadmap parsing with source citations, flexible rounds/brackets, schedule review, registration correction workflows, explicit substitutes and advanced qualification/tie-breaker policies.
-- Complete result integrity UI: evidence preview, opponent confirmation details, full dispute decision workflow, correction history and result versioning.
-- Complete LiveOps: screen-state classification, supported lobby/result templates, local roster matching, local candidate extraction, vibration and optional overlay; benchmark CPU, memory, battery and temperature on the Android 13 low-end pilot device.
-- Add deeper automated tests for SQL/RLS and Edge Functions, security/advisor review, account deletion/retention paths, accessibility and device/browser testing.
+## Not currently integrated
 
-## Important boundaries
+- No OpenAI, Groq, Gemini, Anthropic or other hosted LLM API is wired into this repository. Do not provision an AI API key yet.
+- Rulebook-to-event AI drafting remains product engineering work.
+- Web push requires a complete Firebase Messaging service worker and browser permission flow.
+- Video calls and member-initiated screen/stream sharing require further LiveKit/WebRTC UI, permission and device/browser work.
+- LiveOps screen-state classification, lobby/result extraction and low-end-device benchmarking remain incomplete.
+- Full moderation queue, account deletion/retention, and production privacy/legal workflows still need completion.
 
-- Google sign-in authenticates a KOMNIVO account; it does not prove the owner of a Free Fire UID.
-- OCR and AI observations are provisional. Only authorised organiser review and server-side deterministic scoring can create official results.
-- The host operates the game manually. No macros, simulated taps, hidden/private game APIs, reverse engineering or anti-cheat bypass are part of the design.
-- Android 13 screen capture may include the full display, including visible notifications. Capture starts only after explicit user action and system consent; raw screen frames are not uploaded by default.
+## Build verification
+
+The latest checked GitHub Actions run for commit `bc829b9e277d84eb50c488aae0e933c468c6c22a` passed:
+- Dart analysis.
+- Flutter tests.
+- Android release APK build.
+- Flutter Web release build.
+- Web staging artifact build.
+
+The GitHub Pages deploy job was skipped because the repository gate is still disabled/not configured. A passing build is not production-launch certification.
+
+## Security and performance review notes
+
+- Supabase security advisor reports one warning for `public.withdraw_event_registration(uuid)`, which is intentionally callable by authenticated users as a SECURITY DEFINER RPC. The function validates caller identity, checks captain/event-staff authorization and restricts allowed statuses. Keep these checks intact and re-review before launch.
+- Performance advisors report unindexed foreign keys, some RLS expressions that can be optimized, and overlapping permissive policies. Review and tune before scaling.
+- Google sign-in authenticates a KOMNIVO platform account; a Free Fire UID lookup does not prove game-account ownership.
+- OCR and AI observations are provisional. Only authorised organiser review and deterministic server-side scoring can produce official results.
+- LiveOps capture begins only after explicit Android system consent. Raw frames are not uploaded by default; the host operates the game manually.
