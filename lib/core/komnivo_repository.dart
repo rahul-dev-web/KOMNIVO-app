@@ -1,0 +1,158 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+class KomnivoRepository {
+  KomnivoRepository._();
+  static final instance = KomnivoRepository._();
+
+  SupabaseClient get client => Supabase.instance.client;
+  String get userId => client.auth.currentUser!.id;
+
+  Future<Map<String, dynamic>> myProfile() async {
+    final row = await client.from('profiles').select().eq('id', userId).maybeSingle();
+    return row ?? <String, dynamic>{};
+  }
+
+  Future<List<Map<String, dynamic>>> communities() async {
+    final rows = await client.from('communities').select().order('created_at', ascending: false).limit(30);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<Map<String, dynamic>> createCommunity({
+    required String name,
+    required String description,
+    required bool isPublic,
+  }) async {
+    final result = await client.functions.invoke('create-community', body: {
+      'name': name,
+      'description': description,
+      'visibility': isPublic ? 'public' : 'private',
+    });
+    if (result.status < 200 || result.status >= 300) {
+      throw Exception('Community creation failed (${result.status}).');
+    }
+    return Map<String, dynamic>.from(result.data as Map);
+  }
+
+  Future<void> joinCommunity(String communityId) async {
+    await client.functions.invoke('join-community', body: {'community_id': communityId});
+  }
+
+  Future<List<Map<String, dynamic>>> events() async {
+    final rows = await client.from('events').select('*, games(name, code), communities(name)')
+      .inFilter('status', ['published', 'registration_open', 'live'])
+      .order('starts_at').limit(40);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<Map<String, dynamic>> createEvent({
+    required String name,
+    required String gameId,
+    required DateTime startsAt,
+    required int capacity,
+    required Map<String, dynamic> scoring,
+  }) async {
+    final row = await client.from('events').insert({
+      'name': name,
+      'game_id': gameId,
+      'organizer_id': userId,
+      'starts_at': startsAt.toUtc().toIso8601String(),
+      'capacity': capacity,
+      'status': 'published',
+      'format': 'squad',
+      'scoring_config': scoring,
+      'rules_json': <String, dynamic>{},
+    }).select().single();
+    return Map<String, dynamic>.from(row);
+  }
+
+  Future<List<Map<String, dynamic>>> myRegistrableTeams() async {
+    final rows = await client.from('team_members')
+      .select('team_id, role, teams(id, name, tag, game_id)')
+      .eq('user_id', userId)
+      .inFilter('role', ['owner', 'captain']);
+    return List<Map<String, dynamic>>.from(rows)
+      .where((row) => row['teams'] is Map)
+      .map((row) => Map<String, dynamic>.from(row['teams'] as Map))
+      .toList();
+  }
+
+  Future<void> registerForEvent(String eventId, {String? teamId}) async {
+    await client.rpc('register_for_event', params: {
+      'p_event_id': eventId,
+      'p_team_id': teamId,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> teams() async {
+    final rows = await client.from('teams').select('*, games(name, code), team_members(count)')
+      .order('created_at', ascending: false).limit(30);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<Map<String, dynamic>> createTeam({
+    required String name,
+    required String tag,
+    required String gameId,
+  }) async {
+    final row = await client.from('teams').insert({
+      'name': name,
+      'tag': tag,
+      'game_id': gameId,
+      'owner_user_id': userId,
+    }).select().single();
+    return Map<String, dynamic>.from(row);
+  }
+
+  Future<List<Map<String, dynamic>>> channels({String? communityId}) async {
+    var query = client.from('channels').select();
+    if (communityId != null) query = query.eq('community_id', communityId);
+    final rows = await query.order('created_at').limit(50);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<List<Map<String, dynamic>>> messages(String channelId) async {
+    final rows = await client.from('messages')
+      .select('*, profiles!messages_sender_id_fkey(display_name, avatar_url)')
+      .eq('channel_id', channelId).order('created_at').limit(100);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> sendMessage(String channelId, String body) async {
+    final text = body.trim();
+    if (text.isEmpty) return;
+    await client.from('messages').insert({'channel_id': channelId, 'sender_id': userId, 'body': text});
+  }
+
+  Stream<List<Map<String, dynamic>>> messageStream(String channelId) {
+    return client.from('messages').stream(primaryKey: ['id']).eq('channel_id', channelId).order('created_at');
+  }
+
+  Future<Map<String, dynamic>> syncFreeFire(String uid, {String region = 'ind'}) async {
+    final response = await client.functions.invoke('sync-freefire-profile', body: {'uid': uid.trim(), 'region': region});
+    if (response.status < 200 || response.status >= 300) {
+      throw Exception('Profile sync failed (${response.status}).');
+    }
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  Future<String> uploadEvidence(PlatformFile file, String matchId) async {
+    final Uint8List? bytes = file.bytes;
+    if (bytes == null) throw Exception('File bytes are unavailable. Please select the file again.');
+    final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final path = '$userId/$matchId/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+    await client.storage.from('match-evidence').uploadBinary(
+      path, bytes,
+      fileOptions: FileOptions(contentType: file.mimeType ?? 'application/octet-stream'),
+    );
+    return path;
+  }
+
+  Future<List<Map<String, dynamic>>> myNotifications() async {
+    final rows = await client.from('notifications').select().eq('user_id', userId)
+      .order('created_at', ascending: false).limit(40);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+}

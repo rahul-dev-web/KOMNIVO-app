@@ -1,0 +1,35 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+.flutter_environment
+# Generated Flutter platform scaffolding (produced by tool/bootstrap-platforms.*)
+/android/
+/web/
+# IDE
+.idea/
+.vscode/
+*.iml
+# Secrets and generated Firebase configuration
+.env
+.env.*
+!.env.example
+android/local.properties
+android/key.properties
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+lib/firebase_options.dart
+# Signing
+*.jks
+*.keystore
+*.p12
+*.pem
+# OS
+.DS_Store
+Thumbs.db

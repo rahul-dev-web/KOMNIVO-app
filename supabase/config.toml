@@ -1,0 +1,56 @@
+project_id = "komnivo"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[functions.sync-freefire-profile]
+verify_jwt = true
+
+[functions.create-community]
+verify_jwt = true
+
+[functions.join-community]
+verify_jwt = true
+
+[functions.create-community-invite]
+verify_jwt = true
+
+[functions.create-conversation]
+verify_jwt = true
+
+[functions.register-event]
+verify_jwt = true
+
+[functions.review-registration]
+verify_jwt = true
+
+[functions.check-in]
+verify_jwt = true
+
+[functions.submit-result]
+verify_jwt = true
+
+[functions.approve-result]
+verify_jwt = true
+
+[functions.accept-team-invite]
+verify_jwt = true
+
+[functions.create-livekit-token]
+verify_jwt = true
+
+[functions.notification-push]
+verify_jwt = false
