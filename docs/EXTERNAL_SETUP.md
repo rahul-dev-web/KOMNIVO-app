@@ -19,6 +19,7 @@ After the project is created:
    - `supabase/migrations/202611090007_roster_and_group_automation.sql`
    - `supabase/migrations/202611090008_match_and_dispute_guardrails.sql`
    - `supabase/migrations/202611090009_private_rpc_implementations.sql`
+   - `supabase/migrations/202611090010_public_match_schedule.sql`
 3. Deploy all functions under `supabase/functions/`. Keep the shared helper file at `_shared/http.ts` when deploying dependent functions.
 4. In Project Settings / API, copy the **publishable** key (`sb_publishable_...`). Use this in the Flutter app. Do not use the service-role key in a client.
 5. In Authentication URL configuration, add the app redirect URL:

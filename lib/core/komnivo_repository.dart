@@ -260,7 +260,34 @@ class KomnivoRepository {
 
   Future<List<Map<String, dynamic>>> myNotifications() async {
     final rows = await client.from('notifications').select().eq('user_id', userId)
-      .order('created_at', ascending: false).limit(40);
+      .order('created_at', ascending: false).limit(60);
     return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> markNotificationRead(String notificationId) async {
+    await client.from('notifications').update({
+      'read_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', notificationId).eq('user_id', userId);
+  }
+
+  Future<void> updateNotificationPreferences(Map<String, bool> values) async {
+    await client.from('notification_preferences').upsert({
+      'user_id': userId,
+      ...values,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id');
+  }
+
+  Future<Map<String, dynamic>> notificationPreferences() async {
+    final row = await client.from('notification_preferences')
+      .select().eq('user_id', userId).maybeSingle();
+    return row ?? {
+      'push_enabled': true,
+      'message_push': true,
+      'mention_push': true,
+      'event_push': true,
+      'tournament_push': true,
+      'marketing_push': false,
+    };
   }
 }

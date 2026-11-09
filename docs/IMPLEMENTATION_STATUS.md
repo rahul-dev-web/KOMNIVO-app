@@ -6,10 +6,11 @@ This document separates what is present in the repository from what still depend
 
 - Flutter app shell, dark responsive visual system, Google sign-in entry point and local preview.
 - Community creation/discovery/join entry points and default channels.
-- Direct/group conversation creation, persistent realtime text messages and LiveKit voice-room token flow.
+- Direct/group conversation creation, persistent realtime text messages, message replies, emoji reactions, secure private attachments, local message search and LiveKit voice-room token flow.
+- Notification centre with read states and per-category push preferences; server-side FCM webhook respects those preferences.
 - Player profile editing and server-side Free Fire UID lookup through a replaceable provider adapter.
 - Team creation, member invitations and invitation acceptance.
-- Event publishing, public event discovery, team registration, event details, match schedule and player match detail.
+- Event publishing, public event discovery, team registration, public match schedule, event standings and player match detail.
 - Match-level check-in, time-released room credentials, evidence upload, opponent confirmation/dispute and player result submission.
 - Organiser registration review, roster locking, balanced group allocation, match creation, room setup, dispute review, result approval and standings.
 - Supabase schema, RLS policies, audit records, private evidence/media buckets and privileged tournament RPC implementations in the non-exposed `app_private` schema.

@@ -74,17 +74,52 @@ Deno.serve(async (req: Request) => {
     const userId = String(record.user_id ?? "");
     if (!userId) return json({ error: "Notification user_id is missing." }, 400);
 
-    const serviceAccount = JSON.parse(serviceAccountValue) as Record<string, string>;
-    const accessToken = await googleAccessToken(serviceAccount);
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const tokenResponse = await fetch(
-      supabaseUrl + "/rest/v1/device_tokens?select=token&user_id=eq." + encodeURIComponent(userId),
-      { headers: { apikey: serviceKey, Authorization: "Bearer " + serviceKey } },
-    );
+    const headers = { apikey: serviceKey, Authorization: "Bearer " + serviceKey };
+
+    const [tokenResponse, preferenceResponse] = await Promise.all([
+      fetch(
+        supabaseUrl + "/rest/v1/device_tokens?select=token&user_id=eq." + encodeURIComponent(userId),
+        { headers },
+      ),
+      fetch(
+        supabaseUrl + "/rest/v1/notification_preferences?select=push_enabled,message_push,mention_push,event_push,tournament_push,marketing_push&user_id=eq." + encodeURIComponent(userId),
+        { headers },
+      ),
+    ]);
+
     if (!tokenResponse.ok) return json({ error: "Could not load user device tokens." }, 502);
+    if (!preferenceResponse.ok) return json({ error: "Could not load notification preferences." }, 502);
+
     const devices = await tokenResponse.json() as Array<{ token: string }>;
+    const prefsList = await preferenceResponse.json() as Array<Record<string, boolean>>;
+    const prefs = prefsList[0] ?? {
+      push_enabled: true,
+      message_push: true,
+      mention_push: true,
+      event_push: true,
+      tournament_push: true,
+      marketing_push: false,
+    };
+
+    const kind = String(record.kind ?? "general");
+    const preferenceByKind: Record<string, keyof typeof prefs> = {
+      message: "message_push",
+      mention: "mention_push",
+      event: "event_push",
+      tournament: "tournament_push",
+      marketing: "marketing_push",
+    };
+    const selectedPreference = preferenceByKind[kind];
+
+    if (!prefs.push_enabled || (selectedPreference && !prefs[selectedPreference])) {
+      return json({ sent: 0, skipped: true, reason: "Notification preferences disabled this push category." });
+    }
     if (devices.length === 0) return json({ sent: 0, message: "No registered devices." });
+
+    const serviceAccount = JSON.parse(serviceAccountValue) as Record<string, string>;
+    const accessToken = await googleAccessToken(serviceAccount);
 
     const results = await Promise.all(devices.map(async (device) => {
       const response = await fetch(
@@ -100,7 +135,7 @@ Deno.serve(async (req: Request) => {
                 body: String(record.body ?? ""),
               },
               data: {
-                kind: String(record.kind ?? "general"),
+                kind,
                 entity_type: String(record.entity_type ?? ""),
                 entity_id: String(record.entity_id ?? ""),
                 notification_id: String(record.id ?? ""),

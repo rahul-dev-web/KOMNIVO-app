@@ -5,6 +5,7 @@ import '../community/community_screen.dart';
 import '../compete/compete_screen.dart';
 import '../home/home_screen.dart';
 import '../inbox/inbox_screen.dart';
+import '../inbox/notifications_screen.dart';
 import '../liveops/liveops_screen.dart';
 import '../organizer/organizer_screen.dart';
 import '../profile/profile_screen.dart';
@@ -66,6 +67,11 @@ class _AppShellState extends State<AppShell> {
             tooltip: 'Organiser workspace',
             onPressed: () => setState(() { _showOrganizer = true; _showLiveOps = false; _showProfile = false; }),
             icon: const Icon(Icons.dashboard_customize_outlined),
+          ),
+          IconButton(
+            tooltip: 'Notifications',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+            icon: const Icon(Icons.notifications_none_outlined),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 10),

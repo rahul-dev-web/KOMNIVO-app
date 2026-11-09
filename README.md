@@ -12,8 +12,8 @@ The authoritative product scope, rules, decisions and complete delivery blueprin
 
 - `lib/` — Flutter player app and organiser workspace.
 - `lib/features/community` — community discovery, create/join and channel entry points.
-- `lib/features/inbox` — direct/group conversations, realtime text chat and LiveKit voice rooms.
-- `lib/features/compete` — event discovery, registration, event details, match schedule and player match workflow.
+- `lib/features/inbox` — direct/group conversations, realtime text chat, replies, emoji reactions, secure attachments, search and LiveKit voice rooms.
+- `lib/features/compete` — event discovery, registration, public match schedule, match check-in, private room credentials and player result workflow.
 - `lib/features/teams` — team profiles, invitations and roster membership.
 - `lib/features/profile` — player identity and server-side Free Fire UID lookup.
 - `lib/features/organizer` — event publishing, approval queue, roster lock, group generation, match operations, room credentials, disputes, result approval and standings.
