@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -138,14 +136,36 @@ class KomnivoRepository {
     return Map<String, dynamic>.from(response.data as Map);
   }
 
+  String _contentTypeFor(String? extension) {
+    switch (extension?.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'pdf':
+        return 'application/pdf';
+      default:
+        throw Exception('Unsupported evidence file. Use JPG, PNG, WebP or PDF.');
+    }
+  }
+
   Future<String> uploadEvidence(PlatformFile file, String matchId) async {
-    final Uint8List? bytes = file.bytes;
-    if (bytes == null) throw Exception('File bytes are unavailable. Please select the file again.');
+    final contentType = _contentTypeFor(file.extension);
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) throw Exception('The selected evidence file is empty.');
+    if (bytes.length > 10 * 1024 * 1024) {
+      throw Exception('Evidence files must be 10 MB or smaller.');
+    }
+
     final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
     final path = '$userId/$matchId/${DateTime.now().millisecondsSinceEpoch}_$safeName';
     await client.storage.from('match-evidence').uploadBinary(
-      path, bytes,
-      fileOptions: FileOptions(contentType: file.mimeType ?? 'application/octet-stream'),
+      path,
+      bytes,
+      fileOptions: FileOptions(contentType: contentType, upsert: false),
     );
     return path;
   }

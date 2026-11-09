@@ -37,12 +37,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
         throw Exception('Voice room token could not be created.');
       }
       final data = Map<String, dynamic>.from(response.data as Map);
-      final room = Room();
-      await room.connect(
-        data['url'] as String,
-        data['token'] as String,
-        roomOptions: const RoomOptions(adaptiveStream: true, dynacast: true),
-      );
+      final room = Room(roomOptions: const RoomOptions(adaptiveStream: true, dynacast: true));
+      await room.connect(data['url'] as String, data['token'] as String);
       await room.localParticipant?.setMicrophoneEnabled(true);
       if (!mounted) {
         await room.disconnect();
