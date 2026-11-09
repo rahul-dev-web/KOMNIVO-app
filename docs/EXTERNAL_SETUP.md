@@ -14,13 +14,19 @@ After the project is created:
    - `supabase/migrations/202611090002_rls_scoring_corrections.sql`
    - `supabase/migrations/202611090003_integrity_messaging_hardening.sql`
    - `supabase/migrations/202611090004_trigger_and_storage_hardening.sql`
+   - `supabase/migrations/202611090005_product_workflows_and_scoring.sql`
+   - `supabase/migrations/202611090006_invite_and_messaging_security.sql`
+   - `supabase/migrations/202611090007_roster_and_group_automation.sql`
+   - `supabase/migrations/202611090008_match_and_dispute_guardrails.sql`
+   - `supabase/migrations/202611090009_private_rpc_implementations.sql`
 3. Deploy all functions under `supabase/functions/`. Keep the shared helper file at `_shared/http.ts` when deploying dependent functions.
 4. In Project Settings / API, copy the **publishable** key (`sb_publishable_...`). Use this in the Flutter app. Do not use the service-role key in a client.
 5. In Authentication URL configuration, add the app redirect URL:
    - Android: `in.komnivo.app://login-callback`
    - Web: the exact GitHub Pages or custom domain origin/path that will host the app.
    - Local development: the local origin/port used by the developer.
-6. Enable Realtime for the `messages` table if it is not already included in the `supabase_realtime` publication.
+6. Confirm `public` is an exposed Data API schema in Project Settings → API → Data API, and verify the new tables are enabled for Data API access. The SQL migrations grant the required table privileges and enable RLS; project-level Data API exposure is a separate setting.
+7. Enable Realtime for the `messages` table if it is not already included in the `supabase_realtime` publication.
 
 ### Edge Function secrets
 
@@ -29,6 +35,7 @@ Set these under Dashboard → Edge Functions → Secrets. Supabase reserves the 
 | Secret | Needed for | Where it comes from |
 | --- | --- | --- |
 | `FREEFIRE_API_KEY` | Free Fire UID profile lookup | Approved API provider account |
+| `FREEFIRE_API_BASE_URL` | Optional provider base URL override | Provider docs; omit to use the documented default |
 | `LIVEKIT_URL` | Voice rooms | LiveKit Cloud project URL |
 | `LIVEKIT_API_KEY` | Voice-room token issuance | LiveKit Cloud API key |
 | `LIVEKIT_API_SECRET` | Voice-room token signing | LiveKit Cloud secret |
@@ -112,6 +119,7 @@ A GitHub Pages workflow is included. To enable staging:
 4. Add optional Firebase client configuration as Actions variables if web notification work is being tested.
 5. Push to `main`; the workflow builds Flutter Web and publishes the Pages artifact.
 6. Add the resulting HTTPS origin/path to Supabase Auth redirect URLs and Google OAuth authorised origins.
+8. Set repository Actions variable `ENABLE_GITHUB_PAGES` to `true`. The Pages deploy job is intentionally gated until Pages has been enabled and this variable is set.
 
 Initial Pages URL format:
 `https://rahul-dev-web.github.io/KOMNIVO-app/`

@@ -15,7 +15,6 @@ class EventOperationsScreen extends StatefulWidget {
 class _EventOperationsScreenState extends State<EventOperationsScreen> {
   late Future<_EventData> _future;
   bool _busy = false;
-
   SupabaseClient get _client => Supabase.instance.client;
 
   @override
@@ -27,16 +26,30 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
   Future<_EventData> _load() async {
     final eventId = widget.event['id'] as String;
     final results = await Future.wait([
-      _client.from('event_registrations').select('*, teams(name,tag)').eq('event_id', eventId).order('registered_at'),
-      _client.from('matches').select('*, match_participants(team_id,check_in_status,teams(name,tag)), room_credentials(id,release_at)')
-          .eq('event_id', eventId).order('match_number'),
-      _client.from('match_results').select('*, teams(name,tag), matches!inner(event_id,match_number)')
-          .eq('matches.event_id', eventId).order('submitted_at', ascending: false),
+      _client.from('event_registrations')
+        .select('*, teams(name,tag), registration_players(count)')
+        .eq('event_id', eventId).order('registered_at'),
+      _client.from('matches')
+        .select('*, match_participants(team_id,check_in_status,teams(name,tag)), room_credentials(id,release_at)')
+        .eq('event_id', eventId).order('match_number'),
+      _client.from('match_results')
+        .select('*, teams(name,tag), matches!inner(event_id,match_number)')
+        .eq('matches.event_id', eventId).order('submitted_at', ascending: false),
+      _client.from('event_rounds')
+        .select('*, event_groups(id,label,sort_order,event_group_teams(team_id,teams(name,tag)))')
+        .eq('event_id', eventId).order('round_number'),
+      _client.from('opponent_confirmations')
+        .select('*, match_results!inner(id,match_id,team_id,matches!inner(event_id,match_number))')
+        .eq('match_results.matches.event_id', eventId)
+        .eq('decision', 'disputed')
+        .order('created_at', ascending: false),
     ]);
     return _EventData(
       registrations: List<Map<String, dynamic>>.from(results[0] as List),
       matches: List<Map<String, dynamic>>.from(results[1] as List),
       results: List<Map<String, dynamic>>.from(results[2] as List),
+      rounds: List<Map<String, dynamic>>.from(results[3] as List),
+      disputedConfirmations: List<Map<String, dynamic>>.from(results[4] as List),
     );
   }
 
@@ -59,9 +72,60 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     }
   }
 
-  Future<void> _createMatch(List<Map<String, dynamic>> eligible) async {
+  Future<void> _lockRosters() async {
+    setState(() => _busy = true);
+    try {
+      final result = await _client.rpc('lock_event_rosters', params: {'p_event_id': widget.event['id']});
+      _reload();
+      if (mounted) showMessage(context, 'Roster lock complete. Newly locked registrations: ${result['locked'] ?? 0}.');
+    } catch (error) {
+      if (mounted) showMessage(context, error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _generateGroups() async {
+    final size = TextEditingController(text: '12');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Generate balanced groups'),
+        content: TextField(
+          controller: size,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'Target team count per group'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Generate')),
+        ],
+      ),
+    );
+    final groupSize = int.tryParse(size.text);
+    size.dispose();
+    if (ok != true || groupSize == null || groupSize < 2 || groupSize > 24) return;
+
+    setState(() => _busy = true);
+    try {
+      final result = await _client.rpc('generate_event_groups', params: {
+        'p_event_id': widget.event['id'],
+        'p_round_number': 1,
+        'p_group_size': groupSize,
+      });
+      _reload();
+      if (mounted) showMessage(context, 'Generated ${result['group_count']} balanced groups for ${result['team_count']} teams.');
+    } catch (error) {
+      if (mounted) showMessage(context, error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _createMatch(List<Map<String, dynamic>> eligible, List<Map<String, dynamic>> groups) async {
     final selected = <String>{};
-    final result = await showDialog<List<String>>(
+    String? selectedGroup = groups.isNotEmpty ? groups.first['label']?.toString() : null;
+    final result = await showDialog<_MatchSetup>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -69,25 +133,54 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
           content: SizedBox(
             width: 460,
             child: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, children: eligible.map((row) {
-                final team = row['teams'] is Map ? Map<String, dynamic>.from(row['teams'] as Map) : <String, dynamic>{};
-                final id = row['team_id'] as String;
-                return CheckboxListTile(
-                  value: selected.contains(id),
-                  onChanged: (value) => setDialogState(() {
-                    if (value == true) selected.add(id); else selected.remove(id);
-                  }),
-                  title: Text(team['name']?.toString() ?? 'Team'),
-                  subtitle: Text(team['tag']?.toString() ?? ''),
-                  controlAffinity: ListTileControlAffinity.leading,
-                );
-              }).toList()),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                if (groups.isNotEmpty) ...[
+                  DropdownButtonFormField<String>(
+                    value: selectedGroup,
+                    decoration: const InputDecoration(labelText: 'Tournament group'),
+                    items: groups.map((group) => DropdownMenuItem(
+                      value: group['label'].toString(),
+                      child: Text(group['label'].toString()),
+                    )).toList(),
+                    onChanged: (value) => setDialogState(() {
+                      selectedGroup = value;
+                      selected.clear();
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                ...eligible.where((row) {
+                  if (selectedGroup == null) return true;
+                  final groupRow = groups.firstWhere(
+                    (group) => group['label']?.toString() == selectedGroup,
+                    orElse: () => <String, dynamic>{},
+                  );
+                  final assigned = groupRow['event_group_teams'] as List? ?? [];
+                  return assigned.any((item) => item is Map && item['team_id'] == row['team_id']);
+                }).map((row) {
+                  final team = row['teams'] is Map ? Map<String, dynamic>.from(row['teams'] as Map) : <String, dynamic>{};
+                  final id = row['team_id'] as String;
+                  return CheckboxListTile(
+                    value: selected.contains(id),
+                    onChanged: (value) => setDialogState(() {
+                      if (value == true) {
+                        selected.add(id);
+                      } else {
+                        selected.remove(id);
+                      }
+                    }),
+                    title: Text(team['name']?.toString() ?? 'Team'),
+                    subtitle: Text(team['tag']?.toString() ?? ''),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  );
+                }),
+              ]),
             ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
             FilledButton(
-              onPressed: selected.length < 2 ? null : () => Navigator.pop(dialogContext, selected.toList()),
+              onPressed: selected.length < 2 ? null : () => Navigator.pop(dialogContext, _MatchSetup(selected.toList(), selectedGroup)),
               child: Text('Create match (${selected.length})'),
             ),
           ],
@@ -100,9 +193,9 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     try {
       final matchId = await _client.rpc('create_match', params: {
         'p_event_id': widget.event['id'],
-        'p_team_ids': result,
+        'p_team_ids': result.teamIds,
         'p_starts_at': DateTime.now().add(const Duration(minutes: 15)).toUtc().toIso8601String(),
-        'p_group_label': 'Group A',
+        'p_group_label': result.groupLabel,
       });
       _reload();
       if (mounted) showMessage(context, 'Match created: $matchId');
@@ -131,7 +224,11 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
         ],
       ),
     );
-    if (ok != true || code.text.trim().isEmpty || !mounted) return;
+    if (ok != true || code.text.trim().isEmpty || !mounted) {
+      code.dispose();
+      password.dispose();
+      return;
+    }
     setState(() => _busy = true);
     try {
       await _client.from('room_credentials').insert({
@@ -148,6 +245,24 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     } finally {
       code.dispose();
       password.dispose();
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _resolveOpponentDispute(String confirmationId) async {
+    setState(() => _busy = true);
+    try {
+      await _client.from('opponent_confirmations').update({
+        'review_status': 'resolved',
+        'reviewed_by': _client.auth.currentUser!.id,
+        'reviewed_at': DateTime.now().toUtc().toIso8601String(),
+        'review_note': 'Reviewed by event organiser. Result remains subject to evidence verification.',
+      }).eq('id', confirmationId);
+      _reload();
+      if (mounted) showMessage(context, 'Opponent dispute marked as reviewed. Review the evidence before approving the result.');
+    } catch (error) {
+      if (mounted) showMessage(context, error.toString());
+    } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -192,21 +307,20 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-          if (snapshot.hasError) return Center(child: Text(snapshot.error.toString()));
+          if (snapshot.hasError) return Center(child: Padding(padding: const EdgeInsets.all(20), child: Text(snapshot.error.toString())));
           final data = snapshot.data!;
-          final eligible = data.registrations.where((row) => row['status'] == 'approved' && row['team_id'] != null).toList();
           final pending = data.registrations.where((row) => row['status'] == 'pending' || row['status'] == 'waitlisted').toList();
+          final approved = data.registrations.where((row) => row['status'] == 'approved').toList();
+          final locked = approved.where((row) => row['roster_locked'] == true).toList();
+          final eligible = locked.where((row) => row['team_id'] != null).toList();
           final needsReview = data.results.where((row) => row['status'] != 'approved').toList();
+          final groups = data.rounds.isEmpty ? <Map<String, dynamic>>[] : List<Map<String, dynamic>>.from(data.rounds.first['event_groups'] as List? ?? []);
 
           return ListView(padding: const EdgeInsets.all(20), children: [
             if (_busy) const LinearProgressIndicator(),
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF282348),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: KomnivoTheme.accent.withValues(alpha: .3)),
-              ),
+              decoration: BoxDecoration(color: const Color(0xFF282348), borderRadius: BorderRadius.circular(18), border: Border.all(color: KomnivoTheme.accent.withValues(alpha: .3))),
               child: Row(children: [
                 const Icon(Icons.event_available, color: KomnivoTheme.cyan, size: 25),
                 const SizedBox(width: 12),
@@ -223,25 +337,52 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
             if (pending.isEmpty) const EmptyState(title: 'No registrations awaiting review', message: 'New applications will appear here.')
             else ...pending.map((row) {
               final team = row['teams'] is Map ? Map<String, dynamic>.from(row['teams'] as Map) : <String, dynamic>{};
-              final isWaitlisted = row['status'] == 'waitlisted';
               return _OperationCard(
                 title: team['name']?.toString() ?? 'Solo player registration',
                 subtitle: '${row['status']} · Captain ID ${(row['captain_user_id'] ?? '').toString().substring(0, 8)}…',
+                badge: row['status'] == 'waitlisted' ? 'WAITLIST' : 'PENDING',
                 trailing: Wrap(spacing: 6, children: [
                   IconButton(tooltip: 'Reject', onPressed: _busy ? null : () => _reviewRegistration(row['id'] as String, 'rejected'), icon: const Icon(Icons.close, color: Color(0xFFFF8193))),
                   IconButton(tooltip: 'Approve', onPressed: _busy ? null : () => _reviewRegistration(row['id'] as String, 'approved'), icon: const Icon(Icons.check_circle, color: KomnivoTheme.cyan)),
                 ]),
-                badge: isWaitlisted ? 'WAITLIST' : 'PENDING',
               );
             }),
             const SizedBox(height: 22),
-            SectionTitle('Match operations', subtitle: 'Create matches from approved team registrations', trailing: FilledButton.icon(
-              onPressed: _busy || eligible.length < 2 ? null : () => _createMatch(eligible),
+            SectionTitle('Roster control', subtitle: 'Snapshot accepted team members before group allocation'),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: OutlinedButton.icon(
+                onPressed: _busy || approved.isEmpty ? null : _lockRosters,
+                icon: const Icon(Icons.lock_outline),
+                label: Text('Lock rosters (${approved.length - locked.length} remaining)'),
+              )),
+              const SizedBox(width: 8),
+              Expanded(child: FilledButton.icon(
+                onPressed: _busy || locked.length < 2 ? null : _generateGroups,
+                icon: const Icon(Icons.account_tree_outlined),
+                label: const Text('Generate groups'),
+              )),
+            ]),
+            const SizedBox(height: 10),
+            if (groups.isNotEmpty)
+              ...groups.map((group) {
+                final assigned = group['event_group_teams'] as List? ?? [];
+                return _OperationCard(
+                  title: group['label']?.toString() ?? 'Group',
+                  subtitle: '${assigned.length} teams · balanced allocation',
+                  badge: 'ROUND 1',
+                );
+              })
+            else
+              const Text('Approve registrations, lock rosters, then generate balanced groups.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
+            const SizedBox(height: 22),
+            SectionTitle('Match operations', subtitle: 'Create matches only from approved, locked team rosters', trailing: FilledButton.icon(
+              onPressed: _busy || eligible.length < 2 ? null : () => _createMatch(eligible, groups),
               icon: const Icon(Icons.add),
               label: const Text('Create match'),
             )),
             const SizedBox(height: 10),
-            if (data.matches.isEmpty) const EmptyState(title: 'No matches created', message: 'Approve at least two team registrations, then create a match.')
+            if (data.matches.isEmpty) const EmptyState(title: 'No matches created', message: 'Lock at least two team rosters, then create a match.')
             else ...data.matches.map((row) {
               final participants = row['match_participants'] as List? ?? [];
               final credentials = row['room_credentials'] as List? ?? [];
@@ -268,18 +409,40 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
               );
             }),
             const SizedBox(height: 22),
-            SectionTitle('Result verification', subtitle: 'Official standings update only after organiser approval'),
+            SectionTitle('Opponent disputes', subtitle: 'Review disputed confirmations before approving results'),
+            const SizedBox(height: 10),
+            if (data.disputedConfirmations.isEmpty)
+              const Text('No opponent disputes currently require review.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11))
+            else ...data.disputedConfirmations.where((row) => row['review_status'] != 'resolved').map((row) {
+              final result = row['match_results'] is Map ? Map<String, dynamic>.from(row['match_results'] as Map) : <String, dynamic>{};
+              return _OperationCard(
+                title: 'Match result · team ${(result['team_id'] ?? '').toString().substring(0, 8)}…',
+                subtitle: 'Opponent has disputed this submission.',
+                badge: 'DISPUTED',
+                trailing: IconButton(
+                  tooltip: 'Mark dispute reviewed',
+                  onPressed: _busy ? null : () => _resolveOpponentDispute(row['id'] as String),
+                  icon: const Icon(Icons.fact_check_outlined, color: KomnivoTheme.cyan),
+                ),
+              );
+            }),
+            const SizedBox(height: 22),
+            SectionTitle('Result verification', subtitle: 'Official standings update only after evidence and dispute review'),
             const SizedBox(height: 10),
             if (needsReview.isEmpty) const EmptyState(title: 'No results to review', message: 'Submitted match results will appear here.')
             else ...needsReview.map((row) {
               final team = row['teams'] is Map ? Map<String, dynamic>.from(row['teams'] as Map) : <String, dynamic>{};
+              final disputed = data.disputedConfirmations.any((d) {
+                final result = d['match_results'] is Map ? Map<String, dynamic>.from(d['match_results'] as Map) : <String, dynamic>{};
+                return result['id'] == row['id'] && d['review_status'] != 'resolved';
+              });
               return _OperationCard(
                 title: team['name']?.toString() ?? 'Team result',
-                subtitle: 'Placement ${row['placement'] ?? '—'} · ${row['kills']} kills · ${row['status']}',
-                badge: 'REVIEW',
+                subtitle: 'Placement ${row['placement'] ?? '—'} · ${row['kills']} kills · ${row['status']}${disputed ? ' · dispute must be reviewed' : ''}',
+                badge: disputed ? 'DISPUTED' : 'REVIEW',
                 trailing: IconButton(
                   tooltip: 'Approve official result',
-                  onPressed: _busy ? null : () => _approveResult(row['id'] as String),
+                  onPressed: _busy || disputed ? null : () => _approveResult(row['id'] as String),
                   icon: const Icon(Icons.verified_outlined, color: KomnivoTheme.cyan),
                 ),
               );
@@ -312,10 +475,24 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
 }
 
 class _EventData {
-  const _EventData({required this.registrations, required this.matches, required this.results});
+  const _EventData({
+    required this.registrations,
+    required this.matches,
+    required this.results,
+    required this.rounds,
+    required this.disputedConfirmations,
+  });
   final List<Map<String, dynamic>> registrations;
   final List<Map<String, dynamic>> matches;
   final List<Map<String, dynamic>> results;
+  final List<Map<String, dynamic>> rounds;
+  final List<Map<String, dynamic>> disputedConfirmations;
+}
+
+class _MatchSetup {
+  const _MatchSetup(this.teamIds, this.groupLabel);
+  final List<String> teamIds;
+  final String? groupLabel;
 }
 
 class _OperationCard extends StatelessWidget {

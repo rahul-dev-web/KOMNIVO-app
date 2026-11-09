@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
+import 'event_matches_screen.dart';
 
 class CompeteScreen extends StatefulWidget {
   const CompeteScreen({super.key, required this.preview});
@@ -29,8 +30,9 @@ class _CompeteScreenState extends State<CompeteScreen> {
     if (format != 'solo') {
       try {
         final teams = await KomnivoRepository.instance.myRegistrableTeams();
+        if (!mounted) return;
         if (teams.isEmpty) {
-          if (mounted) showMessage(context, 'Create a team or become its captain before registering for a team event.');
+          showMessage(context, 'Create a team or become its captain before registering for a team event.');
           return;
         }
         if (teams.length == 1) {
@@ -81,6 +83,10 @@ class _CompeteScreenState extends State<CompeteScreen> {
     }
   }
 
+  void _openEvent(Map<String, dynamic> event) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => EventMatchesScreen(event: event)));
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.preview) return ListView(padding: const EdgeInsets.all(20), children: const [
@@ -99,6 +105,7 @@ class _CompeteScreenState extends State<CompeteScreen> {
           const SectionTitle('Compete', subtitle: 'Find events and manage registrations'),
           const SizedBox(height: 14),
           if (snapshot.connectionState == ConnectionState.waiting) const Center(child: Padding(padding: EdgeInsets.all(36), child: CircularProgressIndicator()))
+          else if (snapshot.hasError) Text(snapshot.error.toString(), style: const TextStyle(color: Color(0xFFFF8193)))
           else if (rows.isEmpty) const EmptyState(title: 'No open events', message: 'When organisers publish a scrim or tournament, it will appear here.', icon: Icons.emoji_events_outlined)
           else ...rows.map((row) {
             final eventId = row['id'] as String;
@@ -114,6 +121,7 @@ class _CompeteScreenState extends State<CompeteScreen> {
                 onPressed: _joining.contains(eventId) ? null : () => _register(row),
                 child: Text(_joining.contains(eventId) ? 'Joining…' : 'Register'),
               ),
+              onOpen: () => _openEvent(row),
             );
           }),
         ]);
@@ -123,9 +131,10 @@ class _CompeteScreenState extends State<CompeteScreen> {
 }
 
 class _EventCard extends StatelessWidget {
-  const _EventCard({required this.name, required this.game, required this.date, required this.prize, this.action});
+  const _EventCard({required this.name, required this.game, required this.date, required this.prize, this.action, this.onOpen});
   final String name, game, date, prize;
   final Widget? action;
+  final VoidCallback? onOpen;
   @override
   Widget build(BuildContext context) => Container(
     margin: const EdgeInsets.only(bottom: 13),
@@ -146,7 +155,14 @@ class _EventCard extends StatelessWidget {
         const SizedBox(width: 5), Text(date, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 12)),
         const Spacer(), Text(prize, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 12)),
       ]),
-      if (action != null) ...[const SizedBox(height: 14), SizedBox(width: double.infinity, child: action!)],
+      if (action != null || onOpen != null) ...[
+        const SizedBox(height: 14),
+        Row(children: [
+          if (action != null) Expanded(child: action!),
+          if (action != null && onOpen != null) const SizedBox(width: 8),
+          if (onOpen != null) Expanded(child: OutlinedButton.icon(onPressed: onOpen, icon: const Icon(Icons.open_in_new), label: const Text('Event details'))),
+        ]),
+      ],
     ]),
   );
 }

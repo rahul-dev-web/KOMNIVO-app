@@ -4,39 +4,55 @@ import { corsHeaders, json, readBearer } from "../_shared/http.ts";
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
-
   const authorization = readBearer(req);
   if (!authorization) return json({ error: "Authentication required" }, 401);
+
   const url = Deno.env.get("SUPABASE_URL")!;
-  const anon = Deno.env.get("SUPABASE_ANON_KEY")!;
-  const client = createClient(url, anon, { global: { headers: { Authorization: authorization } }, auth: { persistSession: false } });
-  const { data: { user }, error: authError } = await client.auth.getUser();
+  const userClient = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, {
+    global: { headers: { Authorization: authorization } },
+    auth: { persistSession: false },
+  });
+  const { data: { user }, error: authError } = await userClient.auth.getUser();
   if (authError || !user) return json({ error: "Invalid session" }, 401);
 
   try {
-    const { community_id, invite_code } = await req.json();
-    if (typeof community_id !== "string") return json({ error: "community_id is required" }, 400);
-    const { data: community, error } = await client.from("communities").select("id,visibility").eq("id", community_id).maybeSingle();
-    if (error || !community) return json({ error: "Community not found or not accessible" }, 404);
+    const body = await req.json();
+    const communityId = String(body.community_id ?? "");
+    if (!communityId) return json({ error: "community_id is required" }, 400);
 
-    if (community.visibility === "private") {
-      if (typeof invite_code !== "string" || invite_code.length < 8) return json({ error: "A valid private invite is required." }, 403);
-      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(invite_code));
+    const { data: community, error: lookupError } = await userClient
+      .from("communities").select("id,visibility").eq("id", communityId).maybeSingle();
+
+    if (lookupError || !community) {
+      // Private community rows are deliberately not selectable before membership.
+      const inviteCode = typeof body.invite_code === "string" ? body.invite_code.trim() : "";
+      if (inviteCode.length < 16) return json({ error: "Community not found or invite is required." }, 404);
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(inviteCode));
       const tokenHash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-      const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-      const { data: invite } = await admin.from("community_invites").select("*").eq("community_id", community_id).eq("token_hash", tokenHash).maybeSingle();
-      if (!invite || (invite.expires_at && new Date(invite.expires_at) < new Date()) || (invite.max_uses !== null && invite.uses >= invite.max_uses)) {
-        return json({ error: "Invite is invalid or expired." }, 403);
-      }
-      const { error: joinError } = await admin.from("community_members").upsert({ community_id, user_id: user.id, role: "member" }, { onConflict: "community_id,user_id" });
-      if (joinError) return json({ error: joinError.message }, 400);
-      await admin.from("community_invites").update({ uses: invite.uses + 1 }).eq("id", invite.id);
+      const { data, error } = await userClient.rpc("consume_community_invite", {
+        p_community_id: communityId,
+        p_token_hash: tokenHash,
+      });
+      if (error || data !== true) return json({ error: error?.message ?? "Invite is invalid or expired." }, 403);
       return json({ joined: true });
     }
 
-    const { error: joinError } = await client.from("community_members").upsert(
-      { community_id, user_id: user.id, role: "member" },
-      { onConflict: "community_id,user_id" },
+    if (community.visibility === "private") {
+      const inviteCode = typeof body.invite_code === "string" ? body.invite_code.trim() : "";
+      if (inviteCode.length < 16) return json({ error: "A valid private invite is required." }, 403);
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(inviteCode));
+      const tokenHash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      const { data, error } = await userClient.rpc("consume_community_invite", {
+        p_community_id: communityId,
+        p_token_hash: tokenHash,
+      });
+      if (error || data !== true) return json({ error: error?.message ?? "Invite is invalid or expired." }, 403);
+      return json({ joined: true });
+    }
+
+    const { error: joinError } = await userClient.from("community_members").upsert(
+      { community_id: communityId, user_id: user.id, role: "member" },
+      { onConflict: "community_id,user_id", ignoreDuplicates: true },
     );
     if (joinError) return json({ error: joinError.message }, 400);
     return json({ joined: true });

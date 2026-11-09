@@ -2,33 +2,33 @@
 
 **KOMNIVO — Esports Community OS**
 
-One connected platform for gaming communities, communication, player and team identity, scrims, tournaments, match operations and same-phone LiveOps assistance.
+One connected platform for gaming communities, player/team identity, communication, scrims, tournament operations and same-phone LiveOps assistance.
 
 ## Product specification
 
-The authoritative product scope, decisions, security boundaries and end-to-end delivery blueprint live in the [KOMNIVO Notion specification](https://app.notion.com/p/4121e4f822d3818c9735de4f6b9e003f?pvs=204).
+The authoritative product scope, rules, decisions and complete delivery blueprint are documented in the [KOMNIVO Notion specification](https://app.notion.com/p/4121e4f822d3818c9735de4f6b9e003f?pvs=204).
 
 ## Repository layout
 
-- `lib/` — Flutter player app and organiser experience.
-- `lib/features/community` — communities and community channels.
-- `lib/features/inbox` — messages, direct conversations and LiveKit voice rooms.
-- `lib/features/compete` — published events and team registration.
-- `lib/features/teams` — team identity and roster entry point.
-- `lib/features/profile` — player identity and Free Fire UID sync.
-- `lib/features/organizer` — organiser workspace and event publishing.
-- `lib/features/liveops` — same-phone LiveOps controls and observation review.
-- `native/android/` — Kotlin MediaProjection capture and on-device ML Kit OCR.
-- `supabase/migrations/` — database schema, RLS and scoring procedures.
-- `supabase/functions/` — authenticated Edge Functions and provider adapters.
-- `tool/` — scripts that generate Flutter Android/Web scaffolding on the machine or CI runner.
+- `lib/` — Flutter player app and organiser workspace.
+- `lib/features/community` — community discovery, create/join and channel entry points.
+- `lib/features/inbox` — direct/group conversations, realtime text chat and LiveKit voice rooms.
+- `lib/features/compete` — event discovery, registration, event details, match schedule and player match workflow.
+- `lib/features/teams` — team profiles, invitations and roster membership.
+- `lib/features/profile` — player identity and server-side Free Fire UID lookup.
+- `lib/features/organizer` — event publishing, approval queue, roster lock, group generation, match operations, room credentials, disputes, result approval and standings.
+- `lib/features/liveops` — same-phone Android capture controls and local OCR preview.
+- `native/android/` — Kotlin MediaProjection capture bridge and on-device ML Kit OCR.
+- `supabase/migrations/` — core schema, RLS, tournament workflows, invite security and private RPC implementations.
+- `supabase/functions/` — authenticated Edge Functions, FCM webhook delivery and provider adapters.
+- `tool/` — local/CI scripts that generate Flutter Android and Web scaffolding.
 
 ## Local setup (Windows)
 
-Requirements: Flutter stable (3.44.8 or newer recommended), Dart SDK bundled with Flutter, Android Studio/Android SDK, and JDK 17 for Android builds.
+Requirements: Flutter stable (3.44.8 or newer recommended), Android Studio/Android SDK, and JDK 17 for Android builds.
 
-1. Clone this repository and open the folder containing `pubspec.yaml`.
-2. Run PowerShell from the repository root:
+1. Clone this repository and open the directory containing `pubspec.yaml`.
+2. Open PowerShell in that directory:
 
    ```powershell
    flutter pub get
@@ -36,41 +36,38 @@ Requirements: Flutter stable (3.44.8 or newer recommended), Dart SDK bundled wit
    .\tool\bootstrap-platforms.ps1
    ```
 
-3. Create a dedicated KOMNIVO Supabase project and complete the external setup in [docs/EXTERNAL_SETUP.md](docs/EXTERNAL_SETUP.md).
-4. Run the app with your project values:
+3. Create a dedicated Supabase project for KOMNIVO. Follow [docs/EXTERNAL_SETUP.md](docs/EXTERNAL_SETUP.md) to configure Google OAuth, database migrations, Edge Functions and provider secrets.
+4. Start the app with your Supabase project values:
 
    ```powershell
    flutter run -d chrome --dart-define=SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_YOUR_KEY --dart-define=SUPABASE_REDIRECT_URL=https://YOUR_WEB_ORIGIN
    ```
 
-   For Android, use the same Dart defines and the registered deep-link redirect:
+   For Android, use the registered deep link:
 
    ```powershell
    flutter run -d YOUR_DEVICE_ID --dart-define=SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_YOUR_KEY --dart-define=SUPABASE_REDIRECT_URL=in.komnivo.app://login-callback
    ```
 
-5. Optional Firebase Messaging values are supplied with additional `--dart-define` values. See the external setup guide.
+5. Supply Firebase client configuration as additional `--dart-define` values when Android push is configured. Do not put service-role keys, provider secrets or OAuth client secrets into Flutter.
 
-## Build and test
+## Build and CI
 
-```powershell
-flutter analyze
-flutter test
-flutter build apk --release --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_PUBLISHABLE_KEY=...
-flutter build web --release --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_PUBLISHABLE_KEY=...
-```
+The GitHub Actions CI workflow resolves Flutter packages, analyses Dart, runs tests, builds a release Android APK and builds the Web bundle. Build artifacts are retained on the Actions run.
 
-The GitHub Actions workflow runs analysis, tests and Android/Web builds on pushes and pull requests. It generates Android/Web scaffolding on the runner; those generated folders are intentionally not committed.
+The Web staging workflow also builds a GitHub Pages artifact. Actual Pages deployment remains disabled until GitHub Pages is enabled in repository settings and the repository variable `ENABLE_GITHUB_PAGES=true` is added.
 
-## Backend and security
+## Backend and security boundaries
 
-- Supabase Auth handles Google OAuth and platform identity.
-- PostgreSQL RLS is enabled on application tables.
-- Service-role and game provider secrets are used only inside Edge Functions.
-- The Free Fire profile provider is unofficial. UID lookup does not prove account ownership.
-- Result OCR is provisional evidence. Only authorised organiser approval writes official scoring.
-- LiveOps uses user-approved Android MediaProjection and on-device text recognition. It does not tap or control Free Fire.
+- Supabase Auth is the platform identity provider; Google OAuth is configured in Supabase.
+- RLS is enabled on public application tables. Privileged tournament RPC implementations live in the non-exposed `app_private` schema; public RPC entry points are invoker wrappers.
+- Provider API keys, Firebase service-account credentials, LiveKit secrets and Supabase service-role credentials belong only in Edge Function secrets.
+- Free Fire data lookup uses an unofficial third-party provider candidate. A UID lookup does not prove account ownership and must not be shown as official Garena verification.
+- Tournament results and standings remain controlled by organiser approval and deterministic server-side scoring.
+- LiveOps uses explicit Android MediaProjection consent and on-device OCR. It does not tap, click or control the Free Fire client.
 
-## Current integration status
+## Implementation and launch status
 
-This repository contains the integrated Flutter app foundation, core feature screens, database schema/RLS, provider Edge Functions, LiveKit token issuance and the native LiveOps capture module. Real sign-in, database-backed features, push delivery, voice service and game profile sync require the external project credentials described in the setup guide. The code has not yet completed a real-device QA run, Google OAuth test, production security audit or Play Store release review. Do not treat this commit alone as production launch approval.
+The repository includes a connected Flutter application foundation, tournament and organiser workflows, database schema/RLS, Edge Functions, LiveKit token issuance and an Android LiveOps capture prototype. External service credentials, Google OAuth provider setup, the final game provider approval, Firebase/LiveKit configuration, a GitHub Pages setting and real-device QA still need to be completed. See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) and [docs/EXTERNAL_SETUP.md](docs/EXTERNAL_SETUP.md).
+
+This commit is not a production-launch certification. Complete the external integration checks, RLS/advisor review, Android device matrix, privacy/legal documents and Play Console review before inviting public users.

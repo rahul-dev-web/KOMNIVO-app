@@ -9,9 +9,10 @@ import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
 
 class LiveOpsScreen extends StatefulWidget {
-  const LiveOpsScreen({super.key, required this.preview, this.onBack});
+  const LiveOpsScreen({super.key, required this.preview, this.onBack, this.initialMatchId});
   final bool preview;
   final VoidCallback? onBack;
+  final String? initialMatchId;
   @override
   State<LiveOpsScreen> createState() => _LiveOpsScreenState();
 }
@@ -27,12 +28,20 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
   String? _sessionId;
   bool _capturing = false;
   bool _voice = true;
+  String _lastObservation = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _matchId.text = widget.initialMatchId ?? '';
+  }
 
   Future<void> _start() async {
     if (widget.preview) { showMessage(context, 'Connect the Android backend to run LiveOps.'); return; }
     try {
       final result = await _methods.invokeMethod<bool>('startCapture');
       if (result != true) throw Exception('Screen capture permission was not granted.');
+
       final row = await Supabase.instance.client.from('liveops_sessions').insert({
         'operator_id': Supabase.instance.client.auth.currentUser!.id,
         'match_id': _matchId.text.trim().isEmpty ? null : _matchId.text.trim(),
@@ -40,8 +49,9 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         'started_at': DateTime.now().toUtc().toIso8601String(),
       }).select().single();
       _sessionId = row['id'] as String;
+
       _subscription = _events.receiveBroadcastStream().listen(_onObservation, onError: (Object error) {
-        if (mounted) setState(() { _state = 'Capture error'; _latestText = error.toString(); });
+        if (mounted) setState(() { _capturing = false; _state = 'Capture error'; _latestText = error.toString(); });
       });
       setState(() { _capturing = true; _state = 'Capturing'; });
       if (_voice) await _tts.speak('LiveOps is active. Screen observation has started.');
@@ -54,22 +64,28 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
 
   Future<void> _onObservation(dynamic event) async {
     if (event is! Map) return;
+    final state = event['state']?.toString() ?? 'unknown';
     final text = event['text']?.toString() ?? '';
-    if (text.trim().isEmpty) return;
-    if (mounted) setState(() { _state = 'Screen text detected · review required'; _latestText = text; });
-    try {
-      if (_sessionId != null) {
-        await Supabase.instance.client.from('screen_observations').insert({
-          'session_id': _sessionId,
-          'screen_state': 'unknown',
-          'confidence': 0,
-          'extracted_text': text,
-          'observed_at': DateTime.now().toUtc().toIso8601String(),
-        });
-      }
-    } catch (_) {
-      // Local observation remains visible; backend persistence may resume after connectivity returns.
+
+    if (state == 'capture_stopped' || state == 'capture_error') {
+      if (mounted) setState(() {
+        _capturing = false;
+        _state = state == 'capture_stopped' ? 'Capture stopped by Android' : 'Capture error';
+        if (text.isNotEmpty) _latestText = text;
+      });
+      await _subscription?.cancel();
+      return;
     }
+
+    if (text.trim().isEmpty || state != 'text_detected') return;
+    if (mounted) setState(() { _state = 'Screen text detected · local preview'; _latestText = text; });
+
+    // The raw OCR string stays on-device. It may include notifications or unrelated
+    // private content on Android 13 full-display capture. Only classified, user-approved
+    // lobby/result fields should ever be persisted to the backend.
+    if (text == _lastObservation) return;
+    _lastObservation = text;
+
     if (_voice) await _tts.speak('Screen text detected. Please review the visible information.');
   }
 
@@ -140,11 +156,11 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(color: KomnivoTheme.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: KomnivoTheme.line)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Latest visible text', style: TextStyle(fontWeight: FontWeight.w900)),
+          const Text('Latest on-device text preview', style: TextStyle(fontWeight: FontWeight.w900)),
           const SizedBox(height: 9),
           Text(_latestText, style: const TextStyle(color: KomnivoTheme.muted, height: 1.5)),
           const SizedBox(height: 12),
-          const Text('Detected text is an observation, not a verified lobby or official match result. Organiser confirmation is required.', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 11, height: 1.4)),
+          const Text('This preview stays on the device. The OCR engine is not yet classifying lobby or result fields, so nothing is submitted as match evidence.', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 11, height: 1.4)),
         ]),
       ),
       const SizedBox(height: 14),
@@ -162,7 +178,7 @@ class _PrivacyCard extends StatelessWidget {
     child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [Icon(Icons.privacy_tip_outlined, color: KomnivoTheme.cyan), SizedBox(width: 9), Text('Privacy and control', style: TextStyle(fontWeight: FontWeight.w900))]),
       SizedBox(height: 9),
-      Text('Capture starts only after your action and Android system permission. KOMNIVO processes visible text on-device; raw screen frames are not uploaded. Android 13 may capture the full display, including notifications. Stop capture before opening private apps.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 12, height: 1.5)),
+      Text('Capture starts only after your action and Android system permission. Visible text is recognised locally and remains on-device. Android 13 may capture the full display, including notifications. Stop capture before opening private apps.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 12, height: 1.5)),
     ]),
   );
 }
