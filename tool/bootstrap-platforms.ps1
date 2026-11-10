@@ -20,6 +20,13 @@ try {
 
   $GradleFile = Join-Path $Root "android/app/build.gradle.kts"
   $Gradle = Get-Content $GradleFile -Raw
+  $AndroidPlugin = '    id("com.android.application")'
+  if ($Gradle -notmatch 'id\("org\.jetbrains\.kotlin\.android"\)') {
+    if (-not $Gradle.Contains($AndroidPlugin)) {
+      throw "Could not find the Android application plugin in build.gradle.kts."
+    }
+    $Gradle = $Gradle.Replace($AndroidPlugin, $AndroidPlugin + [Environment]::NewLine + '    id("org.jetbrains.kotlin.android")')
+  }
   $Gradle = [regex]::Replace($Gradle, 'namespace\s*=\s*".*?"', 'namespace = "in.komnivo.app"')
   $Gradle = [regex]::Replace($Gradle, 'applicationId\s*=\s*".*?"', 'applicationId = "in.komnivo.app"')
   if ($Gradle -notmatch 'com.google.mlkit:text-recognition') {
