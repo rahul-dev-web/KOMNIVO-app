@@ -21,7 +21,7 @@ kotlin_plugin = '    id("org.jetbrains.kotlin.android")'
 if kotlin_plugin not in s:
     if android_plugin not in s:
         raise SystemExit("Could not find the Android application plugin in build.gradle.kts")
-    s = s.replace(android_plugin, android_plugin + "\\n" + kotlin_plugin, 1)
+    s = s.replace(android_plugin, android_plugin + chr(10) + kotlin_plugin, 1)
 s = re.sub(r'namespace\s*=\s*".*?"', 'namespace = "in.komnivo.app"', s)
 s = re.sub(r'applicationId\s*=\s*".*?"', 'applicationId = "in.komnivo.app"', s)
 if "com.google.mlkit:text-recognition" not in s:
