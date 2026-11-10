@@ -21,7 +21,7 @@ The authoritative product scope, rules, decisions and complete delivery blueprin
 - `native/android/` — Kotlin MediaProjection capture bridge and on-device ML Kit OCR.
 - `supabase/migrations/` — core schema, RLS, tournament workflows, invite security and private RPC implementations.
 - `supabase/functions/` — authenticated Edge Functions, FCM webhook delivery and provider adapters.
-- `tool/` — local/CI scripts that generate Flutter Android and Web scaffolding.
+- `tool/` — local/CI scripts that generate Flutter Android and Web scaffolding, plus the pinned Flutter builder used by Cloudflare Pages.
 
 ## Local setup (Windows)
 
@@ -55,7 +55,7 @@ Requirements: Flutter stable (3.44.8 or newer recommended), Android Studio/Andro
 
 The GitHub Actions CI workflow resolves Flutter packages, analyses Dart, runs tests, builds a release Android APK and builds the Web bundle. Build artifacts are retained on the Actions run.
 
-The Web staging workflow also builds a GitHub Pages artifact. Actual Pages deployment remains disabled until GitHub Pages is enabled in repository settings and the repository variable `ENABLE_GITHUB_PAGES=true` is added.
+The selected Web host is **Cloudflare Pages**; GitHub is used only for source control. In Cloudflare Pages, connect this repository's `main` branch, set the build command to `bash tool/cloudflare-build.sh`, and set the output directory to `build/web`. The script installs and SHA-256 verifies the pinned Flutter 3.44.8 SDK, generates the ignored Android/Web scaffolding, resolves packages and builds the Web release using the `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` build environment variables. After the first deployment, add the assigned `*.pages.dev` origin to Supabase Auth redirect URLs and Google's Authorized JavaScript origins. The legacy GitHub Pages workflow is not the selected hosting path.
 
 ## Backend and security boundaries
 
@@ -68,6 +68,6 @@ The Web staging workflow also builds a GitHub Pages artifact. Actual Pages deplo
 
 ## Implementation and launch status
 
-The repository includes a connected Flutter application foundation, tournament and organiser workflows, database schema/RLS, Edge Functions, LiveKit token issuance and an Android LiveOps capture prototype. External service credentials, Google OAuth provider setup, the final game provider approval, Firebase/LiveKit configuration, a GitHub Pages setting and real-device QA still need to be completed. See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) and [docs/EXTERNAL_SETUP.md](docs/EXTERNAL_SETUP.md).
+The repository includes a connected Flutter application foundation, tournament and organiser workflows, database schema/RLS, Edge Functions, LiveKit token issuance and an Android LiveOps capture prototype. Android Google OAuth and real-device launch have been verified. Cloudflare Pages deployment, Web OAuth allowlist updates, Firebase/LiveKit configuration, final game-provider review and broader production QA remain to be completed. See [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) and [docs/EXTERNAL_SETUP.md](docs/EXTERNAL_SETUP.md).
 
 This commit is not a production-launch certification. Complete the external integration checks, RLS/advisor review, Android device matrix, privacy/legal documents and Play Console review before inviting public users.
