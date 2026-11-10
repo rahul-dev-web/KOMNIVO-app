@@ -16,7 +16,7 @@ This guide is for the existing repository and the Supabase project already creat
 | Flutter Android package | `in.komnivo.app` |
 | Android OAuth return URI | `in.komnivo.app://login-callback` |
 | GitHub repository | `rahul-dev-web/KOMNIVO-app` |
-| Planned Web staging URL | `https://rahul-dev-web.github.io/KOMNIVO-app/` |
+| Planned Web staging URL | `https://<cloudflare-project-name>.pages.dev/` (replace with the actual Pages hostname after deployment) |
 
 The project is in Singapore because that is the region selected in the Supabase dashboard. Keep this project; there is no need to create another database solely to chase a Mumbai region option.
 
@@ -67,13 +67,13 @@ Open the Supabase dashboard and select project reference `krqysdkbyhshwpfmimfw`.
 ### B. Verify Data API and Auth URLs
 
 1. In **Project Settings → API → Data API**, make sure the `public` schema is exposed. The SQL grants and RLS policies are already prepared for this schema.
-2. In **Authentication → URL Configuration**, set the Site URL to the intended Web URL when staging is ready:
-   `https://rahul-dev-web.github.io/KOMNIVO-app/`.
+2. In **Authentication → URL Configuration**, after the Cloudflare Pages first deploy, set the Site URL to the exact production URL, for example:
+   `https://<cloudflare-project-name>.pages.dev/` (replace the placeholder with the actual assigned hostname).
 3. Add these Redirect URLs:
-   - `in.komnivo.app://login-callback` (Android)
-   - `https://rahul-dev-web.github.io/KOMNIVO-app/` (GitHub Pages Web)
-   - The exact local development URL you use, for example `http://localhost:55000/` (use your actual local port).
-4. If the Web URL or local port changes, update the allow-list as well.
+   - `in.komnivo.app://login-callback` (Android — already tested successfully)
+   - `https://<cloudflare-project-name>.pages.dev/` (Cloudflare Pages Web — replace with the actual assigned hostname)
+   - The exact local development URL only if local Web OAuth testing is needed.
+4. Do not use a GitHub Pages URL. If the Pages hostname or local test origin changes, update the allow-list accordingly.
 
 The database, RLS, private Storage buckets and messages Realtime publication have already been created. Do not rerun the original ten migrations on this project.
 
@@ -102,7 +102,7 @@ The Flutter sign-in button calls `Supabase Auth signInWithOAuth(Google)`. Google
 2. Open **Google Auth Platform** and configure the app name, support contact, audience and branding information.
 3. Open **Clients → Create client** and choose **Web application**.
 4. Under **Authorized JavaScript origins**, add:
-   - `https://rahul-dev-web.github.io`
+   - `https://<cloudflare-project-name>.pages.dev` (replace with the actual Cloudflare Pages hostname after deployment)
    - `http://localhost:<your-port>` only while testing locally.
 5. Under **Authorized redirect URIs**, add this exact Supabase callback:
    `https://krqysdkbyhshwpfmimfw.supabase.co/auth/v1/callback`
@@ -177,43 +177,51 @@ The current adapter calls the **Free Fire Community API**, an unofficial third-p
 
 The India-first default region sent by the app is `ind`. The current Edge Function accepts `ind`, `sg` and `br`. A UID lookup is labelled `linked_unverified`; do not call it official or owner-verified.
 
-## 8. GitHub Actions and Web staging
+## 8. Cloudflare Pages Web deployment
 
-The repository already has two successful build workflows for the current source: Flutter CI (Dart analysis, tests, Android release APK and Web build) and the Web staging build artifact. The actual Pages deploy job is gated and was skipped; enabling the build alone does not publish the site.
+GitHub remains the source-code repository; **Cloudflare Pages is the selected Web host**. Do not enable GitHub Pages for this project.
 
-### A. Enable GitHub Pages
+### A. Repository and build configuration
 
-1. Open [the KOMNIVO repository](https://github.com/rahul-dev-web/KOMNIVO-app).
-2. Open **Settings → Pages**.
-3. Under **Build and deployment → Source**, choose **GitHub Actions**.
+The repository contains `tool/cloudflare-build.sh`. Cloudflare Pages' standard build image does not list Flutter as a preinstalled SDK, so this script downloads the pinned Flutter 3.44.8 Linux SDK from Google's official Flutter release archive, verifies its SHA-256 checksum, generates the ignored Flutter Android/Web scaffolding, resolves Dart packages and builds the release Web bundle.
 
-### B. Add repository Actions variables
+1. In the Cloudflare dashboard, open **Workers & Pages → Create application → Pages → Connect to Git**.
+2. Connect GitHub and select `rahul-dev-web/KOMNIVO-app`. Grant access only to this repository if GitHub's authorization screen offers that scope.
+3. Set the production branch to `main`.
+4. Choose **None / No framework preset** if asked for a framework preset.
+5. Use these build settings:
+   - Root directory: `/` (repository root; leave the default if blank means root)
+   - Build command: `bash tool/cloudflare-build.sh`
+   - Build output directory: `build/web`
+6. Add these build environment variables for Production:
+   - `SUPABASE_URL` = `https://krqysdkbyhshwpfmimfw.supabase.co`
+   - `SUPABASE_PUBLISHABLE_KEY` = the active `sb_publishable_...` key from Supabase Project Settings → API Keys.
+7. Add the same two variables to Preview only if you intend to build/test branch preview deployments.
+8. Do not add a Supabase `service_role` key, Google OAuth Client Secret, LiveKit API secret, Firebase service-account JSON, Free Fire provider key or webhook secret to Cloudflare Pages. The Flutter Web client needs only the Supabase project URL and publishable key.
 
-Open **Settings → Secrets and variables → Actions → Variables** and add:
+The Web release output is `build/web`; Flutter's Web build places its `index.html` and assets there. The script currently pins Flutter 3.44.8 to match the locally tested developer environment.
 
-| Variable | Value |
-| --- | --- |
-| `SUPABASE_URL` | `https://krqysdkbyhshwpfmimfw.supabase.co` |
-| `SUPABASE_PUBLISHABLE_KEY` | Active `sb_publishable_...` key copied from Supabase |
-| `SUPABASE_REDIRECT_URL` | `https://rahul-dev-web.github.io/KOMNIVO-app/` |
-| `FIREBASE_API_KEY` | Firebase app config value |
-| `FIREBASE_APP_ID` | Firebase app config value |
-| `FIREBASE_MESSAGING_SENDER_ID` | Firebase app config value |
-| `FIREBASE_PROJECT_ID` | Firebase project ID |
-| `FIREBASE_STORAGE_BUCKET` | Firebase app config value, if supplied |
-| `FIREBASE_AUTH_DOMAIN` | Firebase app config value, if supplied |
-| `FIREBASE_VAPID_KEY` | Only when Web push is implemented/configured |
-| `ENABLE_GITHUB_PAGES` | `true` (this enables the deployment job) |
+### B. First deploy and record the hostname
 
-The Supabase publishable key and Firebase client identifiers are intended for client-side use. Do not store Google OAuth Client Secret, LiveKit API Secret, Free Fire API key, Firebase service-account JSON or the push webhook secret as Actions variables. Provider secrets belong in Supabase Edge Function Secrets.
+1. Select **Save and Deploy**.
+2. Wait for the first build and deployment to finish. If it fails, capture the failed build log; do not change several settings at once.
+3. Copy the exact production hostname Cloudflare assigns, in the form `https://<project-name>.pages.dev/`. The project name may need to be adjusted if that hostname is already taken.
+4. Open the URL on desktop Chrome and verify the KOMNIVO sign-in/preview screen loads.
 
-### C. Deploy and verify
+### C. Finish Web Google OAuth after deployment
 
-1. Push a commit to `main` or manually run **KOMNIVO Web Staging** from Actions.
-2. Confirm the **build** and **deploy** jobs both succeed.
-3. Open `https://rahul-dev-web.github.io/KOMNIVO-app/`.
-4. Test Google OAuth, page refresh/deep links and authenticated data access.
-5. If the Pages URL changes, update Supabase Auth Redirect URLs and Google Authorized JavaScript origins.
+Only after the real `pages.dev` hostname is known:
+
+1. In Supabase **Authentication → URL Configuration**, set Site URL to the exact production origin with trailing slash and add that same URL to Redirect URLs. Keep `in.komnivo.app://login-callback` for Android.
+2. In Google Cloud **Google Auth Platform → Clients → your Web client → Authorized JavaScript origins**, add the exact Cloudflare production origin without a path (for example, `https://<project-name>.pages.dev`).
+3. Keep the Supabase callback URI unchanged:
+   `https://krqysdkbyhshwpfmimfw.supabase.co/auth/v1/callback`.
+4. Test Google OAuth on desktop Web and then iPhone Safari only after both allowlists are saved. The browser Web redirect is derived from the deployed Web origin by the Flutter app.
+
+Cloudflare references:
+- Git integration: https://developers.cloudflare.com/pages/get-started/git-integration/
+- Build configuration: https://developers.cloudflare.com/pages/configuration/build-configuration/
+- Build image: https://developers.cloudflare.com/pages/configuration/build-image/
 
 ## 9. Local Android run command
 
@@ -243,7 +251,7 @@ The release APK currently builds in CI, but Play Store upload signing is not yet
 - [ ] Create the Supabase notification INSERT webhook with the matching private header.
 - [ ] Create LiveKit Cloud project and save its three server secrets (when voice rooms are ready to test).
 - [ ] Review/approve Free Fire provider terms and add its API key (when UID sync is ready to test).
-- [ ] Enable GitHub Pages and set `ENABLE_GITHUB_PAGES=true`.
+- [ ] Connect `rahul-dev-web/KOMNIVO-app` to Cloudflare Pages and complete the first `*.pages.dev` deployment.
 - [ ] Configure Android upload signing and Play Console/legal requirements before public release.
 
 ## 11. Security and implementation notes
@@ -263,4 +271,4 @@ The release APK currently builds in CI, but Play Store upload signing is not yet
 - Firebase Flutter setup: https://firebase.google.com/docs/flutter/setup
 - Firebase FCM server send: https://firebase.google.com/docs/cloud-messaging/send/admin-sdk
 - LiveKit Cloud: https://cloud.livekit.io/
-- GitHub Pages with Actions: https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site
+- Cloudflare Pages Git integration: https://developers.cloudflare.com/pages/get-started/git-integration/
