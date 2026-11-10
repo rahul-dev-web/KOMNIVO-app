@@ -16,7 +16,7 @@ This guide is for the existing repository and the Supabase project already creat
 | Flutter Android package | `in.komnivo.app` |
 | Android OAuth return URI | `in.komnivo.app://login-callback` |
 | GitHub repository | `rahul-dev-web/KOMNIVO-app` |
-| Planned Web staging URL | `https://<cloudflare-project-name>.pages.dev/` (replace with the actual Pages hostname after deployment) |
+| Production Web URL | `https://komnivo-app.pages.dev/` (Cloudflare Pages production alias; deployment-specific URL: `https://4ee6d318.komnivo-app.pages.dev/`) |
 
 The project is in Singapore because that is the region selected in the Supabase dashboard. Keep this project; there is no need to create another database solely to chase a Mumbai region option.
 
@@ -73,7 +73,7 @@ Open the Supabase dashboard and select project reference `krqysdkbyhshwpfmimfw`.
    - `in.komnivo.app://login-callback` (Android — already tested successfully)
    - `https://<cloudflare-project-name>.pages.dev/` (Cloudflare Pages Web — replace with the actual assigned hostname)
    - The exact local development URL only if local Web OAuth testing is needed.
-4. Do not use a GitHub Pages URL. If the Pages hostname or local test origin changes, update the allow-list accordingly.
+4. Do not use a GitHub Pages URL. The Cloudflare dashboard confirms the Production environment and lists `komnivo-app.pages.dev` as the project domain. The hash-prefixed URL `https://4ee6d318.komnivo-app.pages.dev/` is the deployment-specific URL; use the stable `https://komnivo-app.pages.dev/` production alias for auth redirects.
 
 The database, RLS, private Storage buckets and messages Realtime publication have already been created. Do not rerun the original ten migrations on this project.
 
@@ -102,7 +102,7 @@ The Flutter sign-in button calls `Supabase Auth signInWithOAuth(Google)`. Google
 2. Open **Google Auth Platform** and configure the app name, support contact, audience and branding information.
 3. Open **Clients → Create client** and choose **Web application**.
 4. Under **Authorized JavaScript origins**, add:
-   - `https://<cloudflare-project-name>.pages.dev` (replace with the actual Cloudflare Pages hostname after deployment)
+   - `https://komnivo-app.pages.dev`
    - `http://localhost:<your-port>` only while testing locally.
 5. Under **Authorized redirect URIs**, add this exact Supabase callback:
    `https://krqysdkbyhshwpfmimfw.supabase.co/auth/v1/callback`
@@ -205,7 +205,7 @@ The Web release output is `build/web`; Flutter's Web build places its `index.htm
 
 1. Select **Save and Deploy**.
 2. Wait for the first build and deployment to finish. If it fails, capture the failed build log; do not change several settings at once.
-3. Copy the exact production hostname Cloudflare assigns, in the form `https://<project-name>.pages.dev/`. The project name may need to be adjusted if that hostname is already taken.
+3. Copy the exact production hostname Cloudflare assigns, in the form `https://komnivo-app.pages.dev/`. The project name may need to be adjusted if that hostname is already taken.
 4. Open the URL on desktop Chrome and verify the KOMNIVO sign-in/preview screen loads.
 
 ### C. Finish Web Google OAuth after deployment
@@ -213,7 +213,7 @@ The Web release output is `build/web`; Flutter's Web build places its `index.htm
 Only after the real `pages.dev` hostname is known:
 
 1. In Supabase **Authentication → URL Configuration**, set Site URL to the exact production origin with trailing slash and add that same URL to Redirect URLs. Keep `in.komnivo.app://login-callback` for Android.
-2. In Google Cloud **Google Auth Platform → Clients → your Web client → Authorized JavaScript origins**, add the exact Cloudflare production origin without a path (for example, `https://<project-name>.pages.dev`).
+2. In Google Cloud **Google Auth Platform → Clients → your Web client → Authorized JavaScript origins**, add the exact Cloudflare production origin without a path (for example, `https://komnivo-app.pages.dev`).
 3. Keep the Supabase callback URI unchanged:
    `https://krqysdkbyhshwpfmimfw.supabase.co/auth/v1/callback`.
 4. Test Google OAuth on desktop Web and then iPhone Safari only after both allowlists are saved. The browser Web redirect is derived from the deployed Web origin by the Flutter app.
