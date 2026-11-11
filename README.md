@@ -61,7 +61,7 @@ The selected Web host is **Cloudflare Pages**; GitHub is used only for source co
 
 - Supabase Auth is the platform identity provider; Google OAuth is configured in Supabase.
 - RLS is enabled on public application tables. Privileged tournament RPC implementations live in the non-exposed `app_private` schema; public RPC entry points are invoker wrappers.
-- Provider API keys, Firebase service-account credentials, LiveKit secrets and Supabase service-role credentials belong only in Edge Function secrets.
+- Provider API keys, the FCM sender shared secret, LiveKit secrets and Supabase service-role credentials belong only in their respective secret stores. The Cloud Run FCM sender uses its attached Google service identity and Application Default Credentials; no downloadable service-account JSON key is used.
 - Free Fire data lookup uses an unofficial third-party provider candidate. A UID lookup does not prove account ownership and must not be shown as official Garena verification.
 - Tournament results and standings remain controlled by organiser approval and deterministic server-side scoring.
 - LiveOps uses explicit Android MediaProjection consent and on-device OCR. It does not tap, click or control the Free Fire client.
