@@ -16,6 +16,7 @@ class KomnivoApp extends StatelessWidget {
       title: 'KOMNIVO',
       debugShowCheckedModeBanner: false,
       theme: KomnivoTheme.dark,
+      scaffoldMessengerKey: PushService.scaffoldMessengerKey,
       home: AppConfig.supabaseReady ? const _AuthGate() : const SignInScreen(),
     );
   }
