@@ -167,6 +167,27 @@ Do not put any Google OAuth client secret or refresh token in Flutter, GitHub so
 
 The `notification-push` function intentionally has JWT verification disabled because the database webhook is not a user session. It has its own mandatory secret-header check. Never remove that check or expose the webhook secret.
 
+### D. OAuth consent-screen branding and public policy URLs
+
+The public KOMNIVO information pages are maintained in `native/web/about`, `native/web/privacy` and `native/web/terms`. The platform bootstrap scripts copy them into the Flutter Web output so Cloudflare Pages can serve them as static pages.
+
+Use these values in Google Auth Platform → Branding after the Cloudflare deployment containing these files is successful:
+
+| Field | Value |
+| --- | --- |
+| App name | `KOMNIVO` |
+| User support email | `jarahul989@gmail.com` |
+| Application home page | `https://komnivo-app.pages.dev/about/` |
+| Privacy policy | `https://komnivo-app.pages.dev/privacy/` |
+| Terms of service | `https://komnivo-app.pages.dev/terms/` |
+| Authorized domain candidate | `komnivo-app.pages.dev` |
+
+The 120 × 120 PNG app icon is supplied separately as `komnivo-logo-120.png`. Do not upload the SVG directly where the console requires PNG/JPG/BMP.
+
+**Important domain ownership check:** Google requires the homepage and policy pages to be on a domain you own and can verify in Search Console. `pages.dev` is a Cloudflare-provided shared domain, not a custom domain registered by the project owner. We can try a URL-prefix Search Console verification for `https://komnivo-app.pages.dev/`, but Google may reject the shared-host domain for OAuth verification. The durable production solution is to connect a custom domain you control, then update all three URLs and the Authorized domain to that domain before submitting branding/scope verification. Do not claim that domain ownership is verified until Search Console confirms it.
+
+The homepage must be publicly accessible without logging in and must explain what KOMNIVO does; do not use the sign-in-only app screen as the homepage. The privacy policy and terms pages must match the same origin as the homepage.
+
 ## 6. LiveKit — required for voice rooms
 
 1. Create a project in LiveKit Cloud.
