@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/app_config.dart';
 import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
+import '../../core/push_service.dart';
 import '../../core/ui.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -47,6 +50,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  Future<void> _enableBrowserNotifications() async {
+    setState(() => _saving = true);
+    try {
+      await PushService.enableBrowserNotifications();
+      if (mounted) {
+        showMessage(context, 'Browser notifications enabled on this device.');
+      }
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not enable browser notifications: $error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   IconData _iconFor(String kind) {
     switch (kind) {
       case 'message': return Icons.chat_bubble_outline;
@@ -64,6 +81,59 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
+          if (kIsWeb) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: KomnivoTheme.surface,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: KomnivoTheme.line),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.web, color: KomnivoTheme.cyan),
+                      SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          'Browser notifications',
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Allow KOMNIVO to notify this browser about messages, community activity and tournament updates.',
+                    style: TextStyle(color: KomnivoTheme.muted, fontSize: 12, height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _saving ||
+                              !AppConfig.firebaseReady ||
+                              AppConfig.firebaseVapidKey.isEmpty
+                          ? null
+                          : _enableBrowserNotifications,
+                      icon: const Icon(Icons.notifications_active_outlined),
+                      label: const Text('Enable browser notifications'),
+                    ),
+                  ),
+                  if (!AppConfig.firebaseReady || AppConfig.firebaseVapidKey.isEmpty) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Browser push configuration is not present in this build yet.',
+                      style: TextStyle(color: KomnivoTheme.muted, fontSize: 11),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+          ],
           FutureBuilder<List<Map<String, dynamic>>>(
             future: _notifications,
             builder: (context, snapshot) {
