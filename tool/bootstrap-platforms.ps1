@@ -35,7 +35,18 @@ try {
   }
   Set-Content -Path $GradleFile -Value $Gradle -Encoding utf8
   Copy-Item (Join-Path $Root "native/web/index.html") (Join-Path $Root "web/index.html") -Force
-  Write-Host "Android and Web platform folders are ready."
+
+  # Copy public policy and product pages into the generated Flutter Web folder.
+  $BrandTarget = Join-Path $Root "web/brand"
+  New-Item -ItemType Directory -Path $BrandTarget -Force | Out-Null
+  Copy-Item (Join-Path $Root "native/web/brand/komnivo-mark.svg") (Join-Path $BrandTarget "komnivo-mark.svg") -Force
+  foreach ($Page in @("about", "privacy", "terms")) {
+    $PageTarget = Join-Path $Root ("web/" + $Page)
+    New-Item -ItemType Directory -Path $PageTarget -Force | Out-Null
+    Copy-Item (Join-Path $Root ("native/web/" + $Page + "/index.html")) (Join-Path $PageTarget "index.html") -Force
+  }
+
+  Write-Host "Android, Web app, public homepage and policy pages are ready."
 } finally {
   if (Test-Path $Temp) { Remove-Item $Temp -Recurse -Force }
 }
