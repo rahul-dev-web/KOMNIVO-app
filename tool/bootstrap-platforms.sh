@@ -30,11 +30,34 @@ p.write_text(s)
 PY
 cp "$ROOT/native/web/index.html" "$ROOT/web/index.html"
 
-# Copy public product and legal pages into Flutter's generated Web output.
-mkdir -p "$ROOT/web/brand" "$ROOT/web/about" "$ROOT/web/privacy" "$ROOT/web/terms"
+# Copy public product, policy and isolated Firebase Messaging worker files.
+mkdir -p "$ROOT/web/brand" "$ROOT/web/about" "$ROOT/web/privacy" "$ROOT/web/terms" "$ROOT/web/firebase-cloud-messaging-push-scope"
 cp "$ROOT/native/web/brand/komnivo-mark.svg" "$ROOT/web/brand/komnivo-mark.svg"
+cp "$ROOT/native/web/firebase-cloud-messaging-push-scope/firebase-messaging-sw.js" "$ROOT/web/firebase-cloud-messaging-push-scope/firebase-messaging-sw.js"
 for page in about privacy terms; do
   cp "$ROOT/native/web/$page/index.html" "$ROOT/web/$page/index.html"
 done
 
-echo "Android, Web app, public homepage and policy pages are ready."
+# Firebase Web identifiers are public client configuration. Inject values from
+# environment variables at build time; never place server credentials here.
+python3 - <<'PY'
+from pathlib import Path
+import json
+import os
+
+worker = Path("web/firebase-cloud-messaging-push-scope/firebase-messaging-sw.js")
+source = worker.read_text()
+for name in (
+    "FIREBASE_API_KEY",
+    "FIREBASE_AUTH_DOMAIN",
+    "FIREBASE_PROJECT_ID",
+    "FIREBASE_STORAGE_BUCKET",
+    "FIREBASE_MESSAGING_SENDER_ID",
+    "FIREBASE_APP_ID",
+):
+    marker = f'"__{name}__"'
+    source = source.replace(marker, json.dumps(os.environ.get(name, "")))
+worker.write_text(source)
+PY
+
+echo "Android, Web app, public pages and isolated FCM worker are ready."
