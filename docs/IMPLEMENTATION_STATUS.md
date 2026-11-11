@@ -1,6 +1,6 @@
 # KOMNIVO implementation status
 
-Last verified: 11 November 2026.
+Last verified: 12 November 2026.
 
 This file distinguishes work deployed to the connected Supabase project from owner-controlled external credentials and remaining product engineering.
 
@@ -26,7 +26,7 @@ Verified on the project:
 - Flutter app shell, responsive dark theme, Google sign-in flow and local preview.
 - Community discovery/create/join entry points and default channels.
 - Direct/group conversation creation, persisted realtime text messages, replies, emoji reactions, secure attachments, local message search and LiveKit voice-room token issuance.
-- Notification centre with read states and notification preferences; `notification-push` Edge Function v2 is deployed ACTIVE and sends FCM HTTP v1 directly through a narrowly scoped Google OAuth refresh token (no Cloud Run billing and no downloadable service-account JSON key). The OAuth client/scope are configured, but the Google credentials and database notification webhook are not yet set in Supabase.
+- Notification centre with read states and notification preferences; `notification-push` Edge Function v8 is deployed ACTIVE and sends FCM HTTP v1 directly through a narrowly scoped Google OAuth refresh token (no Cloud Run billing and no downloadable service-account JSON key). Supabase secrets and the `public.notifications` INSERT webhook are configured. A controlled Android test notification was displayed on the Vivo Y20G. Browser Web Push source is now committed; Cloudflare Firebase Web build variables and live browser testing remain.
 - Player profile and server-side Free Fire UID lookup adapter.
 - Team creation, invitations and membership acceptance.
 - Event discovery/publishing, team registration, match schedule, standings, check-in, time-released room credentials, evidence upload, opponent confirmation/dispute and result submission.
@@ -40,7 +40,7 @@ Verified on the project:
 
 - Google Cloud OAuth Web Client ID/Secret and enabling Google provider in Supabase Auth.
 - Active Supabase publishable key supplied as local build value and GitHub Actions variable.
-- Firebase Android app registration and client identifiers are configured; device FCM registration has been observed in Supabase. Direct FCM sender still needs Google OAuth refresh credentials, Supabase Edge Function secrets and database INSERT webhook.
+- Firebase Android and Web apps are registered. Direct FCM sender credentials, Supabase Edge Function secrets and the notification INSERT webhook are configured. Android test delivery has been observed on the Vivo Y20G. Browser delivery still needs Cloudflare Pages Firebase Web config/VAPID build variables and end-to-end browser QA.
 - LiveKit Cloud project URL/API key/API secret if voice rooms are to be tested.
 - Free Fire provider API key and confirmation of current terms, quotas and commercial-use permissions.
 - Cloudflare Pages deployment of the public homepage/policy pages and Google Search Console domain ownership verification (custom domain may be required; do not assume the shared `pages.dev` hostname will pass Google OAuth verification).
@@ -52,7 +52,7 @@ See [EXTERNAL_SETUP.md](EXTERNAL_SETUP.md) for the owner configuration walkthrou
 
 - No OpenAI, Groq, Gemini, Anthropic or other hosted LLM API is wired into this repository. Do not provision an AI API key yet.
 - Rulebook-to-event AI drafting remains product engineering work.
-- Web push requires a complete Firebase Messaging service worker and browser permission flow.
+- Browser Web Push source now includes an isolated Firebase Messaging service worker, a user-initiated browser permission/token flow, platform-aware token registration and WebPush-specific server payloads. It still needs Firebase Web config/VAPID values in Cloudflare Pages and a successful live browser delivery test; iOS Home Screen Web Push remains a separate follow-up.
 - Video calls and member-initiated screen/stream sharing require further LiveKit/WebRTC UI, permission and device/browser work.
 - LiveOps screen-state classification, lobby/result extraction and low-end-device benchmarking remain incomplete.
 - Full moderation queue, self-service account deletion/retention workflows, and legal review of the initial public Privacy Policy/Terms still need completion.
