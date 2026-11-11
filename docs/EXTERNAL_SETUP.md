@@ -41,7 +41,7 @@ All user-facing functions require JWT verification. `notification-push` is the o
 | Google login | Google OAuth through Supabase Auth | Yes — Google Web OAuth Client ID and Client Secret, entered in Supabase Auth provider settings |
 | Text chat, DMs and group text | Supabase Postgres + Supabase Realtime | No third-party chat provider |
 | File and result-evidence storage | Supabase Storage | No separate provider |
-| Push notifications | Firebase Cloud Messaging (FCM) | Yes — Firebase client configuration plus a server service-account JSON |
+| Push notifications | Firebase Cloud Messaging (FCM) via a keyless Google Cloud Run sender | Yes — Firebase client configuration plus a random Cloud Run ↔ Supabase shared secret; no downloaded service-account JSON key |
 | Voice rooms | LiveKit | Yes — LiveKit URL, API key and API secret |
 | Free Fire UID profile sync | Free Fire Community API (unofficial) | Yes — provider API key |
 | Same-phone LiveOps screen OCR | Android MediaProjection + Google ML Kit on-device text recognition | No cloud vision API key |
@@ -84,8 +84,9 @@ Open **Edge Functions → Secrets** and add the entries below. Supabase reserves
 | Secret name | Required when | Value source |
 | --- | --- | --- |
 | `PUSH_WEBHOOK_SECRET` | Push delivery | Generate a long random value (at least 32 random bytes) |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Push delivery | Entire Google Cloud service-account JSON document |
-| `FIREBASE_PROJECT_ID` | Push delivery | Firebase project ID |
+| `FCM_SENDER_URL` | Push delivery | HTTPS base URL of the deployed Cloud Run sender |
+| `FCM_SENDER_SECRET` | Push delivery | Random high-entropy shared secret also stored in Cloud Run Secret Manager |
+
 | `LIVEKIT_URL` | Voice rooms | LiveKit Cloud WebSocket URL |
 | `LIVEKIT_API_KEY` | Voice rooms | LiveKit project API key |
 | `LIVEKIT_API_SECRET` | Voice rooms | LiveKit project API secret |
@@ -129,13 +130,20 @@ Do not paste the Google Client Secret into Flutter, `.env.example`, GitHub sourc
    - `FIREBASE_VAPID_KEY` (only for Web push)
 5. These Firebase client identifiers are supplied to Flutter with `--dart-define`. They are not the Firebase server service-account private key.
 
-### B. Enable server-side FCM delivery
+### B. Enable server-side FCM delivery (keyless Cloud Run sender)
 
-1. In Firebase Console, open **Project settings → Cloud Messaging** and enable the **Firebase Cloud Messaging API (HTTP v1)**.
-2. In Google Cloud IAM, create a service account for the KOMNIVO push sender and grant it the **Firebase Cloud Messaging API Admin** role for the target Firebase project.
-3. Create/download a JSON key for that service account.
-4. In Supabase **Edge Functions → Secrets**, save the entire JSON contents as `FIREBASE_SERVICE_ACCOUNT_JSON` and save `FIREBASE_PROJECT_ID`.
-5. Generate a random `PUSH_WEBHOOK_SECRET` and save it in the same Supabase secrets page.
+The project organization enforces `iam.disableServiceAccountKeyCreation`. Do not weaken that policy or attempt to create/download a service-account JSON key. KOMNIVO uses a keyless Cloud Run sender with Application Default Credentials (ADC).
+
+1. In Firebase Console, open **Project settings → Cloud Messaging** and confirm **Firebase Cloud Messaging API (HTTP v1)** is enabled.
+2. In Google Cloud IAM, create the dedicated service account `komnivo-fcm-sender@komnivo-app.iam.gserviceaccount.com` and grant it **Firebase Cloud Messaging API Admin** (`roles/firebasecloudmessaging.admin`) on project `komnivo-app`.
+3. Enable these Google Cloud APIs: Cloud Run Admin API (`run.googleapis.com`), Cloud Build API (`cloudbuild.googleapis.com`), Artifact Registry API (`artifactregistry.googleapis.com`), and Secret Manager API (`secretmanager.googleapis.com`).
+4. Create a Secret Manager secret named `fcm-sender-secret` and add a randomly generated value of at least 32 random bytes. Do not commit the value or send it in chat. Grant the runtime service account `roles/secretmanager.secretAccessor` on this secret.
+5. Deploy the source in `cloud-run/fcm-sender` as the Cloud Run service `komnivo-fcm-sender` in `asia-southeast1` (Singapore), assigning `komnivo-fcm-sender@komnivo-app.iam.gserviceaccount.com` as the **runtime service identity**. Set `FIREBASE_PROJECT_ID=komnivo-app` and mount Secret Manager secret `fcm-sender-secret:latest` as environment variable `FCM_SENDER_SECRET`.
+6. The service endpoint is publicly reachable so Supabase can call it from outside Google Cloud, but every `POST /send` request must carry the high-entropy `x-fcm-sender-secret` header. The endpoint validates this secret and uses Cloud Run ADC to call the FCM HTTP v1 API. Do not remove the secret check.
+7. In Supabase **Edge Functions → Secrets**, set `FCM_SENDER_URL` to the Cloud Run service HTTPS URL and `FCM_SENDER_SECRET` to the exact same random value saved in Secret Manager.
+8. Generate a separate random `PUSH_WEBHOOK_SECRET` and save it in Supabase Edge Function Secrets. This protects the database-to-Edge-Function webhook and is not the same as `FCM_SENDER_SECRET`.
+
+The Cloud Run sender source is in `cloud-run/fcm-sender`. The `notification-push` Edge Function forwards each eligible device notification to that service. Do not set `GOOGLE_APPLICATION_CREDENTIALS` or upload any service-account JSON key.
 
 ### C. Connect Supabase notifications to FCM
 
