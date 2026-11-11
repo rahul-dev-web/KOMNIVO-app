@@ -41,7 +41,7 @@ if [[ ! -x "$FLUTTER_HOME/bin/flutter" ]]; then
   echo "Installing pinned Flutter SDK $FLUTTER_VERSION..."
   rm -f "$ARCHIVE"
   curl --fail --location --retry 3 --retry-delay 2 \
-    "https://storage.googleapis.com/flutter_infra_release/releases/stable/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
+    "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
     --output "$ARCHIVE"
 
   echo "$FLUTTER_SHA256  $ARCHIVE" | sha256sum --check -
