@@ -41,7 +41,7 @@ if [[ ! -x "$FLUTTER_HOME/bin/flutter" ]]; then
   echo "Installing pinned Flutter SDK $FLUTTER_VERSION..."
   rm -f "$ARCHIVE"
   curl --fail --location --retry 3 --retry-delay 2 \
-    "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
+    "https://storage.googleapis.com/flutter_infra_release/releases/stable/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
     --output "$ARCHIVE"
 
   echo "$FLUTTER_SHA256  $ARCHIVE" | sha256sum --check -
@@ -60,17 +60,38 @@ git config --global --add safe.directory "$FLUTTER_HOME" || true
 flutter config --no-analytics
 flutter --version
 
-# Generate the platform scaffolding ignored by Git and overlay KOMNIVO's native
-# Android module. This keeps local, GitHub Actions and Pages builds consistent.
+# Optional Firebase identifiers are public browser configuration, not secrets.
+FIREBASE_API_KEY_VALUE="$(printenv FIREBASE_API_KEY || true)"
+FIREBASE_APP_ID_VALUE="$(printenv FIREBASE_APP_ID || true)"
+FIREBASE_AUTH_DOMAIN_VALUE="$(printenv FIREBASE_AUTH_DOMAIN || true)"
+FIREBASE_MESSAGING_SENDER_ID_VALUE="$(printenv FIREBASE_MESSAGING_SENDER_ID || true)"
+FIREBASE_PROJECT_ID_VALUE="$(printenv FIREBASE_PROJECT_ID || true)"
+FIREBASE_STORAGE_BUCKET_VALUE="$(printenv FIREBASE_STORAGE_BUCKET || true)"
+FIREBASE_VAPID_KEY_VALUE="$(printenv FIREBASE_VAPID_KEY || true)"
+
+# Generate ignored Flutter scaffolding and overlay KOMNIVO's native Android
+# module plus the isolated Firebase Messaging service worker.
 bash tool/bootstrap-platforms.sh
 flutter pub get
 
 flutter build web --release \
   --dart-define="SUPABASE_URL=$SUPABASE_URL" \
-  --dart-define="SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY"
+  --dart-define="SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY" \
+  --dart-define="FIREBASE_API_KEY=$FIREBASE_API_KEY_VALUE" \
+  --dart-define="FIREBASE_APP_ID=$FIREBASE_APP_ID_VALUE" \
+  --dart-define="FIREBASE_AUTH_DOMAIN=$FIREBASE_AUTH_DOMAIN_VALUE" \
+  --dart-define="FIREBASE_MESSAGING_SENDER_ID=$FIREBASE_MESSAGING_SENDER_ID_VALUE" \
+  --dart-define="FIREBASE_PROJECT_ID=$FIREBASE_PROJECT_ID_VALUE" \
+  --dart-define="FIREBASE_STORAGE_BUCKET=$FIREBASE_STORAGE_BUCKET_VALUE" \
+  --dart-define="FIREBASE_VAPID_KEY=$FIREBASE_VAPID_KEY_VALUE"
 
 test -f build/web/index.html || {
   echo "Flutter Web build completed without build/web/index.html." >&2
+  exit 1
+}
+
+test -f build/web/firebase-cloud-messaging-push-scope/firebase-messaging-sw.js || {
+  echo "Firebase Messaging service worker was not included in build/web." >&2
   exit 1
 }
 
