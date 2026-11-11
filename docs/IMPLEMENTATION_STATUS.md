@@ -1,6 +1,6 @@
 # KOMNIVO implementation status
 
-Last verified: 9 November 2026.
+Last verified: 11 November 2026.
 
 This file distinguishes work deployed to the connected Supabase project from owner-controlled external credentials and remaining product engineering.
 
@@ -26,23 +26,24 @@ Verified on the project:
 - Flutter app shell, responsive dark theme, Google sign-in flow and local preview.
 - Community discovery/create/join entry points and default channels.
 - Direct/group conversation creation, persisted realtime text messages, replies, emoji reactions, secure attachments, local message search and LiveKit voice-room token issuance.
-- Notification centre with read states and notification preferences; server-side FCM push function.
+- Notification centre with read states and notification preferences; `notification-push` Edge Function v2 is deployed ACTIVE and sends FCM HTTP v1 directly through a narrowly scoped Google OAuth refresh token (no Cloud Run billing and no downloadable service-account JSON key). The OAuth client/scope are configured, but the Google credentials and database notification webhook are not yet set in Supabase.
 - Player profile and server-side Free Fire UID lookup adapter.
 - Team creation, invitations and membership acceptance.
 - Event discovery/publishing, team registration, match schedule, standings, check-in, time-released room credentials, evidence upload, opponent confirmation/dispute and result submission.
 - Organiser approval, roster lock, group generation, match operations, dispute review, result approval and scoring/standings backend.
 - Supabase schema, RLS, audit records, private buckets and privileged tournament RPC implementations.
 - Android MediaProjection bridge and local ML Kit OCR preview; the raw OCR text is not used as an official result.
+- Public KOMNIVO product homepage, Privacy Policy and Terms pages are authored under `native/web/` and copied by both platform bootstrap scripts into the Cloudflare Pages output. Initial text needs owner/legal review before public launch.
 - GitHub Actions build workflows for Flutter analysis/tests/Android APK/Web and a Web staging artifact workflow.
 
 ## Still requires owner-controlled external setup
 
 - Google Cloud OAuth Web Client ID/Secret and enabling Google provider in Supabase Auth.
 - Active Supabase publishable key supplied as local build value and GitHub Actions variable.
-- Firebase project/app registration, client identifiers, FCM HTTP v1 service account, Edge Function secrets and database INSERT webhook.
+- Firebase Android app registration and client identifiers are configured; device FCM registration has been observed in Supabase. Direct FCM sender still needs Google OAuth refresh credentials, Supabase Edge Function secrets and database INSERT webhook.
 - LiveKit Cloud project URL/API key/API secret if voice rooms are to be tested.
 - Free Fire provider API key and confirmation of current terms, quotas and commercial-use permissions.
-- GitHub Pages source setting, Actions variables and `ENABLE_GITHUB_PAGES=true`.
+- Cloudflare Pages deployment of the public homepage/policy pages and Google Search Console domain ownership verification (custom domain may be required; do not assume the shared `pages.dev` hostname will pass Google OAuth verification).
 - Android upload-keystore/release signing and Play Console/legal setup.
 
 See [EXTERNAL_SETUP.md](EXTERNAL_SETUP.md) for the owner configuration walkthrough.
@@ -54,7 +55,7 @@ See [EXTERNAL_SETUP.md](EXTERNAL_SETUP.md) for the owner configuration walkthrou
 - Web push requires a complete Firebase Messaging service worker and browser permission flow.
 - Video calls and member-initiated screen/stream sharing require further LiveKit/WebRTC UI, permission and device/browser work.
 - LiveOps screen-state classification, lobby/result extraction and low-end-device benchmarking remain incomplete.
-- Full moderation queue, account deletion/retention, and production privacy/legal workflows still need completion.
+- Full moderation queue, self-service account deletion/retention workflows, and legal review of the initial public Privacy Policy/Terms still need completion.
 
 ## Build verification
 
