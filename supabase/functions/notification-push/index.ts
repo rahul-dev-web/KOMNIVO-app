@@ -31,7 +31,7 @@ async function getGoogleAccessToken(): Promise<string> {
 
   if (pendingTokenRefresh) return await pendingTokenRefresh;
 
-  pendingTokenRefresh = (async () => {
+  const refreshPromise = (async () => {
     const clientId = Deno.env.get("GOOGLE_OAUTH_CLIENT_ID");
     const clientSecret = Deno.env.get("GOOGLE_OAUTH_CLIENT_SECRET");
     const refreshToken = Deno.env.get("GOOGLE_OAUTH_REFRESH_TOKEN");
@@ -66,8 +66,9 @@ async function getGoogleAccessToken(): Promise<string> {
   })().finally(() => {
     pendingTokenRefresh = null;
   });
+  pendingTokenRefresh = refreshPromise;
 
-  return await pendingTokenRefresh;
+  return await refreshPromise;
 }
 
 Deno.serve(async (req: Request) => {
@@ -176,7 +177,10 @@ Deno.serve(async (req: Request) => {
 
     const sent = results.filter(Boolean).length;
     return json({ sent, failed: results.length - sent });
-  } catch {
+  } catch (error) {
+    console.error("FCM notification handler failed.", {
+      error_type: error instanceof Error ? error.name : "UnknownError",
+    });
     return json({ error: "Push delivery failed. Check Edge Function logs for the non-secret error category." }, 500);
   }
 });
