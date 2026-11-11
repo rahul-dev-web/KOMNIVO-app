@@ -20,6 +20,9 @@ type NotificationPreferences = {
   marketing_push: boolean;
 };
 
+type Device = { token: string; platform?: string | null };
+type SendResult = { ok: boolean; platform: string; error_status?: string };
+
 let cachedGoogleAccessToken = "";
 let googleAccessTokenExpiresAt = 0;
 let pendingTokenRefresh: Promise<string> | null = null;
@@ -91,7 +94,9 @@ Deno.serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !serviceKey) return json({ error: "Supabase server configuration is unavailable." }, 503);
+    if (!supabaseUrl || !serviceKey) {
+      return json({ error: "Supabase server configuration is unavailable." }, 503);
+    }
 
     const supabaseHeaders = {
       apikey: serviceKey,
@@ -100,7 +105,7 @@ Deno.serve(async (req: Request) => {
 
     const [tokenResponse, preferenceResponse] = await Promise.all([
       fetch(
-        supabaseUrl + "/rest/v1/device_tokens?select=token&user_id=eq." + encodeURIComponent(userId),
+        supabaseUrl + "/rest/v1/device_tokens?select=token,platform&user_id=eq." + encodeURIComponent(userId),
         { headers: supabaseHeaders, signal: AbortSignal.timeout(12_000) },
       ),
       fetch(
@@ -112,7 +117,7 @@ Deno.serve(async (req: Request) => {
     if (!tokenResponse.ok) return json({ error: "Could not load user device tokens." }, 502);
     if (!preferenceResponse.ok) return json({ error: "Could not load notification preferences." }, 502);
 
-    const devices = await tokenResponse.json() as Array<{ token: string }>;
+    const devices = await tokenResponse.json() as Device[];
     const prefsList = await preferenceResponse.json() as NotificationPreferences[];
     const prefs = prefsList[0] ?? {
       push_enabled: true,
@@ -147,8 +152,11 @@ Deno.serve(async (req: Request) => {
       entity_id: String(record.entity_id ?? ""),
       notification_id: String(record.id ?? ""),
     };
+    const webAppUrl = Deno.env.get("KOMNIVO_WEB_URL") ?? "https://komnivo-app.pages.dev/";
 
-    const results = await Promise.all(devices.map(async (device) => {
+    const results = await Promise.all(devices.map(async (device): Promise<SendResult> => {
+      const platform = String(device.platform ?? "android").toLowerCase();
+      const isWeb = platform === "web";
       try {
         const response = await fetch(
           "https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(projectId) + "/messages:send",
@@ -163,20 +171,45 @@ Deno.serve(async (req: Request) => {
                 token: device.token,
                 notification: { title, body: notificationBody },
                 data,
-                android: { priority: "high" },
+                ...(isWeb
+                  ? {
+                      webpush: {
+                        headers: { Urgency: "high" },
+                        fcm_options: { link: webAppUrl },
+                      },
+                    }
+                  : { android: { priority: "high" } }),
               },
             }),
             signal: AbortSignal.timeout(15_000),
           },
         );
-        return response.ok;
+
+        if (response.ok) return { ok: true, platform };
+
+        // Keep the diagnostic code, but never log response bodies or device tokens.
+        const errorPayload = await response.json().catch(() => null) as
+          | { error?: { status?: string } }
+          | null;
+        const errorStatus = String(errorPayload?.error?.status ?? `HTTP_${response.status}`);
+        console.warn("FCM send rejected for device.", {
+          platform,
+          http_status: response.status,
+          error_status: errorStatus,
+        });
+        return { ok: false, platform, error_status: errorStatus };
       } catch {
-        return false;
+        console.warn("FCM send failed before receiving a response.", { platform, error_status: "NETWORK_ERROR" });
+        return { ok: false, platform, error_status: "NETWORK_ERROR" };
       }
     }));
 
-    const sent = results.filter(Boolean).length;
-    return json({ sent, failed: results.length - sent });
+    const sent = results.filter((result) => result.ok).length;
+    const failures = results
+      .filter((result) => !result.ok)
+      .map((result) => ({ platform: result.platform, error_status: result.error_status ?? "UNKNOWN" }));
+
+    return json({ sent, failed: failures.length, failures });
   } catch (error) {
     console.error("FCM notification handler failed.", {
       error_type: error instanceof Error ? error.name : "UnknownError",
