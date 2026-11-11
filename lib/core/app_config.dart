@@ -14,6 +14,8 @@ class AppConfig {
   static const firebaseStorageBucket = String.fromEnvironment('FIREBASE_STORAGE_BUCKET');
   static const firebaseAuthDomain = String.fromEnvironment('FIREBASE_AUTH_DOMAIN');
   static const firebaseVapidKey = String.fromEnvironment('FIREBASE_VAPID_KEY');
+  static const firebaseMessagingServiceWorkerPath =
+      'firebase-cloud-messaging-push-scope/firebase-messaging-sw.js';
 
   static bool get supabaseReady =>
       supabaseUrl.startsWith('https://') &&
