@@ -29,4 +29,12 @@ if "com.google.mlkit:text-recognition" not in s:
 p.write_text(s)
 PY
 cp "$ROOT/native/web/index.html" "$ROOT/web/index.html"
-echo "Android and Web platform folders are ready."
+
+# Copy public product and legal pages into Flutter's generated Web output.
+mkdir -p "$ROOT/web/brand" "$ROOT/web/about" "$ROOT/web/privacy" "$ROOT/web/terms"
+cp "$ROOT/native/web/brand/komnivo-mark.svg" "$ROOT/web/brand/komnivo-mark.svg"
+for page in about privacy terms; do
+  cp "$ROOT/native/web/$page/index.html" "$ROOT/web/$page/index.html"
+done
+
+echo "Android, Web app, public homepage and policy pages are ready."
