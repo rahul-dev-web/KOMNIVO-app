@@ -1,0 +1,16 @@
+{
+  "name": "komnivo-fcm-sender",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Keyless Firebase Cloud Messaging sender for KOMNIVO on Google Cloud Run.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "google-auth-library": "11.3.4"
+  }
+}
