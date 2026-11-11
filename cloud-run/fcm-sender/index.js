@@ -22,7 +22,7 @@ function sendJson(res, status, value) {
 }
 
 function authorized(provided) {
-  if (!SHARED_SECRET || !provided) return false;
+  if (!SHARED_SECRET || typeof provided !== "string" || !provided) return false;
   const expected = Buffer.from(SHARED_SECRET, "utf8");
   const actual = Buffer.from(provided, "utf8");
   return expected.length === actual.length && timingSafeEqual(expected, actual);
