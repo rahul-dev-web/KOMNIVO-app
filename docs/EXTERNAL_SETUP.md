@@ -113,13 +113,13 @@ The Flutter sign-in button calls `Supabase Auth signInWithOAuth(Google)`. Google
 
 Do not paste the Google Client Secret into Flutter, `.env.example`, GitHub source, or GitHub Actions variables. The Google callback above is different from the Android app return URI `in.komnivo.app://login-callback`.
 
-## 5. Firebase Cloud Messaging — required for Android push notifications
+## 5. Firebase Cloud Messaging — required for Android and browser Web Push
 
 ### A. Create and register the Firebase app
 
 1. Open Firebase Console and create a dedicated Firebase project named **KOMNIVO**.
 2. Add an **Android app** with package name `in.komnivo.app`.
-3. Add a Firebase **Web app** only when you are ready to implement and test browser push. The current web build does not yet include a complete web-push service-worker flow.
+3. The Firebase **Web app** has been registered. Its public Web app configuration and the Web Push VAPID public key must be supplied to the Cloudflare Pages build environment to enable browser push.
 4. Open **Project settings → General → Your apps** and copy the client configuration values:
    - `FIREBASE_API_KEY`
    - `FIREBASE_APP_ID`
@@ -128,7 +128,7 @@ Do not paste the Google Client Secret into Flutter, `.env.example`, GitHub sourc
    - `FIREBASE_STORAGE_BUCKET` (if provided)
    - `FIREBASE_AUTH_DOMAIN` (if provided)
    - `FIREBASE_VAPID_KEY` (only for Web push)
-5. These Firebase client identifiers are supplied to Flutter with `--dart-define`. They are not the Firebase server service-account private key.
+5. These Firebase client identifiers and the VAPID public key are public browser configuration, supplied to Flutter with `--dart-define` and injected into the browser messaging service worker at build time. They are not Firebase server credentials. Never place a service-account JSON/private key in the web build.
 
 ### B. Direct server-side FCM from Supabase (no Cloud Run, no service-account JSON)
 
@@ -232,8 +232,16 @@ The repository contains `tool/cloudflare-build.sh`. Cloudflare Pages' standard b
 6. Add these build environment variables for Production:
    - `SUPABASE_URL` = `https://krqysdkbyhshwpfmimfw.supabase.co`
    - `SUPABASE_PUBLISHABLE_KEY` = the active `sb_publishable_...` key from Supabase Project Settings → API Keys.
-7. Add the same two variables to Preview only if you intend to build/test branch preview deployments.
-8. Do not add a Supabase `service_role` key, Google OAuth Client Secret, LiveKit API secret, Firebase service-account JSON, Free Fire provider key or webhook secret to Cloudflare Pages. The Flutter Web client needs only the Supabase project URL and publishable key.
+7. Add these Firebase Web client values as Cloudflare Pages Production build variables:
+   - `FIREBASE_API_KEY` = the Web app `apiKey`
+   - `FIREBASE_APP_ID` = the Web app `appId`
+   - `FIREBASE_AUTH_DOMAIN` = the Web app `authDomain`
+   - `FIREBASE_MESSAGING_SENDER_ID` = the Web app `messagingSenderId`
+   - `FIREBASE_PROJECT_ID` = `komnivo-app`
+   - `FIREBASE_STORAGE_BUCKET` = the Web app `storageBucket` value (if provided)
+   - `FIREBASE_VAPID_KEY` = the **public** Web Push certificate key from Firebase Cloud Messaging settings
+8. Add the same Firebase values to Preview only if you intend to test push on Preview deployments. After saving the variables, trigger a new Cloudflare Pages deployment. The build script passes these values as Dart defines and injects the public Firebase config into `web/firebase-cloud-messaging-push-scope/firebase-messaging-sw.js`.
+9. Do not add a Supabase `service_role` key, Google OAuth Client Secret, LiveKit API secret, Firebase service-account JSON/private key, Free Fire provider key or webhook secret to Cloudflare Pages. The Firebase Web app config and VAPID public key are intentionally public client values; all server credentials remain in Supabase Edge Function Secrets.
 
 The Web release output is `build/web`; Flutter's Web build places its `index.html` and assets there. The script currently pins Flutter 3.44.8 to match the locally tested developer environment.
 
