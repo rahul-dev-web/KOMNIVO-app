@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="KOMNIVO mark">
+  <defs>
+    <linearGradient id="g" x1="18" y1="14" x2="102" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A68BFF"/>
+      <stop offset="0.52" stop-color="#7D79FF"/>
+      <stop offset="1" stop-color="#55D6E8"/>
+    </linearGradient>
+    <linearGradient id="k" x1="34" y1="30" x2="88" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#C8F7FF"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="27" fill="#080B12"/>
+  <path d="M60 8.5 103 31v34.5c0 24.7-17.8 39.9-43 47.5C34.8 105.4 17 90.2 17 65.5V31L60 8.5Z" fill="#10192A" stroke="url(#g)" stroke-width="4"/>
+  <path d="M39 34v52M39 60l39-29M53 60l27 26" fill="none" stroke="url(#k)" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M81 30h8M85 26v8" stroke="#55D6E8" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="85" cy="30" r="6" fill="#55D6E8" stroke="#10192A" stroke-width="3"/>
+  <circle cx="39" cy="86" r="5" fill="#A68BFF"/>
+</svg>
