@@ -19,9 +19,10 @@ The authoritative product scope, rules, decisions and complete delivery blueprin
 - `lib/features/organizer` — event publishing, approval queue, roster lock, group generation, match operations, room credentials, disputes, result approval and standings.
 - `lib/features/liveops` — same-phone Android capture controls and local OCR preview.
 - `native/android/` — Kotlin MediaProjection capture bridge and on-device ML Kit OCR.
+- `native/web/` — Flutter Web shell plus public product homepage, privacy policy, terms of service and KOMNIVO SVG brand mark.
 - `supabase/migrations/` — core schema, RLS, tournament workflows, invite security and private RPC implementations.
 - `supabase/functions/` — authenticated Edge Functions, FCM webhook delivery and provider adapters.
-- `tool/` — local/CI scripts that generate Flutter Android and Web scaffolding, plus the pinned Flutter builder used by Cloudflare Pages.
+- `tool/` — local/CI scripts that generate Flutter Android and Web scaffolding (including the public policy pages), plus the pinned Flutter builder used by Cloudflare Pages.
 
 ## Local setup (Windows)
 
