@@ -36,7 +36,7 @@ try {
   Set-Content -Path $GradleFile -Value $Gradle -Encoding utf8
   Copy-Item (Join-Path $Root "native/web/index.html") (Join-Path $Root "web/index.html") -Force
 
-  # Copy public policy and product pages into the generated Flutter Web folder.
+  # Copy public product, policy and isolated Firebase Messaging worker files.
   $BrandTarget = Join-Path $Root "web/brand"
   New-Item -ItemType Directory -Path $BrandTarget -Force | Out-Null
   Copy-Item (Join-Path $Root "native/web/brand/komnivo-mark.svg") (Join-Path $BrandTarget "komnivo-mark.svg") -Force
@@ -45,8 +45,29 @@ try {
     New-Item -ItemType Directory -Path $PageTarget -Force | Out-Null
     Copy-Item (Join-Path $Root ("native/web/" + $Page + "/index.html")) (Join-Path $PageTarget "index.html") -Force
   }
+  $WorkerFolder = Join-Path $Root "web/firebase-cloud-messaging-push-scope"
+  New-Item -ItemType Directory -Path $WorkerFolder -Force | Out-Null
+  Copy-Item (Join-Path $Root "native/web/firebase-cloud-messaging-push-scope/firebase-messaging-sw.js") (Join-Path $WorkerFolder "firebase-messaging-sw.js") -Force
 
-  Write-Host "Android, Web app, public homepage and policy pages are ready."
+  # Firebase Web identifiers are public client configuration; no server keys here.
+  $WorkerFile = Join-Path $WorkerFolder "firebase-messaging-sw.js"
+  $Worker = Get-Content $WorkerFile -Raw
+  $FirebaseValues = @{
+    FIREBASE_API_KEY = $env:FIREBASE_API_KEY
+    FIREBASE_AUTH_DOMAIN = $env:FIREBASE_AUTH_DOMAIN
+    FIREBASE_PROJECT_ID = $env:FIREBASE_PROJECT_ID
+    FIREBASE_STORAGE_BUCKET = $env:FIREBASE_STORAGE_BUCKET
+    FIREBASE_MESSAGING_SENDER_ID = $env:FIREBASE_MESSAGING_SENDER_ID
+    FIREBASE_APP_ID = $env:FIREBASE_APP_ID
+  }
+  foreach ($Name in $FirebaseValues.Keys) {
+    $Value = [string]$FirebaseValues[$Name]
+    $Replacement = ConvertTo-Json -InputObject $Value -Compress
+    $Worker = $Worker.Replace(('"' + "__" + $Name + "__" + '"'), $Replacement)
+  }
+  Set-Content -Path $WorkerFile -Value $Worker -Encoding utf8
+
+  Write-Host "Android, Web app, public pages and isolated FCM worker are ready."
 } finally {
   if (Test-Path $Temp) { Remove-Item $Temp -Recurse -Force }
 }
