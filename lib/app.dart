@@ -6,6 +6,7 @@ import 'core/komnivo_theme.dart';
 import 'core/push_service.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/shell/app_shell.dart';
+import 'features/splash/komnivo_splash_screen.dart';
 
 class KomnivoApp extends StatelessWidget {
   const KomnivoApp({super.key});
@@ -17,7 +18,9 @@ class KomnivoApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: KomnivoTheme.dark,
       scaffoldMessengerKey: PushService.scaffoldMessengerKey,
-      home: AppConfig.supabaseReady ? const _AuthGate() : const SignInScreen(),
+      home: KomnivoSplashScreen(
+        destination: AppConfig.supabaseReady ? const _AuthGate() : const SignInScreen(),
+      ),
     );
   }
 }
