@@ -219,9 +219,97 @@ class KomnivoRepository {
   Future<Map<String, dynamic>> syncFreeFire(String uid, {String region = 'ind'}) async {
     final response = await client.functions.invoke('sync-freefire-profile', body: {'uid': uid.trim(), 'region': region});
     if (response.status < 200 || response.status >= 300) {
-      throw Exception('Profile sync failed (${response.status}).');
+      final data = response.data;
+      final message = data is Map ? data['error']?.toString() : null;
+      throw Exception(message ?? 'Profile sync failed (${response.status}).');
     }
-    return Map<String, dynamic>.from(response.data as Map);
+    final result = Map<String, dynamic>.from(response.data as Map);
+    final accountId = result['account_id']?.toString();
+    if (accountId == null || accountId.isEmpty) {
+      throw Exception('The profile provider did not return a saved game-account ID.');
+    }
+    final verification = await client.rpc('request_game_account_verification', params: {
+      'p_game_account_id': accountId,
+    });
+    result['verification'] = verification is Map
+        ? Map<String, dynamic>.from(verification)
+        : <String, dynamic>{'status': 'pending'};
+    return result;
+  }
+
+  Future<Map<String, dynamic>> myGameAccountVerification() async {
+    final result = await client.rpc('get_my_game_account_verification');
+    return result is Map ? Map<String, dynamic>.from(result) : <String, dynamic>{'status': 'not_submitted'};
+  }
+
+  Future<bool> isPlatformSupport() async {
+    final result = await client.rpc('is_platform_support');
+    return result == true;
+  }
+
+  Future<List<Map<String, dynamic>>> supportVerificationRequests({String status = 'pending'}) async {
+    final result = await client.rpc('list_support_verification_requests', params: {'p_status': status});
+    return result is List
+        ? result.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList()
+        : <Map<String, dynamic>>[];
+  }
+
+  Future<List<Map<String, dynamic>>> supportVerificationBatches() async {
+    final result = await client.rpc('list_support_verification_batches');
+    return result is List
+        ? result.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList()
+        : <Map<String, dynamic>>[];
+  }
+
+  Future<Map<String, dynamic>> createSupportVerificationBatch() async {
+    final result = await client.rpc('create_support_verification_batch');
+    return result is Map ? Map<String, dynamic>.from(result) : <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> assignSupportVerificationRequest(String requestId, String batchId) async {
+    final result = await client.rpc('assign_support_verification_request', params: {
+      'p_request_id': requestId,
+      'p_batch_id': batchId,
+    });
+    return result is Map ? Map<String, dynamic>.from(result) : <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> scheduleSupportVerificationBatch({
+    required String batchId,
+    required DateTime scheduledAt,
+    required String roomId,
+    required String roomPassword,
+  }) async {
+    final result = await client.rpc('schedule_support_verification_batch', params: {
+      'p_batch_id': batchId,
+      'p_scheduled_at': scheduledAt.toUtc().toIso8601String(),
+      'p_room_id': roomId,
+      'p_room_password': roomPassword,
+    });
+    return result is Map ? Map<String, dynamic>.from(result) : <String, dynamic>{};
+  }
+
+  Future<void> startSupportVerificationBatch(String batchId) async {
+    await client.rpc('start_support_verification_batch', params: {'p_batch_id': batchId});
+  }
+
+  Future<List<Map<String, dynamic>>> supportVerificationBatchMembers(String batchId) async {
+    final result = await client.rpc('list_support_verification_batch_members', params: {'p_batch_id': batchId});
+    return result is List
+        ? result.whereType<Map>().map((row) => Map<String, dynamic>.from(row)).toList()
+        : <Map<String, dynamic>>[];
+  }
+
+  Future<void> recordSupportVerificationResult({
+    required String memberId,
+    required String outcome,
+    String notes = '',
+  }) async {
+    await client.rpc('record_support_verification_result', params: {
+      'p_member_id': memberId,
+      'p_outcome': outcome,
+      'p_notes': notes,
+    });
   }
 
   String _contentTypeFor(String? extension) {
