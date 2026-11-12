@@ -316,3 +316,16 @@ The release APK currently builds in CI, but Play Store upload signing is not yet
 - Firebase FCM server send: https://firebase.google.com/docs/cloud-messaging/send/admin-sdk
 - LiveKit Cloud: https://cloud.livekit.io/
 - Cloudflare Pages Git integration: https://developers.cloudflare.com/pages/get-started/git-integration/
+
+
+## Support-led game-account verification
+
+The source now includes a separate Platform Support workflow. After a successful Free Fire UID lookup, the app creates a verification request and displays **Verification Pending**. Only users listed in the private `app_private.platform_staff` table can operate the support console; community owners and tournament organisers do not receive this permission.
+
+Before using it:
+1. Apply `supabase/migrations/202611120001_support_led_game_verification.sql` after the existing migrations. Resolve any duplicate `(game_id, region, uid)` claims if the unique-index preflight reports a conflict.
+2. Deploy the updated `sync-freefire-profile` Edge Function. It now uses the server-only service role for game-account persistence because authenticated clients no longer have write access to ownership fields.
+3. After the first Support Admin has signed into KOMNIVO, run the bootstrap INSERT in the new migration's final comment, using that person's actual `auth.users.id`. Never make staff membership editable from the public client.
+4. Support creates a batch, assigns exactly 48 unique players, creates/schedules the in-game solo room, contacts players using their account contact email, starts the session, and records each slot as verified, rejected or no-show.
+
+Player-facing timing copy says “a few working days”; it is intentionally not a guaranteed SLA because queue fill depends on receiving 48 unique players. No Profile Signature challenge is used for Free Fire India.
