@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/app_config.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
+import '../../core/komnivo_logo.dart';
 import '../shell/app_shell.dart';
 
 class SignInScreen extends StatefulWidget {
@@ -43,14 +44,7 @@ class _SignInScreenState extends State<SignInScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 58, height: 58,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      gradient: const LinearGradient(colors: [KomnivoTheme.accent, KomnivoTheme.cyan]),
-                    ),
-                    child: const Icon(Icons.sports_esports, color: Colors.white, size: 30),
-                  ),
+                  const KomnivoLogo(size: 64, borderRadius: 18),
                   const SizedBox(height: 26),
                   Text('KOMNIVO', style: Theme.of(context).textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w900, letterSpacing: 2.2)),
                   const SizedBox(height: 8),
