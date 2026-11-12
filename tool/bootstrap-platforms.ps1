@@ -35,8 +35,13 @@ try {
   }
   Set-Content -Path $GradleFile -Value $Gradle -Encoding utf8
   Copy-Item (Join-Path $Root "native/web/index.html") (Join-Path $Root "web/index.html") -Force
+  Copy-Item (Join-Path $Root "native/web/manifest.json") (Join-Path $Root "web/manifest.json") -Force
 
   # Copy public product, policy and isolated Firebase Messaging worker files.
+  $IconTarget = Join-Path $Root "web/icons"
+  New-Item -ItemType Directory -Path $IconTarget -Force | Out-Null
+  Copy-Item (Join-Path $Root "native/web/icons/*.png") $IconTarget -Force
+
   $BrandTarget = Join-Path $Root "web/brand"
   New-Item -ItemType Directory -Path $BrandTarget -Force | Out-Null
   Copy-Item (Join-Path $Root "native/web/brand/komnivo-mark.svg") (Join-Path $BrandTarget "komnivo-mark.svg") -Force

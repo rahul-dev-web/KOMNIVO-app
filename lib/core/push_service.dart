@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_config.dart';
+import 'pwa_environment.dart';
 
 class PushService {
   static final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
@@ -108,6 +109,11 @@ class PushService {
   static Future<void> enableBrowserNotifications() async {
     if (!kIsWeb) {
       throw StateError('Browser notifications are only available on the Web app.');
+    }
+    if (PwaEnvironment.isIosDevice && !PwaEnvironment.isStandalone) {
+      throw StateError(
+        'On iPhone or iPad, first add KOMNIVO to the Home Screen and open it from its Home Screen icon before enabling notifications.',
+      );
     }
     if (!AppConfig.firebaseReady || AppConfig.firebaseVapidKey.isEmpty) {
       throw StateError(

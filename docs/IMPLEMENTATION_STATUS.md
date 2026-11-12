@@ -26,7 +26,7 @@ Verified on the project:
 - Flutter app shell, responsive dark theme, Google sign-in flow and local preview.
 - Community discovery/create/join entry points and default channels.
 - Direct/group conversation creation, persisted realtime text messages, replies, emoji reactions, secure attachments, local message search and LiveKit voice-room token issuance.
-- Notification centre with read states and notification preferences; `notification-push` Edge Function v8 is deployed ACTIVE and sends FCM HTTP v1 directly through a narrowly scoped Google OAuth refresh token (no Cloud Run billing and no downloadable service-account JSON key). Supabase secrets and the `public.notifications` INSERT webhook are configured. A controlled Android test notification was displayed on the Vivo Y20G. Browser Web Push source is now committed; Cloudflare Firebase Web build variables and live browser testing remain.
+- Notification centre with read states and notification preferences; `notification-push` Edge Function v8 is deployed ACTIVE and sends FCM HTTP v1 directly through a narrowly scoped Google OAuth refresh token. Supabase secrets and the `public.notifications` INSERT webhook are configured. Android push is verified on Vivo Y20G (foreground Snackbar, background system notification and tap navigation); Desktop Web Push is verified on Windows Chrome. UI styling of the foreground Snackbar is deferred to the later UI-polishing pass.
 - Player profile and server-side Free Fire UID lookup adapter.
 - Team creation, invitations and membership acceptance.
 - Event discovery/publishing, team registration, match schedule, standings, check-in, time-released room credentials, evidence upload, opponent confirmation/dispute and result submission.
@@ -52,7 +52,7 @@ See [EXTERNAL_SETUP.md](EXTERNAL_SETUP.md) for the owner configuration walkthrou
 
 - No OpenAI, Groq, Gemini, Anthropic or other hosted LLM API is wired into this repository. Do not provision an AI API key yet.
 - Rulebook-to-event AI drafting remains product engineering work.
-- Browser Web Push source now includes an isolated Firebase Messaging service worker, a user-initiated browser permission/token flow, platform-aware token registration and WebPush-specific server payloads. It still needs Firebase Web config/VAPID values in Cloudflare Pages and a successful live browser delivery test; iOS Home Screen Web Push remains a separate follow-up.
+- Desktop Browser Web Push is verified end-to-end with the existing isolated Firebase Messaging worker, user-initiated permission/token flow and platform-aware token registration. iOS Home Screen PWA support is being prepared separately with an iOS-compatible manifest, Home Screen metadata, app icons and an install-aware permission flow; physical iPhone delivery still requires validation.
 - Video calls and member-initiated screen/stream sharing require further LiveKit/WebRTC UI, permission and device/browser work.
 - LiveOps screen-state classification, lobby/result extraction and low-end-device benchmarking remain incomplete.
 - Full moderation queue, self-service account deletion/retention workflows, and legal review of the initial public Privacy Policy/Terms still need completion.

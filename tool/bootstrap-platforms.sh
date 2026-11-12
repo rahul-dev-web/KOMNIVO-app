@@ -29,10 +29,12 @@ if "com.google.mlkit:text-recognition" not in s:
 p.write_text(s)
 PY
 cp "$ROOT/native/web/index.html" "$ROOT/web/index.html"
+cp "$ROOT/native/web/manifest.json" "$ROOT/web/manifest.json"
 
 # Copy public product, policy and isolated Firebase Messaging worker files.
-mkdir -p "$ROOT/web/brand" "$ROOT/web/about" "$ROOT/web/privacy" "$ROOT/web/terms" "$ROOT/web/firebase-cloud-messaging-push-scope"
+mkdir -p "$ROOT/web/brand" "$ROOT/web/icons" "$ROOT/web/about" "$ROOT/web/privacy" "$ROOT/web/terms" "$ROOT/web/firebase-cloud-messaging-push-scope"
 cp "$ROOT/native/web/brand/komnivo-mark.svg" "$ROOT/web/brand/komnivo-mark.svg"
+cp "$ROOT"/native/web/icons/*.png "$ROOT/web/icons/"
 cp "$ROOT/native/web/firebase-cloud-messaging-push-scope/firebase-messaging-sw.js" "$ROOT/web/firebase-cloud-messaging-push-scope/firebase-messaging-sw.js"
 for page in about privacy terms; do
   cp "$ROOT/native/web/$page/index.html" "$ROOT/web/$page/index.html"
