@@ -76,29 +76,114 @@ Deno.serve(async (req: Request) => {
     if (gameError || !game) return json({ error: "Free Fire MAX game catalog entry is missing." }, 500);
 
     const level = Number(profile.level);
-    const accountPayload = {
-      user_id: user.id,
-      game_id: game.id,
-      uid,
-      region,
+    const lastSyncedAt = new Date().toISOString();
+    const profileFields = {
       nickname: profile.nickname?.toString() ?? null,
       level: Number.isFinite(level) ? level : null,
       rank_label: profile.rank?.toString() ?? null,
       provider: PROVIDER,
-      ownership_status: "linked_unverified",
       sync_status: "synced",
-      last_synced_at: new Date().toISOString(),
+      last_synced_at: lastSyncedAt,
       raw_profile: info,
       raw_stats: stats,
     };
-    const { data: accountRow, error: upsertError } = await admin.from("game_accounts")
-      .upsert(accountPayload, { onConflict: "user_id,game_id" })
-      .select().single();
-    if (upsertError) {
-      if (upsertError.code === "23505") {
-        return json({ error: "This game UID is already linked to another KOMNIVO account. Contact Support if you believe this is your account." }, 409);
+
+    // One KOMNIVO account may link one Free Fire account for this game.
+    // Never silently replace its UID/region, and never overwrite Support's
+    // ownership_status when refreshing public profile data.
+    const { data: existingAccount, error: existingAccountError } = await admin
+      .from("game_accounts")
+      .select("id, uid, region, ownership_status")
+      .eq("user_id", user.id)
+      .eq("game_id", game.id)
+      .maybeSingle();
+
+    if (existingAccountError) {
+      return json({ error: "The linked game account could not be checked securely." }, 500);
+    }
+
+    if (
+      existingAccount &&
+      (String(existingAccount.uid) !== uid ||
+        String(existingAccount.region ?? "").toLowerCase() !== region)
+    ) {
+      return json({
+        error: "A different Free Fire UID is already linked to this KOMNIVO account. Contact Platform Support to request a safe account change.",
+      }, 409);
+    }
+
+    let accountRow: Record<string, unknown> | null = null;
+
+    if (existingAccount) {
+      const { data: updatedAccount, error: updateError } = await admin
+        .from("game_accounts")
+        .update(profileFields)
+        .eq("id", existingAccount.id)
+        .eq("user_id", user.id)
+        .select()
+        .single();
+
+      if (updateError || !updatedAccount) {
+        return json({ error: "The game profile could not be refreshed securely." }, 400);
       }
-      return json({ error: "The game profile could not be saved securely." }, 400);
+      accountRow = updatedAccount;
+    } else {
+      const { data: insertedAccount, error: insertError } = await admin
+        .from("game_accounts")
+        .insert({
+          user_id: user.id,
+          game_id: game.id,
+          uid,
+          region,
+          ...profileFields,
+          ownership_status: "linked_unverified",
+        })
+        .select()
+        .single();
+
+      if (insertError?.code === "23505") {
+        // A concurrent request for the same user may have inserted the same
+        // game account after our initial read. Re-read and reuse only an exact
+        // same-user UID/region match; never take over another user's record.
+        const { data: racedAccount, error: raceReadError } = await admin
+          .from("game_accounts")
+          .select("id, uid, region, ownership_status")
+          .eq("user_id", user.id)
+          .eq("game_id", game.id)
+          .maybeSingle();
+
+        if (
+          raceReadError ||
+          !racedAccount ||
+          String(racedAccount.uid) !== uid ||
+          String(racedAccount.region ?? "").toLowerCase() !== region
+        ) {
+          return json({
+            error: "This Free Fire UID is already linked to another KOMNIVO account, or a different UID is already linked to your account. Contact Support if you believe this is an error.",
+          },  409);
+        }
+
+        const { data: refreshedAccount, error: refreshError } = await admin
+          .from("game_accounts")
+          .update(profileFields)
+          .eq("id", racedAccount.id)
+          .eq("user_id", user.id)
+          .select()
+          .single();
+
+        if (refreshError || !refreshedAccount) {
+          return json({ error: "The game profile could not be refreshed securely." }, 400);
+        }
+        accountRow = refreshedAccount;
+      } else if (insertError || !insertedAccount) {
+        return json({ error: "The game profile could not be saved securely." }, 400);
+      } else {
+        accountRow = insertedAccount;
+      }
+    }
+
+    if (!accountRow) {
+      return json({ error: "The game profile could not be saved securely." }, 500);
     }
 
     const { error: snapshotError } = await admin.from("game_profile_snapshots").insert({
@@ -115,9 +200,9 @@ Deno.serve(async (req: Request) => {
 
     return json({
       account_id: accountRow.id,
-      ownership_status: "linked_unverified",
+      ownership_status: accountRow.ownership_status ?? "linked_unverified",
       provider: PROVIDER,
-      last_synced_at: accountPayload.last_synced_at,
+      last_synced_at: lastSyncedAt,
       profile,
       stats,
       notice: "This third-party API is unofficial and does not verify ownership of the game account.",
