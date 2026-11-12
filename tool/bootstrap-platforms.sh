@@ -9,6 +9,8 @@ flutter create --project-name app --org in.komnivo --platforms android,web "$TMP
 cp -R "$TMP/platforms/android" "$ROOT/android"
 cp -R "$TMP/platforms/web" "$ROOT/web"
 cp "$ROOT/native/android/app/src/main/AndroidManifest.xml" "$ROOT/android/app/src/main/AndroidManifest.xml"
+mkdir -p "$ROOT/android/app/src/main/res"
+cp -R "$ROOT/native/android/app/src/main/res/." "$ROOT/android/app/src/main/res/"
 mkdir -p "$ROOT/android/app/src/main/kotlin/in/komnivo/app"
 cp "$ROOT"/native/android/app/src/main/kotlin/in/komnivo/app/*.kt "$ROOT/android/app/src/main/kotlin/in/komnivo/app/"
 python3 - <<'PY'
