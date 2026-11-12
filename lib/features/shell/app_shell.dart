@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/komnivo_theme.dart';
+import '../../core/komnivo_logo.dart';
+import '../../core/komnivo_repository.dart';
 import '../community/community_screen.dart';
 import '../compete/compete_screen.dart';
 import '../home/home_screen.dart';
@@ -9,6 +11,7 @@ import '../inbox/notifications_screen.dart';
 import '../liveops/liveops_screen.dart';
 import '../organizer/organizer_screen.dart';
 import '../profile/profile_screen.dart';
+import '../support/support_verification_screen.dart';
 import '../teams/teams_screen.dart';
 
 class AppShell extends StatefulWidget {
@@ -24,6 +27,24 @@ class _AppShellState extends State<AppShell> {
   bool _showLiveOps = false;
   bool _showOrganizer = false;
   bool _showProfile = false;
+  bool _showSupport = false;
+  bool _isPlatformSupport = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPlatformSupport();
+  }
+
+  Future<void> _checkPlatformSupport() async {
+    if (widget.preview) return;
+    try {
+      final allowed = await KomnivoRepository.instance.isPlatformSupport();
+      if (mounted) setState(() => _isPlatformSupport = allowed);
+    } catch (_) {
+      // A missing/not-yet-applied support migration must not expose this console.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,30 +55,36 @@ class _AppShellState extends State<AppShell> {
       TeamsScreen(preview: widget.preview),
       InboxScreen(preview: widget.preview),
     ];
-    final Widget body = _showLiveOps
-        ? LiveOpsScreen(preview: widget.preview, onBack: () => setState(() => _showLiveOps = false))
-        : _showOrganizer
-            ? OrganizerScreen(preview: widget.preview, onBack: () => setState(() => _showOrganizer = false))
-            : _showProfile
-                ? ProfileScreen(preview: widget.preview, onBack: () => setState(() => _showProfile = false))
-                : pages[_index];
+    final Widget body = _showSupport
+        ? SupportVerificationScreen(onBack: () => setState(() => _showSupport = false))
+        : _showLiveOps
+            ? LiveOpsScreen(preview: widget.preview, onBack: () => setState(() => _showLiveOps = false))
+            : _showOrganizer
+                ? OrganizerScreen(preview: widget.preview, onBack: () => setState(() => _showOrganizer = false))
+                : _showProfile
+                    ? ProfileScreen(preview: widget.preview, onBack: () => setState(() => _showProfile = false))
+                    : pages[_index];
 
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 20,
         title: Row(children: [
-          Container(
-            width: 31, height: 31,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              gradient: const LinearGradient(colors: [KomnivoTheme.accent, KomnivoTheme.cyan]),
-            ),
-            child: const Icon(Icons.sports_esports, size: 18, color: Colors.white),
-          ),
+          const KomnivoLogo(size: 31, borderRadius: 9),
           const SizedBox(width: 10),
           const Text('KOMNIVO', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.4)),
         ]),
         actions: [
+          if (_isPlatformSupport)
+            IconButton(
+              tooltip: 'Platform Support Verification',
+              onPressed: () => setState(() {
+                _showSupport = true;
+                _showLiveOps = false;
+                _showOrganizer = false;
+                _showProfile = false;
+              }),
+              icon: const Icon(Icons.verified_user_outlined),
+            ),
           IconButton(
             tooltip: 'LiveOps Assistant',
             onPressed: () => setState(() { _showLiveOps = true; _showOrganizer = false; _showProfile = false; }),
@@ -84,7 +111,7 @@ class _AppShellState extends State<AppShell> {
         ],
       ),
       body: SafeArea(child: body),
-      bottomNavigationBar: (_showLiveOps || _showOrganizer || _showProfile)
+      bottomNavigationBar: (_showSupport || _showLiveOps || _showOrganizer || _showProfile)
           ? null
           : NavigationBar(
               selectedIndex: _index,
