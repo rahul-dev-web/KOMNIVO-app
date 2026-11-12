@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../core/komnivo_theme.dart';
 import '../../core/komnivo_logo.dart';
 import '../../core/komnivo_repository.dart';
 import '../community/community_screen.dart';
