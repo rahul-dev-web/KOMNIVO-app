@@ -27,7 +27,7 @@ Verified on the project:
 - Community discovery/create/join entry points and default channels.
 - Direct/group conversation creation, persisted realtime text messages, replies, emoji reactions, secure attachments, local message search and LiveKit voice-room token issuance.
 - Notification centre with read states and notification preferences; `notification-push` Edge Function v8 is deployed ACTIVE and sends FCM HTTP v1 directly through a narrowly scoped Google OAuth refresh token. Supabase secrets and the `public.notifications` INSERT webhook are configured. Android push is verified on Vivo Y20G (foreground Snackbar, background system notification and tap navigation); Desktop Web Push is verified on Windows Chrome. UI styling of the foreground Snackbar is deferred to the later UI-polishing pass.
-- Player profile and server-side Free Fire UID lookup adapter.
+- Player profile and server-side Free Fire UID lookup adapter. The support-led ownership workflow is now implemented in source: a successful lookup requests `proof_pending`, the player sees Verification Pending, and only platform Support can batch 48 unique players into a solo-room session and record the result. The migration and Edge Function changes are committed but not yet applied/deployed to the live Supabase project.
 - Team creation, invitations and membership acceptance.
 - Event discovery/publishing, team registration, match schedule, standings, check-in, time-released room credentials, evidence upload, opponent confirmation/dispute and result submission.
 - Organiser approval, roster lock, group generation, match operations, dispute review, result approval and scoring/standings backend.
@@ -37,6 +37,9 @@ Verified on the project:
 - GitHub Actions build workflows for Flutter analysis/tests/Android APK/Web and a Web staging artifact workflow.
 
 ## Still requires owner-controlled external setup
+
+- Apply `supabase/migrations/202611120001_support_led_game_verification.sql` to the connected Supabase project, deploy the updated `sync-freefire-profile` Edge Function, and add the first authorised Support Admin to the private `app_private.platform_staff` table. The support console stays blocked until this trusted bootstrap is complete.
+- Test the full 48-player workflow with controlled accounts: duplicate UID rejection, pending notice, 48 unique slots, scheduled room contact, per-player verified/rejected/no-show decisions and notification delivery.
 
 - Google Cloud OAuth Web Client ID/Secret and enabling Google provider in Supabase Auth.
 - Active Supabase publishable key supplied as local build value and GitHub Actions variable.
@@ -72,6 +75,6 @@ The GitHub Pages deploy job was skipped because the repository gate is still dis
 
 - Supabase security advisor reports one warning for `public.withdraw_event_registration(uuid)`, which is intentionally callable by authenticated users as a SECURITY DEFINER RPC. The function validates caller identity, checks captain/event-staff authorization and restricts allowed statuses. Keep these checks intact and re-review before launch.
 - Performance advisors report unindexed foreign keys, some RLS expressions that can be optimized, and overlapping permissive policies. Review and tune before scaling.
-- Google sign-in authenticates a KOMNIVO platform account; a Free Fire UID lookup does not prove game-account ownership.
+- Google sign-in authenticates a KOMNIVO platform account; a Free Fire UID lookup does not prove game-account ownership. Ownership remains pending until the separate Platform Support 48-player solo-room check is completed. Platform Support is not the same permission as event/community organiser.
 - OCR and AI observations are provisional. Only authorised organiser review and deterministic server-side scoring can produce official results.
 - LiveOps capture begins only after explicit Android system consent. Raw frames are not uploaded by default; the host operates the game manually.
