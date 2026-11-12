@@ -15,7 +15,9 @@ The authoritative product scope, rules, decisions and complete delivery blueprin
 - `lib/features/inbox` — direct/group conversations, realtime text chat, replies, emoji reactions, secure attachments, search and LiveKit voice rooms.
 - `lib/features/compete` — event discovery, registration, public match schedule, match check-in, private room credentials and player result workflow.
 - `lib/features/teams` — team profiles, invitations and roster membership.
-- `lib/features/profile` — player identity and server-side Free Fire UID lookup.
+- `lib/features/profile` — player identity, server-side Free Fire UID lookup and player-facing ownership-verification status.
+- `lib/features/support` — platform Support-only queue for 48-player solo-room ownership verification; separate from community/event organisers.
+- `lib/features/splash` and `lib/core/komnivo_logo.dart` — shared animated launch screen and repository brand mark for Android and Web.
 - `lib/features/organizer` — event publishing, approval queue, roster lock, group generation, match operations, room credentials, disputes, result approval and standings.
 - `lib/features/liveops` — same-phone Android capture controls and local OCR preview.
 - `native/android/` — Kotlin MediaProjection capture bridge and on-device ML Kit OCR.
@@ -63,7 +65,9 @@ The selected Web host is **Cloudflare Pages**; GitHub is used only for source co
 - Supabase Auth is the platform identity provider; Google OAuth is configured in Supabase.
 - RLS is enabled on public application tables. Privileged tournament RPC implementations live in the non-exposed `app_private` schema; public RPC entry points are invoker wrappers.
 - Provider API keys, the Google OAuth refresh token/client secret used by the FCM sender, LiveKit secrets and Supabase service-role credentials belong only in their respective secret stores. Android FCM delivery is sent directly by the Supabase Edge Function using the narrowly scoped `firebase.messaging` OAuth scope; no Cloud Run service or downloaded service-account JSON key is used.
-- Free Fire data lookup uses an unofficial third-party provider candidate. A UID lookup does not prove account ownership and must not be shown as official Garena verification.
+- Free Fire data lookup uses an unofficial third-party provider candidate. A UID lookup only fetches public profile data and automatically starts a `Verification Pending` request; it never proves ownership by itself.
+- Game-account ownership is checked manually by the KOMNIVO Platform Support Team in a support-operated Free Fire India solo custom room. Each batch has exactly 48 unique players/UIDs. Community owners and tournament organisers cannot approve game-account ownership.
+- The 48-player verification schema/RPCs are committed in `202611120001_support_led_game_verification.sql`; apply that migration, deploy the updated `sync-freefire-profile` Edge Function and bootstrap authorised `app_private.platform_staff` users before enabling this flow in production.
 - Tournament results and standings remain controlled by organiser approval and deterministic server-side scoring.
 - LiveOps uses explicit Android MediaProjection consent and on-device OCR. It does not tap, click or control the Free Fire client.
 
