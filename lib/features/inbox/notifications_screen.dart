@@ -9,6 +9,7 @@ import '../../core/ui.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
+
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
@@ -17,6 +18,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   late Future<List<Map<String, dynamic>>> _notifications;
   late Future<Map<String, dynamic>> _preferences;
   bool _saving = false;
+
+  static const _preferenceRows = <(String, String, String)>[
+    ('push_enabled', 'Push notifications', 'Master switch for device notifications'),
+    ('message_push', 'Messages', 'New messages in your channels and conversations'),
+    ('mention_push', 'Mentions', 'When another player mentions you'),
+    ('event_push', 'Community events', 'Community event announcements'),
+    ('tournament_push', 'Tournament updates', 'Registration, check-in, match and result updates'),
+  ];
 
   @override
   void initState() {
@@ -66,174 +75,330 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   IconData _iconFor(String kind) {
     switch (kind) {
-      case 'message': return Icons.chat_bubble_outline;
-      case 'event': return Icons.event_available_outlined;
-      case 'tournament': return Icons.emoji_events_outlined;
-      case 'mention': return Icons.alternate_email;
-      default: return Icons.notifications_none;
+      case 'message':
+        return Icons.chat_bubble_outline;
+      case 'event':
+        return Icons.event_available_outlined;
+      case 'tournament':
+        return Icons.emoji_events_outlined;
+      case 'mention':
+        return Icons.alternate_email;
+      default:
+        return Icons.notifications_none;
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
-      body: ListView(
-        padding: const EdgeInsets.all(18),
+  Widget _notificationTile(Map<String, dynamic> row) {
+    final read = row['read_at'] != null;
+    final kind = (row['kind'] ?? 'general').toString();
+    final created = DateTime.tryParse(row['created_at']?.toString() ?? '');
+    final id = row['id']?.toString() ?? '';
+
+    return InkWell(
+      onTap: read || id.isEmpty ? null : () => _markRead(id),
+      borderRadius: BorderRadius.circular(15),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: read ? KomnivoTheme.surface : const Color(0xFF211B3E),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color: read
+                ? KomnivoTheme.line
+                : KomnivoTheme.accent.withValues(alpha: .45),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              backgroundColor: KomnivoTheme.surfaceRaised,
+              child: Icon(_iconFor(kind), color: KomnivoTheme.cyan, size: 19),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    row['title']?.toString() ?? 'KOMNIVO update',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    row['body']?.toString() ?? '',
+                    style: const TextStyle(
+                      color: KomnivoTheme.muted,
+                      fontSize: 12,
+                      height: 1.35,
+                    ),
+                  ),
+                  if (created != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      created.toLocal().toString().substring(0, 16),
+                      style: const TextStyle(
+                        color: KomnivoTheme.muted,
+                        fontSize: 9,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (!read)
+              const Padding(
+                padding: EdgeInsets.only(top: 5),
+                child: Icon(
+                  Icons.circle,
+                  size: 8,
+                  color: KomnivoTheme.accent,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _browserNotificationsCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: KomnivoTheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: KomnivoTheme.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (kIsWeb) ...[
-            Container(
-              padding: const EdgeInsets.all(16),
+          const Row(
+            children: [
+              Icon(Icons.notifications_active_outlined, color: KomnivoTheme.cyan),
+              SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'Browser notifications',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Allow KOMNIVO to notify this device about messages, community activity and tournament updates. On iPhone, open KOMNIVO from its Home Screen icon before enabling push.',
+            style: TextStyle(
+              color: KomnivoTheme.muted,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _saving ||
+                      !AppConfig.firebaseReady ||
+                      AppConfig.firebaseVapidKey.isEmpty
+                  ? null
+                  : _enableBrowserNotifications,
+              icon: const Icon(Icons.notifications_active_outlined),
+              label: const Text('Enable browser notifications'),
+            ),
+          ),
+          if (!AppConfig.firebaseReady || AppConfig.firebaseVapidKey.isEmpty) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Browser push configuration is not present in this build yet.',
+              style: TextStyle(color: KomnivoTheme.muted, fontSize: 11),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _notificationSliver() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _notifications,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(28),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Text(
+                'Notifications could not be loaded. Pull down to refresh or try again.\n${snapshot.error}',
+                style: const TextStyle(color: Color(0xFFFF8193)),
+              ),
+            ),
+          );
+        }
+
+        final rows = snapshot.data ?? [];
+        if (rows.isEmpty) {
+          return const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 18),
+              child: EmptyState(
+                title: 'You are all caught up',
+                message: 'Community messages, event updates and match actions will appear here.',
+                icon: Icons.notifications_none,
+              ),
+            ),
+          );
+        }
+
+        // Build rows on demand. Eagerly creating a Column of 60+ notification
+        // cards was unnecessarily expensive for iPhone Safari/Home Screen apps.
+        return SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => _notificationTile(rows[index]),
+              childCount: rows.length,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _preferencesSliver() {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _preferences,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 18),
+              child: LinearProgressIndicator(),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 18),
+              child: Text(
+                'Notification preferences are temporarily unavailable.',
+                style: TextStyle(color: KomnivoTheme.muted),
+              ),
+            ),
+          );
+        }
+
+        final prefs = snapshot.data ?? const <String, dynamic>{};
+        return SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          sliver: SliverToBoxAdapter(
+            child: Container(
               decoration: BoxDecoration(
                 color: KomnivoTheme.surface,
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: KomnivoTheme.line),
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.notifications_active_outlined, color: KomnivoTheme.cyan),
-                      SizedBox(width: 9),
-                      Expanded(
-                        child: Text(
-                          'Browser notifications',
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                  for (var index = 0; index < _preferenceRows.length; index++) ...[
+                    SwitchListTile(
+                      value: (prefs[_preferenceRows[index].$1] as bool?) ?? true,
+                      onChanged: _saving
+                          ? null
+                          : (value) => _setPreference(
+                                _preferenceRows[index].$1,
+                                value,
+                              ),
+                      title: Text(
+                        _preferenceRows[index].$2,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Allow KOMNIVO to notify this device about messages, community activity and tournament updates. On iPhone, open KOMNIVO from its Home Screen icon before enabling push.',
-                    style: TextStyle(color: KomnivoTheme.muted, fontSize: 12, height: 1.4),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: _saving ||
-                              !AppConfig.firebaseReady ||
-                              AppConfig.firebaseVapidKey.isEmpty
-                          ? null
-                          : _enableBrowserNotifications,
-                      icon: const Icon(Icons.notifications_active_outlined),
-                      label: const Text('Enable browser notifications'),
+                      subtitle: Text(
+                        _preferenceRows[index].$3,
+                        style: const TextStyle(
+                          color: KomnivoTheme.muted,
+                          fontSize: 10,
+                        ),
+                      ),
                     ),
-                  ),
-                  if (!AppConfig.firebaseReady || AppConfig.firebaseVapidKey.isEmpty) ...[
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Browser push configuration is not present in this build yet.',
-                      style: TextStyle(color: KomnivoTheme.muted, fontSize: 11),
-                    ),
+                    if (index != _preferenceRows.length - 1)
+                      const Divider(height: 1, indent: 14, endIndent: 14),
                   ],
+                  if (_saving) const LinearProgressIndicator(minHeight: 2),
                 ],
               ),
             ),
-            const SizedBox(height: 18),
-          ],
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: _notifications,
-            builder: (context, snapshot) {
-              final rows = snapshot.data ?? [];
-              final unread = rows.where((row) => row['read_at'] == null).length;
-              return SectionTitle(
-                'Activity',
-                subtitle: '$unread unread · latest updates from your communities and events',
-                trailing: IconButton(onPressed: () => setState(_reload), icon: const Icon(Icons.refresh)),
-              );
-            },
           ),
-          const SizedBox(height: 12),
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: _notifications,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Padding(padding: EdgeInsets.all(28), child: Center(child: CircularProgressIndicator()));
-              }
-              if (snapshot.hasError) return Text(snapshot.error.toString(), style: const TextStyle(color: Color(0xFFFF8193)));
-              final rows = snapshot.data ?? [];
-              if (rows.isEmpty) {
-                return const EmptyState(
-                  title: 'You are all caught up',
-                  message: 'Community messages, event updates and match actions will appear here.',
-                  icon: Icons.notifications_none,
-                );
-              }
-              return Column(children: rows.map((row) {
-                final read = row['read_at'] != null;
-                final kind = (row['kind'] ?? 'general').toString();
-                final created = DateTime.tryParse(row['created_at']?.toString() ?? '');
-                return InkWell(
-                  onTap: read ? null : () => _markRead(row['id'] as String),
-                  borderRadius: BorderRadius.circular(15),
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: read ? KomnivoTheme.surface : const Color(0xFF211B3E),
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: read ? KomnivoTheme.line : KomnivoTheme.accent.withValues(alpha: .45)),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: KomnivoTheme.background,
+      appBar: AppBar(
+        title: const Text('Notifications'),
+        backgroundColor: KomnivoTheme.background,
+      ),
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          if (kIsWeb)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
+              sliver: SliverToBoxAdapter(child: _browserNotificationsCard()),
+            ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+            sliver: SliverToBoxAdapter(
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                future: _notifications,
+                builder: (context, snapshot) {
+                  final rows = snapshot.data ?? const <Map<String, dynamic>>[];
+                  final unread =
+                      rows.where((row) => row['read_at'] == null).length;
+                  return SectionTitle(
+                    'Activity',
+                    subtitle:
+                        '$unread unread · latest updates from your communities and events',
+                    trailing: IconButton(
+                      onPressed: () => setState(_reload),
+                      icon: const Icon(Icons.refresh),
                     ),
-                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      CircleAvatar(
-                        backgroundColor: KomnivoTheme.surfaceRaised,
-                        child: Icon(_iconFor(kind), color: KomnivoTheme.cyan, size: 19),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(row['title']?.toString() ?? 'KOMNIVO update', style: const TextStyle(fontWeight: FontWeight.w800)),
-                        const SizedBox(height: 4),
-                        Text(row['body']?.toString() ?? '', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 12, height: 1.35)),
-                        if (created != null) ...[
-                          const SizedBox(height: 6),
-                          Text(created.toLocal().toString().substring(0, 16), style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
-                        ],
-                      ])),
-                      if (!read) const Padding(
-                        padding: EdgeInsets.only(top: 5),
-                        child: Icon(Icons.circle, size: 8, color: KomnivoTheme.accent),
-                      ),
-                    ]),
-                  ),
-                );
-              }).toList());
-            },
+                  );
+                },
+              ),
+            ),
           ),
-          const SizedBox(height: 24),
-          const SectionTitle('Push preferences', subtitle: 'Choose which updates can interrupt you'),
-          const SizedBox(height: 8),
-          FutureBuilder<Map<String, dynamic>>(
-            future: _preferences,
-            builder: (context, snapshot) {
-              final prefs = snapshot.data ?? {};
-              if (snapshot.connectionState == ConnectionState.waiting) return const LinearProgressIndicator();
-              final rows = <(String, String, String)>[
-                ('push_enabled', 'Push notifications', 'Master switch for device notifications'),
-                ('message_push', 'Messages', 'New messages in your channels and conversations'),
-                ('mention_push', 'Mentions', 'When another player mentions you'),
-                ('event_push', 'Community events', 'Community event announcements'),
-                ('tournament_push', 'Tournament updates', 'Registration, check-in, match and result updates'),
-              ];
-              return Container(
-                decoration: BoxDecoration(color: KomnivoTheme.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: KomnivoTheme.line)),
-                child: Column(children: [
-                  for (var index = 0; index < rows.length; index++) ...[
-                    SwitchListTile(
-                      value: (prefs[rows[index].$1] as bool?) ?? true,
-                      onChanged: _saving ? null : (value) => _setPreference(rows[index].$1, value),
-                      title: Text(rows[index].$2, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                      subtitle: Text(rows[index].$3, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
-                    ),
-                    if (index != rows.length - 1) const Divider(height: 1, indent: 14, endIndent: 14),
-                  ],
-                  if (_saving) const LinearProgressIndicator(minHeight: 2),
-                ]),
-              );
-            },
+          _notificationSliver(),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          const SliverPadding(
+            padding: EdgeInsets.symmetric(horizontal: 18),
+            sliver: SliverToBoxAdapter(
+              child: SectionTitle(
+                'Push preferences',
+                subtitle: 'Choose which updates can interrupt you',
+              ),
+            ),
           ),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
+          _preferencesSliver(),
+          const SliverToBoxAdapter(child: SizedBox(height: 28)),
         ],
       ),
     );
