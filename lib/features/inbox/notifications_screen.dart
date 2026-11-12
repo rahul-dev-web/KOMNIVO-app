@@ -5,7 +5,6 @@ import '../../core/app_config.dart';
 import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/push_service.dart';
-import '../../core/pwa_environment.dart';
 import '../../core/ui.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -82,40 +81,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [
-          if (kIsWeb && PwaEnvironment.isIosDevice && !PwaEnvironment.isStandalone) ...[
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: KomnivoTheme.surface,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: KomnivoTheme.line),
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.install_mobile, color: KomnivoTheme.cyan),
-                      SizedBox(width: 9),
-                      Expanded(
-                        child: Text(
-                          'Install KOMNIVO on your Home Screen first',
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'On iPhone or iPad, web push is available only for a Home Screen web app. In Safari, tap Share, choose “Add to Home Screen”, tap Add, then launch KOMNIVO from the new Home Screen icon. Return here and enable notifications.',
-                    style: TextStyle(color: KomnivoTheme.muted, fontSize: 12, height: 1.45),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-          ],
-          if (kIsWeb && (!PwaEnvironment.isIosDevice || PwaEnvironment.isStandalone)) ...[
+          if (kIsWeb) ...[
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -128,7 +94,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 children: [
                   const Row(
                     children: [
-                      Icon(Icons.web, color: KomnivoTheme.cyan),
+                      Icon(Icons.notifications_active_outlined, color: KomnivoTheme.cyan),
                       SizedBox(width: 9),
                       Expanded(
                         child: Text(
@@ -140,7 +106,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    'Allow KOMNIVO to notify this browser about messages, community activity and tournament updates.',
+                    'Allow KOMNIVO to notify this device about messages, community activity and tournament updates. On iPhone, open KOMNIVO from its Home Screen icon before enabling push.',
                     style: TextStyle(color: KomnivoTheme.muted, fontSize: 12, height: 1.4),
                   ),
                   const SizedBox(height: 12),

@@ -96,7 +96,9 @@ class _AppShellState extends State<AppShell> {
           ),
           IconButton(
             tooltip: 'Notifications',
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+            onPressed: () => Navigator.of(context, rootNavigator: true).push(
+              MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()),
+            ),
             icon: const Icon(Icons.notifications_none_outlined),
           ),
           Padding(
