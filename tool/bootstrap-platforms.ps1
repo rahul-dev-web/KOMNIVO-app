@@ -14,6 +14,10 @@ try {
 
   $Native = Join-Path $Root "native/android/app/src/main"
   Copy-Item (Join-Path $Native "AndroidManifest.xml") (Join-Path $Root "android/app/src/main/AndroidManifest.xml") -Force
+  $NativeResources = Join-Path $Native "res"
+  $ResourceTarget = Join-Path $Root "android/app/src/main/res"
+  New-Item -ItemType Directory -Path $ResourceTarget -Force | Out-Null
+  Get-ChildItem $NativeResources -Force | Copy-Item -Destination $ResourceTarget -Recurse -Force
   $KotlinTarget = Join-Path $Root "android/app/src/main/kotlin/in/komnivo/app"
   New-Item -ItemType Directory -Path $KotlinTarget -Force | Out-Null
   Copy-Item (Join-Path $Native "kotlin/in/komnivo/app/*.kt") $KotlinTarget -Force
