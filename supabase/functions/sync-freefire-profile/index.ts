@@ -17,6 +17,15 @@ Deno.serve(async (req: Request) => {
   const { data: { user }, error: authError } = await client.auth.getUser();
   if (authError || !user) return json({ error: "Invalid session" }, 401);
 
+  // Provider lookups are authenticated as the caller, but trusted game-account
+  // persistence is performed with the server-only service role. Client users
+  // cannot write ownership_status or forge another account's UID association.
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!serviceRoleKey) return json({ error: "Server-side profile storage is not configured." }, 503);
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
   const apiKey = Deno.env.get("FREEFIRE_API_KEY");
   if (!apiKey) return json({ error: "Game profile provider is not configured on the server." }, 503);
 
@@ -82,12 +91,17 @@ Deno.serve(async (req: Request) => {
       raw_profile: info,
       raw_stats: stats,
     };
-    const { data: accountRow, error: upsertError } = await client.from("game_accounts")
-      .upsert(accountPayload, { onConflict: "user_id,game_id,uid" })
+    const { data: accountRow, error: upsertError } = await admin.from("game_accounts")
+      .upsert(accountPayload, { onConflict: "user_id,game_id" })
       .select().single();
-    if (upsertError) return json({ error: upsertError.message }, 400);
+    if (upsertError) {
+      if (upsertError.code === "23505") {
+        return json({ error: "This game UID is already linked to another KOMNIVO account. Contact Support if you believe this is your account." }, 409);
+      }
+      return json({ error: "The game profile could not be saved securely." }, 400);
+    }
 
-    await client.from("game_profile_snapshots").insert({
+    const { error: snapshotError } = await admin.from("game_profile_snapshots").insert({
       user_id: user.id,
       game_account_id: accountRow.id,
       provider: PROVIDER,
@@ -95,6 +109,9 @@ Deno.serve(async (req: Request) => {
       profile_json: info,
       stats_json: stats,
     });
+    if (snapshotError) {
+      return json({ error: "The game profile was fetched, but its history snapshot could not be saved." }, 500);
+    }
 
     return json({
       account_id: accountRow.id,
