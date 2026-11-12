@@ -81,7 +81,8 @@ create table if not exists app_private.support_verification_batch_members (
   created_at timestamptz not null default now(),
   unique (batch_id, slot_number),
   unique (batch_id, game_account_id),
-  unique (request_id)
+  -- Keep attempt history while allowing a No-show request to join a later batch.
+  unique (batch_id, request_id)
 );
 revoke all on app_private.support_verification_batches from public, anon, authenticated;
 revoke all on app_private.support_verification_room_secrets from public, anon, authenticated;
