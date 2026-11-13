@@ -1,19 +1,13 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import 'app.dart';
-import 'core/startup_coordinator.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Render the first Flutter frame immediately. Startup services are initialized
-  // only after that frame, while the native/HTML and animated Flutter splashes
-  // are already visible.
+  // Paint the branded Flutter splash before starting any platform-backed
+  // services. StartupCoordinator is started by the splash after its intro
+  // animation completes, so native plugin initialization cannot skip the
+  // logo/wordmark animation on slower Android devices.
   runApp(const KomnivoApp());
-
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    unawaited(StartupCoordinator.initialize());
-  });
 }
