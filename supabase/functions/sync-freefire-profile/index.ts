@@ -434,7 +434,7 @@ Deno.serve(async (req: Request) => {
         .select("id, challenge_hash, expires_at, status")
         .eq("user_id", user.id)
         .eq("game_account_id", account.id)
-        .eq("status", "pending")
+        .in("status", ["pending", "verifying"])
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -446,7 +446,7 @@ Deno.serve(async (req: Request) => {
         }, 409);
       }
 
-      if (Date.parse(String(challenge.expires_at)) <= Date.now()) {
+      if (challenge.status !== "verifying" && Date.parse(String(challenge.expires_at)) <= Date.now()) {
         await admin.from("game_account_verification_challenges")
           .update({ status: "expired", updated_at: new Date().toISOString() })
           .eq("id", challenge.id)
