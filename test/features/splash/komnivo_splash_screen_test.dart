@@ -37,11 +37,12 @@ void main() {
     expect(animatedOpacity, isNot(initialOpacity));
     expect(StartupCoordinator.ready.value, isFalse);
 
-    // Startup begins only after the 2.7-second intro has completed.
-    await tester.pump(const Duration(milliseconds: 2450));
+    // Allow the full intro plus the first scheduled ticker frame. The exact
+    // ticker epoch is established on the next frame after forward() is called.
+    await tester.pump(const Duration(milliseconds: 3000));
     expect(StartupCoordinator.ready.value, isTrue);
 
-    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Destination'), findsOneWidget);
   });
 }
