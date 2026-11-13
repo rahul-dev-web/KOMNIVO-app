@@ -17,6 +17,18 @@ try {
   $NativeResources = Join-Path $Native "res"
   $ResourceTarget = Join-Path $Root "android/app/src/main/res"
   New-Item -ItemType Directory -Path $ResourceTarget -Force | Out-Null
+
+  # flutter create ships a stock Flutter launcher image in density-specific mipmap
+  # folders. Android prefers those over our density-independent KOMNIVO XML icon,
+  # so remove only the generated launcher files before overlaying native resources.
+  foreach ($Density in @("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi")) {
+    $GeneratedMipmap = Join-Path $ResourceTarget ("mipmap-" + $Density)
+    if (Test-Path $GeneratedMipmap) {
+      Get-ChildItem -Path $GeneratedMipmap -File -Filter "ic_launcher*" |
+        Remove-Item -Force
+    }
+  }
+
   Get-ChildItem $NativeResources -Force | Copy-Item -Destination $ResourceTarget -Recurse -Force
   $KotlinTarget = Join-Path $Root "android/app/src/main/kotlin/in/komnivo/app"
   New-Item -ItemType Directory -Path $KotlinTarget -Force | Out-Null
