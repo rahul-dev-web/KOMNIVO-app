@@ -318,14 +318,15 @@ The release APK currently builds in CI, but Play Store upload signing is not yet
 - Cloudflare Pages Git integration: https://developers.cloudflare.com/pages/get-started/git-integration/
 
 
-## Support-led game-account verification
+## Free Fire Bio-code ownership verification
 
-The source now includes a separate Platform Support workflow. After a successful Free Fire UID lookup, the app creates a verification request and displays **Verification Pending**. Only users listed in the private `app_private.platform_staff` table can operate the support console; community owners and tournament organisers do not receive this permission.
+The previous 48-player solo-room Support workflow is retired. The Free Fire API response supplied during implementation confirms that the profile Bio is returned at \`socialInfo.signature\` (not in \`basicInfo\`). The Edge Function reads that exact nested field.
 
-Before using it:
-1. Apply `supabase/migrations/202611120001_support_led_game_verification.sql` after the existing migrations. Resolve any duplicate `(game_id, region, uid)` claims if the unique-index preflight reports a conflict.
-2. Deploy the updated `sync-freefire-profile` Edge Function. It now uses the server-only service role for game-account persistence because authenticated clients no longer have write access to ownership fields.
-3. After the first Support Admin has signed into KOMNIVO, run the bootstrap INSERT in the new migration's final comment, using that person's actual `auth.users.id`. Never make staff membership editable from the public client.
-4. Support creates a batch, assigns exactly 48 unique players, creates/schedules the in-game solo room, contacts players using their account contact email, starts the session, and records each slot as verified, rejected or no-show.
+1. The player enters a 5–15 digit UID and taps Generate verification code. KOMNIVO stores the UID/challenge in Supabase and returns a 128-bit \`KOMNIVO-...\` code. This step makes **zero Free Fire provider API requests**.
+2. The player replaces the entire Free Fire India Bio with only the code, saves it, returns to KOMNIVO and checks the confirmation box.
+3. Tapping Verify makes exactly one Free Fire \`/info\` request. The same response supplies \`basicInfo\` (nickname, level, likes, rank, region), \`clanBasicInfo\`, \`profileInfo\`, and \`socialInfo.signature\`. No separate \`/stats\` request is made in this flow.
+4. The server hashes the exact \`socialInfo.signature\` string without trimming or normalising and compares it to the challenge hash. Only an exact match marks the linked account Verified. The player may restore their old Bio immediately afterwards.
+5. The challenge expires after 30 minutes. Verification attempts are enforced by an atomic Postgres counter on the linked game account: maximum **three provider requests per profile**, including after code regeneration, and at least 15 seconds between requests. A fourth request is blocked and the player is told to contact KOMNIVO Support.
+6. The challenge code is returned to the owner by the authenticated Edge Function and only its SHA-256 hash is stored. Raw Bio/signature is stripped from saved profile snapshots. The challenge table is unavailable to \`anon\` and \`authenticated\`; only the server-side Edge Function can access it.
 
-Player-facing timing copy says “a few working days”; it is intentionally not a guaranteed SLA because queue fill depends on receiving 48 unique players. No Profile Signature challenge is used for Free Fire India.
+Live backend state: migrations \`202611130001\`, \`202611130002\` and \`202611130003\` are applied; \`sync-freefire-profile\` v8 is ACTIVE with JWT verification. A real Free Fire India Bio round-trip remains the final integration test. The corresponding migration and code live in the GitHub repository.
