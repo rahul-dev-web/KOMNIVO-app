@@ -1,29 +1,17 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+const PROVIDER = "Free Fire Community API (unofficial)";
+const DEFAULT_BASE_URL = "https://developers.freefirecommunity.com/api/v1";
+const GAME_CODE = "free_fire_max";
+const MAX_VERIFY_ATTEMPTS = 3;
+const VERIFY_RETRY_SECONDS = 15;
+const CHALLENGE_LIFETIME_MS = 30 * 60 * 1000;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-
-function readBearer(req: Request): string | null {
-  const value = req.headers.get("Authorization");
-  return value?.startsWith("Bearer ") ? value : null;
-}
-
-const PROVIDER = "Free Fire Community API (unofficial)";
-const DEFAULT_BASE_URL = "https://developers.freefirecommunity.com/api/v1";
-const GAME_CODE = "free_fire_max";
-const CHALLENGE_LIFETIME_MS = 30 * 60 * 1000;
-const MAX_VERIFY_ATTEMPTS = 5;
-const VERIFY_RETRY_SECONDS = 15;
 
 type RecordData = Record<string, unknown>;
 
@@ -31,6 +19,17 @@ function asRecord(value: unknown): RecordData {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as RecordData
     : {};
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
 function toHex(bytes: Uint8Array): string {
@@ -56,47 +55,69 @@ function makeChallengeCode(): string {
   return "KOMNIVO-" + toHex(random).toUpperCase();
 }
 
+// The supplied Free Fire API response nests the Bio exactly here:
+// socialInfo.signature. Do not read BasicInfo, profileInfo or a client value
+// for ownership proof, and never trim/normalise the signature before matching.
+function readProfileSignature(info: RecordData): string {
+  const socialInfo = asRecord(info.socialInfo ?? info.SocialInfo);
+  const value = socialInfo.signature ?? socialInfo.Signature;
+  return typeof value === "string" ? value : "";
+}
+
+// Never retain a user's Bio, including the temporary verification code.
 function withoutPublicBio(raw: RecordData): RecordData {
   const clone = JSON.parse(JSON.stringify(raw)) as RecordData;
-
-  // Provider casing may differ between payload versions. Strip the signature
-  // from both spellings so no player's temporary challenge or previous Bio is
-  // accidentally copied into profile snapshots.
   for (const key of ["socialInfo", "SocialInfo"]) {
     const socialInfo = asRecord(clone[key]);
-    if (Object.keys(socialInfo).length > 0) {
-      delete socialInfo.signature;
-      clone[key] = socialInfo;
-    }
+    delete socialInfo.signature;
+    delete socialInfo.Signature;
+    clone[key] = socialInfo;
   }
+  delete clone.signature;
+  delete clone.Signature;
   return clone;
 }
 
-function providerHeaders(apiKey: string): HeadersInit {
+function buildProfile(info: RecordData, region: string): RecordData {
+  const basicInfo = asRecord(info.basicInfo ?? info.BasicInfo);
+  const clanInfo = asRecord(info.clanBasicInfo ?? info.ClanBasicInfo);
+  const profileInfo = asRecord(info.profileInfo ?? info.ProfileInfo);
+
+  const numberOrNull = (value: unknown): number | null => {
+    if (value === null || value === undefined || value === "") return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+  };
+
   return {
-    "x-api-key": apiKey,
-    "User-Agent": "KOMNIVO/1.0 (+https://komnivo-app.pages.dev)",
+    account_id: basicInfo.accountId ?? basicInfo.AccountId ?? null,
+    nickname: basicInfo.nickname ?? basicInfo.AccountName ?? info.nickname ?? null,
+    level: numberOrNull(basicInfo.level ?? basicInfo.AccountLevel),
+    likes: numberOrNull(basicInfo.liked ?? basicInfo.likes ?? basicInfo.AccountLikes),
+    rank: numberOrNull(basicInfo.rank ?? basicInfo.brRank ?? basicInfo.maxRank),
+    max_rank: numberOrNull(basicInfo.maxRank ?? basicInfo.max_rank),
+    ranking_points: numberOrNull(basicInfo.rankingPoints ?? basicInfo.ranking_points),
+    cs_rank: numberOrNull(basicInfo.csRank ?? basicInfo.cs_rank),
+    cs_max_rank: numberOrNull(basicInfo.csMaxRank ?? basicInfo.cs_max_rank),
+    badge_count: numberOrNull(basicInfo.badgeCnt ?? basicInfo.badge_count),
+    badge_id: basicInfo.badgeId ?? null,
+    banner_id: basicInfo.bannerId ?? null,
+    head_pic: basicInfo.headPic ?? null,
+    region: basicInfo.region ?? region.toUpperCase(),
+    clan_name: clanInfo.clanName ?? clanInfo.name ?? null,
+    clan_id: clanInfo.clanId ?? null,
+    clan_level: numberOrNull(clanInfo.clanLevel),
+    clan_members: numberOrNull(clanInfo.memberNum),
+    clan_capacity: numberOrNull(clanInfo.capacity),
+    avatar_id: profileInfo.avatarId ?? profileInfo.avatar_id ?? null,
   };
 }
 
-async function fetchPlayerInfo(base: string, headers: HeadersInit, region: string, uid: string) {
-  const query = new URLSearchParams({ region, uid });
-  const response = await fetch(base + "/info?" + query.toString(), { headers });
-  if (!response.ok) {
-    const status = response.status;
-    const detail = status === 404
-      ? "Player UID was not found in the selected region."
-      : status === 429
-        ? "The game-profile provider is rate limiting requests. Please wait before retrying."
-        : "Game provider returned " + status + ".";
-    throw Object.assign(new Error(detail), { httpStatus: status });
-  }
-  return await response.json() as RecordData;
-}
-
 async function authenticate(req: Request) {
-  const authorization = readBearer(req);
-  if (!authorization) return { error: json({ error: "Authentication required." }, 401) };
+  const authorization = req.headers.get("Authorization");
+  if (!authorization?.startsWith("Bearer ")) {
+    return { error: json({ error: "Authentication required." }, 401) };
+  }
 
   const url = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
@@ -115,7 +136,16 @@ async function authenticate(req: Request) {
   const admin = createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  return { user, userClient, admin };
+  return { user, admin };
+}
+
+async function loadFreeFireGame(admin: ReturnType<typeof createClient>) {
+  const { data, error } = await admin.from("games")
+    .select("id")
+    .eq("code", GAME_CODE)
+    .single();
+  if (error || !data) return null;
+  return data as { id: string };
 }
 
 Deno.serve(async (req: Request) => {
@@ -127,338 +157,492 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = asRecord(await req.json());
-    const action = String(body.action ?? "lookup");
-    const { user, userClient, admin } = auth;
+    const action = String(body.action ?? "status");
+    const { user, admin } = auth;
 
+    const game = await loadFreeFireGame(admin);
+    if (!game) return json({ error: "Free Fire MAX game catalogue entry is unavailable." }, 500);
+
+    // Status reads and code preparation use Supabase only. Neither action
+    // invokes the Free Fire provider.
     if (action === "status") {
-      const { data: game, error: gameError } = await userClient.from("games")
-        .select("id").eq("code", GAME_CODE).single();
-      if (gameError || !game) return json({ error: "Free Fire game catalogue entry is unavailable." }, 500);
-
       const { data: accounts, error: accountError } = await admin.from("game_accounts")
-        .select("id, uid, region, nickname, level, rank_label, ownership_status, last_synced_at")
-        .eq("user_id", user.id).eq("game_id", game.id)
-        .order("updated_at", { ascending: false }).limit(2);
-      if (accountError) return json({ error: "Could not load your linked game account." }, 500);
+        .select("id, uid, region, nickname, level, rank_label, ownership_status, last_synced_at, verification_attempts")
+        .eq("user_id", user.id)
+        .eq("game_id", game.id)
+        .order("updated_at", { ascending: false })
+        .limit(2);
+
+      if (accountError) return json({ error: "Could not load your linked Free Fire account." }, 500);
       if (!accounts || accounts.length === 0) {
         return json({
           status: "not_linked",
-          message: "Enter your Free Fire UID to look up your profile and generate a verification code.",
+          ownership_status: "not_linked",
+          attempts_remaining: MAX_VERIFY_ATTEMPTS,
+          message: "Enter your Free Fire UID and generate a code. This step does not call the Free Fire profile API.",
         });
       }
       if (accounts.length > 1) {
-        return json({ error: "More than one Free Fire account is linked. Contact KOMNIVO Support before continuing." }, 409);
+        return json({ error: "Multiple Free Fire accounts are linked. Contact KOMNIVO Support before continuing." }, 409);
       }
 
       const account = accounts[0];
+      const attempts = Number(account.verification_attempts ?? 0);
+      const locked = attempts >= MAX_VERIFY_ATTEMPTS;
+
       if (account.ownership_status === "verified") {
         return json({
           status: "verified",
+          ownership_status: "verified",
           account_id: account.id,
           uid: account.uid,
           region: account.region,
           nickname: account.nickname,
-          ownership_status: account.ownership_status,
+          level: account.level,
+          rank_label: account.rank_label,
           last_synced_at: account.last_synced_at,
-          message: "KOMNIVO has verified control of this Free Fire account. You may now change your Bio back.",
+          verification_attempts: attempts,
+          attempts_remaining: 0,
+          message: "KOMNIVO verified this Free Fire account. You may restore or change your Bio.",
         });
       }
 
       const { data: challenges, error: challengeError } = await admin.from("game_account_verification_challenges")
         .select("id, status, attempts, expires_at, created_at")
-        .eq("user_id", user.id).eq("game_account_id", account.id)
-        .order("created_at", { ascending: false }).limit(1);
-      if (challengeError) return json({ error: "Could not load ownership verification status." }, 500);
+        .eq("user_id", user.id)
+        .eq("game_account_id", account.id)
+        .order("created_at", { ascending: false })
+        .limit(1);
 
-      const challenge = challenges?.[0];
-      const expired = challenge?.status === "pending" &&
-        Date.parse(String(challenge.expires_at)) <= Date.now();
-      if (expired) {
+      if (challengeError) return json({ error: "Could not load ownership-verification status." }, 500);
+
+      let challenge = challenges?.[0] ?? null;
+      if (challenge?.status === "pending" && Date.parse(String(challenge.expires_at)) <= Date.now()) {
         await admin.from("game_account_verification_challenges")
           .update({ status: "expired", updated_at: new Date().toISOString() })
-          .eq("id", challenge.id).eq("status", "pending");
+          .eq("id", challenge.id)
+          .eq("status", "pending");
+        challenge = { ...challenge, status: "expired" };
       }
 
-      const challengeStatus = expired ? "expired" : (challenge?.status ?? "not_started");
       return json({
-        status: account.ownership_status === "proof_pending" ? "proof_pending" : "linked_unverified",
-        challenge_status: challengeStatus,
-        challenge_expires_at: challenge?.expires_at ?? null,
+        status: locked ? "locked" : account.ownership_status === "proof_pending" ? "proof_pending" : "linked_unverified",
+        ownership_status: account.ownership_status,
         account_id: account.id,
         uid: account.uid,
         region: account.region,
         nickname: account.nickname,
-        ownership_status: account.ownership_status,
+        level: account.level,
+        rank_label: account.rank_label,
         last_synced_at: account.last_synced_at,
-        message: expired
-          ? "Your previous code has expired. Generate a new code and place it in your Free Fire Bio."
-          : "Ownership is pending. Generate a one-time code, paste only that code into your Free Fire Bio/Signature, then start verification.",
+        verification_attempts: attempts,
+        attempts_remaining: Math.max(0, MAX_VERIFY_ATTEMPTS - attempts),
+        challenge_status: challenge?.status ?? "not_started",
+        challenge_expires_at: challenge?.expires_at ?? null,
+        message: locked
+          ? "All three Free Fire verification requests for this profile have been used. Contact KOMNIVO Support for further verification."
+          : challenge?.status === "expired"
+            ? "The previous code expired. Generate a new code; your three verification requests are not reset."
+            : "Ownership remains Verification Pending until the exact code is visible in the complete in-game Bio.",
       });
     }
 
-    const apiKey = Deno.env.get("FREEFIRE_API_KEY");
-    if (!apiKey) return json({ error: "Game-profile provider is not configured on the server." }, 503);
-    const base = (Deno.env.get("FREEFIRE_API_BASE_URL") ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
-    const headers = providerHeaders(apiKey);
-
-    if (action === "lookup") {
+    if (action === "prepare") {
       const uid = String(body.uid ?? "").trim();
       const region = String(body.region ?? "ind").toLowerCase();
       if (!/^\d{5,15}$/.test(uid)) return json({ error: "UID must contain 5–15 digits." }, 400);
       if (!["ind", "sg", "br"].includes(region)) return json({ error: "Unsupported region." }, 400);
 
-      const info = await fetchPlayerInfo(base, headers, region, uid);
-      const statsQuery = new URLSearchParams({ region, uid });
-      const statsResponse = await fetch(base + "/stats?" + statsQuery.toString(), { headers });
-      const stats = statsResponse.ok ? await statsResponse.json() as RecordData : {};
-      const basic = asRecord(info.basicInfo ?? info.BasicInfo);
-      const clan = asRecord(info.clanBasicInfo ?? info.ClanBasicInfo);
-      const profileInfo = asRecord(info.profileInfo ?? info.ProfileInfo);
-      const profile = {
-        nickname: basic.nickname ?? basic.AccountName ?? info.nickname ?? null,
-        level: basic.level ?? basic.AccountLevel ?? null,
-        likes: basic.liked ?? basic.likes ?? basic.AccountLikes ?? null,
-        rank: basic.rank ?? basic.brRank ?? basic.BrMaxRank ?? null,
-        region: basic.region ?? region.toUpperCase(),
-        clan_name: clan.clanName ?? clan.name ?? null,
-        clan_level: clan.clanLevel ?? null,
-        clan_members: clan.memberNum ?? null,
-        avatar_id: profileInfo.avatarId ?? profileInfo.avatar_id ?? null,
-      };
-
-      const { data: game, error: gameError } = await userClient.from("games")
-        .select("id").eq("code", GAME_CODE).single();
-      if (gameError || !game) return json({ error: "Free Fire MAX game catalogue entry is missing." }, 500);
-
       const { data: existingAccounts, error: existingError } = await admin.from("game_accounts")
-        .select("id, uid, region, ownership_status")
-        .eq("user_id", user.id).eq("game_id", game.id).limit(2);
-      if (existingError) return json({ error: "The linked game account could not be checked securely." }, 500);
+        .select("id, uid, region, ownership_status, last_synced_at, verification_attempts")
+        .eq("user_id", user.id)
+        .eq("game_id", game.id)
+        .limit(2);
+
+      if (existingError) return json({ error: "Could not check your linked Free Fire account." }, 500);
       if ((existingAccounts ?? []).length > 1) {
-        return json({ error: "Multiple Free Fire accounts are already linked to this KOMNIVO account. Contact Support before changing them." }, 409);
+        return json({ error: "Multiple Free Fire accounts are linked. Contact KOMNIVO Support." }, 409);
       }
 
-      const existing = existingAccounts?.[0] ?? null;
-      if (existing && (String(existing.uid) !== uid || String(existing.region ?? "").toLowerCase() !== region)) {
-        return json({ error: "A different Free Fire UID is already linked to this KOMNIVO account. Contact Support to request a safe account change." }, 409);
+      let account = existingAccounts?.[0] ?? null;
+      if (account?.ownership_status === "verified") {
+        if (String(account.uid) === uid && String(account.region).toLowerCase() === region) {
+          return json({
+            status: "verified",
+            ownership_status: "verified",
+            account_id: account.id,
+            uid,
+            attempts_remaining: 0,
+            message: "This Free Fire account is already verified. You may change your Bio back.",
+          });
+        }
+        return json({ error: "A verified Free Fire account is linked. Contact KOMNIVO Support to change it." }, 409);
       }
 
-      const cleanInfo = withoutPublicBio(info);
-      const level = Number(profile.level);
-      const syncedAt = new Date().toISOString();
-      const profileFields = {
-        nickname: profile.nickname?.toString() ?? null,
-        level: Number.isFinite(level) ? level : null,
-        rank_label: profile.rank?.toString() ?? null,
-        provider: PROVIDER,
-        sync_status: "synced",
-        last_synced_at: syncedAt,
-        raw_profile: cleanInfo,
-        raw_stats: stats,
-        updated_at: syncedAt,
-      };
+      if (account && (String(account.uid) !== uid || String(account.region).toLowerCase() !== region)) {
+        // Allow correcting the UID only before any provider profile has been
+        // fetched and before any verification request has been consumed.
+        if (account.last_synced_at || Number(account.verification_attempts ?? 0) > 0) {
+          return json({
+            error: "A different Free Fire UID is already linked. Contact KOMNIVO Support to change the linked account safely.",
+          }, 409);
+        }
 
-      let accountRow: RecordData | null = null;
-      if (existing) {
-        const { data, error } = await admin.from("game_accounts")
-          .update(profileFields).eq("id", existing.id).eq("user_id", user.id)
-          .select("id, uid, region, ownership_status, nickname, level, rank_label, last_synced_at").single();
-        if (error || !data) return json({ error: "The game profile could not be refreshed securely." }, 400);
-        accountRow = data;
-      } else {
-        const { data, error } = await admin.from("game_accounts")
+        const { error: updateError } = await admin.from("game_accounts")
+          .update({
+            uid,
+            region,
+            ownership_status: "proof_pending",
+            sync_status: "pending",
+            provider: PROVIDER,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", account.id)
+          .eq("user_id", user.id);
+
+        if (updateError?.code === "23505") {
+          return json({ error: "This Free Fire UID is already linked to another KOMNIVO account." }, 409);
+        }
+        if (updateError) return json({ error: "Could not update the unverified UID." }, 400);
+
+        account = { ...account, uid, region, ownership_status: "proof_pending" };
+      }
+
+      if (!account) {
+        const { data: inserted, error: insertError } = await admin.from("game_accounts")
           .insert({
             user_id: user.id,
             game_id: game.id,
             uid,
             region,
-            ...profileFields,
-            ownership_status: "linked_unverified",
+            provider: PROVIDER,
+            ownership_status: "proof_pending",
+            sync_status: "pending",
+            raw_profile: {},
+            raw_stats: {},
           })
-          .select("id, uid, region, ownership_status, nickname, level, rank_label, last_synced_at").single();
+          .select("id, uid, region, ownership_status, last_synced_at, verification_attempts")
+          .single();
 
-        if (error?.code === "23505") {
-          return json({ error: "This Free Fire UID is already linked to another KOMNIVO account. Contact Support if you believe this is your account." }, 409);
+        if (insertError?.code === "23505") {
+          return json({ error: "This Free Fire UID is already linked to another KOMNIVO account. Contact Support if you believe this is an error." }, 409);
         }
-        if (error || !data) return json({ error: "The game profile could not be saved securely." }, 400);
-        accountRow = data;
+        if (insertError || !inserted) return json({ error: "Could not prepare this Free Fire UID for verification." }, 400);
+        account = inserted;
       }
 
-      const { error: snapshotError } = await admin.from("game_profile_snapshots").insert({
-        user_id: user.id,
-        game_account_id: accountRow.id,
-        provider: PROVIDER,
-        region,
-        profile_json: cleanInfo,
-        stats_json: stats,
-      });
-      if (snapshotError) {
-        return json({ error: "The profile was fetched, but its history snapshot could not be saved." }, 500);
-      }
-
-      if (accountRow.ownership_status === "verified") {
+      const attempts = Number(account.verification_attempts ?? 0);
+      if (attempts >= MAX_VERIFY_ATTEMPTS) {
         return json({
-          account_id: accountRow.id,
-          ownership_status: "verified",
-          status: "verified",
-          provider: PROVIDER,
-          last_synced_at: syncedAt,
-          profile,
-          stats,
-          message: "KOMNIVO has already verified control of this Free Fire account. You may change your Bio back.",
+          status: "locked",
+          ownership_status: "proof_pending",
+          account_id: account.id,
+          uid,
+          verification_attempts: attempts,
+          attempts_remaining: 0,
+          message: "All three verification requests are used. Contact KOMNIVO Support for further verification.",
         });
       }
 
-      const challengeCode = makeChallengeCode();
-      const challengeHash = await sha256Hex(challengeCode);
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + CHALLENGE_LIFETIME_MS).toISOString();
-
-      const { error: replaceError } = await admin.from("game_account_verification_challenges")
-        .update({ status: "replaced", updated_at: now.toISOString() })
-        .eq("game_account_id", accountRow.id).eq("status", "pending");
-      if (replaceError) return json({ error: "Could not rotate the previous verification code." }, 500);
-
-      const { error: challengeInsertError } = await admin.from("game_account_verification_challenges")
-        .insert({
-          user_id: user.id,
-          game_account_id: accountRow.id,
-          challenge_hash: challengeHash,
-          status: "pending",
-          expires_at: expiresAt,
-          attempts: 0,
-        });
-      if (challengeInsertError) return json({ error: "Could not create a secure verification code." }, 500);
-
-      const { error: ownershipError } = await admin.from("game_accounts")
-        .update({ ownership_status: "proof_pending", updated_at: now.toISOString() })
-        .eq("id", accountRow.id).eq("user_id", user.id);
-      if (ownershipError) return json({ error: "The profile was found, but its ownership state could not be updated." }, 500);
-
-      await admin.from("notifications").insert({
-        user_id: user.id,
-        title: "Free Fire ownership verification pending",
-        body: "Your UID profile was found. Paste the one-time KOMNIVO code into your Free Fire profile Bio/Signature, then return to KOMNIVO and start verification. The code expires in 30 minutes.",
-        kind: "verification",
-        entity_type: "game_account",
-        entity_id: accountRow.id,
+      const code = makeChallengeCode();
+      const expiresAt = new Date(Date.now() + CHALLENGE_LIFETIME_MS).toISOString();
+      const prepared = await admin.rpc("prepare_game_verification_challenge", {
+        p_game_account_id: account.id,
+        p_user_id: user.id,
+        p_challenge_hash: await sha256Hex(code),
+        p_expires_at: expiresAt,
       });
+
+      if (prepared.error) return json({ error: "Could not safely prepare your verification code." }, 500);
+      const gate = asRecord(prepared.data);
+      if (gate.verified === true) {
+        return json({ status: "verified", ownership_status: "verified", account_id: account.id, uid });
+      }
+      if (gate.locked === true) {
+        return json({
+          status: "locked",
+          ownership_status: "proof_pending",
+          account_id: account.id,
+          uid,
+          verification_attempts: Number(gate.verification_attempts ?? attempts),
+          attempts_remaining: 0,
+          message: "All three verification requests are used. Contact KOMNIVO Support.",
+        });
+      }
+      if (gate.error) return json({ error: "The linked Free Fire account could not be prepared." }, 409);
 
       return json({
-        account_id: accountRow.id,
         status: "proof_pending",
         ownership_status: "proof_pending",
-        provider: PROVIDER,
-        last_synced_at: syncedAt,
-        profile,
-        stats,
-        challenge_code: challengeCode,
+        account_id: account.id,
+        uid,
+        region,
+        challenge_code: code,
         challenge_expires_at: expiresAt,
         challenge_lifetime_seconds: 1800,
-        message: "Your game profile was found. Ownership is pending. Copy the code exactly, replace your Free Fire Bio/Signature with this code only, save it, then confirm the checkbox and start verification. You may change the Bio back after verification succeeds.",
-        notice: "UID lookup alone does not prove ownership. The code is checked against the profile signature returned by the third-party API.",
+        verification_attempts: Number(gate.verification_attempts ?? attempts),
+        attempts_remaining: Number(gate.attempts_remaining ?? (MAX_VERIFY_ATTEMPTS - attempts)),
+        message: "Your code is ready. Replace the complete Free Fire Bio with this exact code only, tick the confirmation checkbox and tap Verify. No Free Fire profile API request has been made yet.",
       });
     }
 
     if (action === "verify") {
       if (body.bio_confirmed !== true) {
-        return json({ error: "Confirm that the exact code is saved as the complete Bio/Signature before starting verification." }, 400);
+        return json({
+          status: "proof_pending",
+          error: "Confirm that the complete Free Fire Bio contains only the exact KOMNIVO code.",
+        }, 400);
       }
 
       const accountId = String(body.account_id ?? "").trim();
-      if (!/^[0-9a-f-]{36}$/i.test(accountId)) return json({ error: "Invalid linked game-account reference." }, 400);
+      if (!/^[0-9a-f-]{36}$/i.test(accountId)) {
+        return json({ error: "Invalid linked game-account reference." }, 400);
+      }
 
       const { data: account, error: accountError } = await admin.from("game_accounts")
-        .select("id, uid, region, ownership_status")
-        .eq("id", accountId).eq("user_id", user.id).maybeSingle();
-      if (accountError || !account) return json({ error: "This Free Fire account is not linked to your KOMNIVO account." }, 404);
+        .select("id, uid, region, nickname, ownership_status, verification_attempts")
+        .eq("id", accountId)
+        .eq("user_id", user.id)
+        .maybeSingle();
 
+      if (accountError || !account) return json({ error: "This Free Fire UID is not linked to your KOMNIVO account." }, 404);
       if (account.ownership_status === "verified") {
-        return json({ status: "verified", ownership_status: "verified", message: "Ownership is already verified. You may change your Bio back." });
+        return json({
+          status: "verified",
+          ownership_status: "verified",
+          attempts_remaining: 0,
+          message: "Ownership is already verified. You may change your Bio back.",
+        });
       }
 
       const { data: challenge, error: challengeError } = await admin.from("game_account_verification_challenges")
-        .select("id, challenge_hash, attempts, expires_at, last_attempt_at, status")
-        .eq("user_id", user.id).eq("game_account_id", account.id).eq("status", "pending")
-        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+        .select("id, challenge_hash, expires_at, status")
+        .eq("user_id", user.id)
+        .eq("game_account_id", account.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
       if (challengeError || !challenge) {
-        return json({ error: "No active verification code was found. Generate a new code and place it in your Bio." }, 409);
+        return json({
+          status: "no_active_code",
+          error: "No active verification code exists. Generate a new code first.",
+        }, 409);
       }
 
-      const now = new Date();
-      if (Date.parse(String(challenge.expires_at)) <= now.getTime()) {
+      if (Date.parse(String(challenge.expires_at)) <= Date.now()) {
         await admin.from("game_account_verification_challenges")
-          .update({ status: "expired", updated_at: now.toISOString() }).eq("id", challenge.id);
-        return json({ error: "This verification code has expired. Generate a new code and try again.", status: "expired" }, 410);
+          .update({ status: "expired", updated_at: new Date().toISOString() })
+          .eq("id", challenge.id)
+          .eq("status", "pending");
+        return json({
+          status: "expired",
+          error: "This code expired after 30 minutes. Generate a new code; previous verification requests are not reset.",
+          attempts_remaining: Math.max(0, MAX_VERIFY_ATTEMPTS - Number(account.verification_attempts ?? 0)),
+        });
       }
-      if (Number(challenge.attempts) >= MAX_VERIFY_ATTEMPTS) {
+
+      // Missing server configuration must not consume a user's provider attempt.
+      const apiKey = Deno.env.get("FREEFIRE_API_KEY");
+      if (!apiKey) return json({ error: "The Free Fire profile provider is not configured on the server." }, 503);
+      const base = (Deno.env.get("FREEFIRE_API_BASE_URL") ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
+
+      // The Postgres RPC is the only counter authority. It locks this account,
+      // enforces a 15-second retry interval and reserves no more than 3 requests.
+      const { data: gateData, error: gateError } = await admin.rpc("consume_game_verification_attempt", {
+        p_game_account_id: account.id,
+        p_user_id: user.id,
+      });
+      if (gateError) return json({ error: "Could not reserve a verification request." }, 500);
+
+      const gate = asRecord(gateData);
+      if (gate.verified === true) {
+        return json({ status: "verified", ownership_status: "verified", attempts_remaining: 0 });
+      }
+      if (gate.error === "account_not_found") {
+        return json({ error: "This Free Fire account is no longer linked to your profile." }, 404);
+      }
+      if (gate.throttled === true) {
+        return json({
+          status: "throttled",
+          retry_after_seconds: Number(gate.retry_after_seconds ?? VERIFY_RETRY_SECONDS),
+          attempts_remaining: Number(gate.attempts_remaining ?? 0),
+          error: "Please wait before starting another verification request. No attempt was consumed.",
+        }, 429);
+      }
+      if (gate.locked === true) {
         await admin.from("game_account_verification_challenges")
-          .update({ status: "locked", updated_at: now.toISOString() }).eq("id", challenge.id);
-        return json({ error: "This code reached its verification-attempt limit. Generate a new code and try again.", status: "locked" }, 429);
+          .update({ status: "locked", updated_at: new Date().toISOString() })
+          .eq("id", challenge.id)
+          .eq("status", "pending");
+        return json({
+          status: "locked",
+          attempts_remaining: 0,
+          error: "You have used all three verification requests for this Free Fire profile. Contact KOMNIVO Support.",
+        });
       }
-      if (challenge.last_attempt_at) {
-        const elapsed = now.getTime() - Date.parse(String(challenge.last_attempt_at));
-        if (elapsed < VERIFY_RETRY_SECONDS * 1000) {
-          const wait = Math.ceil((VERIFY_RETRY_SECONDS * 1000 - elapsed) / 1000);
-          return json({ error: "Please wait " + wait + " seconds before checking the Bio again.", retry_after_seconds: wait }, 429);
+
+      const attemptNumber = Number(gate.attempt_number);
+      const attemptsRemaining = Number(gate.attempts_remaining);
+      const attemptTime = new Date().toISOString();
+
+      const { error: challengeAttemptError } = await admin.from("game_account_verification_challenges")
+        .update({
+          attempts: attemptNumber,
+          last_attempt_at: attemptTime,
+          updated_at: attemptTime,
+        })
+        .eq("id", challenge.id)
+        .eq("status", "pending");
+      if (challengeAttemptError) {
+        return json({
+          status: "proof_pending",
+          error: "The verification request was reserved, but its audit record could not be updated. Contact Support before trying again.",
+          attempts_remaining: attemptsRemaining,
+        }, 500);
+      }
+
+      let info: RecordData;
+      try {
+        // Exactly one Free Fire provider API request per verification attempt.
+        // This /info response carries basicInfo AND socialInfo.signature (Bio).
+        // Do not add a /stats request to this ownership-verification flow.
+        const query = new URLSearchParams({
+          region: String(account.region).toLowerCase(),
+          uid: String(account.uid),
+        });
+        const response = await fetch(base + "/info?" + query.toString(), {
+          headers: {
+            "x-api-key": apiKey,
+            "User-Agent": "KOMNIVO/1.0 (esports community app)",
+          },
+          signal: AbortSignal.timeout(15_000),
+        });
+
+        if (!response.ok) {
+          const detail = response.status === 404
+            ? "The provider could not find this UID in the selected region."
+            : response.status === 429
+              ? "The Free Fire provider rate-limited this request."
+              : "The Free Fire provider returned HTTP " + response.status + ".";
+          throw new Error(detail);
         }
-      }
-
-      const info = await fetchPlayerInfo(base, headers, String(account.region).toLowerCase(), String(account.uid));
-      const socialInfo = asRecord(info.socialInfo ?? info.SocialInfo);
-      // Do not trim or otherwise normalise: the Bio must contain the exact
-      // challenge code and nothing before or after it.
-      const currentSignature = typeof socialInfo.signature === "string" ? socialInfo.signature : "";
-      const observedHash = currentSignature ? await sha256Hex(currentSignature) : "";
-      const attemptCount = Number(challenge.attempts) + 1;
-
-      if (!observedHash || !constantTimeHexEqual(observedHash, String(challenge.challenge_hash))) {
-        const locked = attemptCount >= MAX_VERIFY_ATTEMPTS;
-        await admin.from("game_account_verification_challenges")
-          .update({
-            attempts: attemptCount,
-            last_attempt_at: now.toISOString(),
-            status: locked ? "locked" : "pending",
-            updated_at: now.toISOString(),
-          })
-          .eq("id", challenge.id).eq("status", "pending");
+        info = await response.json() as RecordData;
+      } catch (providerError) {
+        const locked = attemptNumber >= MAX_VERIFY_ATTEMPTS;
+        if (locked) {
+          await admin.from("game_account_verification_challenges")
+            .update({ status: "locked", updated_at: new Date().toISOString() })
+            .eq("id", challenge.id);
+        }
+        const detail = providerError instanceof Error
+          ? providerError.message
+          : "The provider could not complete this request.";
         return json({
           status: locked ? "locked" : "proof_pending",
+          ownership_status: "proof_pending",
           error: locked
-            ? "The code could not be found after five checks. Generate a fresh code and try again."
-            : "The code is not visible in the latest profile response yet. Check that the Bio contains only the exact code, save it in-game, wait briefly, then retry.",
-          attempts_remaining: Math.max(0, MAX_VERIFY_ATTEMPTS - attemptCount),
+            ? "Your third verification request could not complete. Contact KOMNIVO Support for further verification. Provider detail: " + detail
+            : detail + " This provider request has been counted.",
+          verification_attempts: attemptNumber,
+          attempts_remaining: attemptsRemaining,
           retry_after_seconds: VERIFY_RETRY_SECONDS,
-        }, locked ? 429 : 409);
+        });
       }
 
-      const verifiedAt = now.toISOString();
+      // This is the exact field shown in the owner's supplied response:
+      // { "socialInfo": { "signature": "..." } }.
+      const currentSignature = readProfileSignature(info);
+      const observedHash = currentSignature ? await sha256Hex(currentSignature) : "";
+      const matches = Boolean(observedHash) &&
+        constantTimeHexEqual(observedHash, String(challenge.challenge_hash));
 
-      // The game-account ownership state is the user-visible source of truth.
-      // Update it only after the live Bio has matched exactly. If challenge
-      // bookkeeping then fails, status reads still show Verified and a retry
-      // cannot accidentally undo the completed proof.
-      const { error: accountUpdateError } = await admin.from("game_accounts")
-        .update({ ownership_status: "verified", updated_at: verifiedAt })
-        .eq("id", account.id).eq("user_id", user.id);
-      if (accountUpdateError) return json({ error: "The challenge matched, but the game-account status could not be updated." }, 500);
+      // Use this same /info response for the profile lookup. No second API call.
+      const profile = buildProfile(info, String(account.region).toLowerCase());
+      const cleanInfo = withoutPublicBio(info);
+      const stats = asRecord(info.stats ?? info.statsInfo ?? {});
+      const syncedAt = new Date().toISOString();
 
+      const { error: profileSaveError } = await admin.from("game_accounts")
+        .update({
+          nickname: profile.nickname === null ? null : String(profile.nickname),
+          level: typeof profile.level === "number" ? profile.level : null,
+          rank_label: profile.rank === null ? null : String(profile.rank),
+          provider: PROVIDER,
+          sync_status: "synced",
+          last_synced_at: syncedAt,
+          raw_profile: cleanInfo,
+          raw_stats: stats,
+          ownership_status: matches ? "verified" : "proof_pending",
+          updated_at: syncedAt,
+        })
+        .eq("id", account.id)
+        .eq("user_id", user.id);
+
+      if (profileSaveError) {
+        return json({
+          status: "proof_pending",
+          error: "The provider response was received, but the game profile could not be saved securely. Contact Support before retrying.",
+          attempts_remaining: attemptsRemaining,
+        }, 500);
+      }
+
+      const { error: snapshotError } = await admin.from("game_profile_snapshots").insert({
+        user_id: user.id,
+        game_account_id: account.id,
+        provider: PROVIDER,
+        region: account.region,
+        profile_json: cleanInfo,
+        stats_json: stats,
+      });
+      if (snapshotError) {
+        console.warn("Could not save game profile snapshot.", { code: snapshotError.code });
+      }
+
+      if (!matches) {
+        const locked = attemptNumber >= MAX_VERIFY_ATTEMPTS;
+        await admin.from("game_account_verification_challenges")
+          .update({
+            status: locked ? "locked" : "pending",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", challenge.id);
+
+        return json({
+          status: locked ? "locked" : "proof_pending",
+          ownership_status: "proof_pending",
+          verified: false,
+          profile,
+          verification_attempts: attemptNumber,
+          attempts_remaining: attemptsRemaining,
+          retry_after_seconds: VERIFY_RETRY_SECONDS,
+          error: locked
+            ? "The exact Bio code did not match after three provider requests. Contact KOMNIVO Support for further verification."
+            : "The latest profile Bio does not match the exact code. Replace the complete Bio with only the code, save it in-game, wait for provider refresh, then retry after 15 seconds.",
+        });
+      }
+
+      const verifiedAt = new Date().toISOString();
       const { error: challengeUpdateError } = await admin.from("game_account_verification_challenges")
         .update({
           status: "verified",
           verified_at: verifiedAt,
-          last_attempt_at: verifiedAt,
-          attempts: attemptCount,
+          attempts: attemptNumber,
+          last_attempt_at: attemptTime,
           updated_at: verifiedAt,
-        }).eq("id", challenge.id).eq("status", "pending");
+        })
+        .eq("id", challenge.id)
+        .eq("status", "pending");
+
       if (challengeUpdateError) {
-        return json({ error: "The account is verified, but the challenge audit record needs a retry." }, 500);
+        console.warn("The account is verified but challenge audit update failed.", { code: challengeUpdateError.code });
       }
 
       await admin.from("notifications").insert({
         user_id: user.id,
-        title: "Free Fire account ownership verified",
-        body: "KOMNIVO verified that you can control the linked Free Fire profile. You may now restore or change your Bio/Signature.",
+        title: "Free Fire ownership verified",
+        body: "KOMNIVO confirmed the exact code in your Free Fire profile Bio. You may now change your Bio back.",
         kind: "verification",
         entity_type: "game_account",
         entity_id: account.id,
@@ -467,16 +651,22 @@ Deno.serve(async (req: Request) => {
       return json({
         status: "verified",
         ownership_status: "verified",
+        verified: true,
         verified_at: verifiedAt,
-        message: "Free Fire account ownership verified successfully. You may now change your Bio/Signature back.",
+        profile,
+        verification_attempts: attemptNumber,
+        attempts_remaining: attemptsRemaining,
+        message: "Free Fire ownership verified successfully. You may restore or change your Bio now.",
       });
     }
 
-    return json({ error: "Unsupported action. Use lookup, status or verify." }, 400);
+    return json({ error: "Unsupported action. Use prepare, status or verify." }, 400);
   } catch (error) {
-    const status = Number((error as { httpStatus?: number }).httpStatus ?? 500);
+    console.error("Free Fire verification handler failed.", {
+      error_type: error instanceof Error ? error.name : "UnknownError",
+    });
     return json({
-      error: error instanceof Error ? error.message : "Game profile request failed.",
-    }, status >= 400 && status < 600 ? status : 500);
+      error: error instanceof Error ? error.message : "Free Fire verification request failed.",
+    }, 500);
   }
 });
