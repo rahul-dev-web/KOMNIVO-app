@@ -34,11 +34,15 @@ class _KomnivoSplashScreenState extends State<KomnivoSplashScreen>
       vsync: this,
       duration: const Duration(milliseconds: 2700),
     )..addStatusListener(_onAnimationStatus);
-    _controller.forward();
 
-    // The HTML splash stays visible until this first Flutter frame is painted.
+    // Start the timeline only after Flutter has actually painted its first
+    // splash frame. This prevents cold-start work from consuming the animation
+    // duration before the player can see it.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       boot_splash.hideBootSplash();
+      debugPrint('KOMNIVO_SPLASH: first frame painted; intro animation started.');
+      _controller.forward();
     });
   }
 
@@ -49,6 +53,7 @@ class _KomnivoSplashScreenState extends State<KomnivoSplashScreen>
   void _onAnimationStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed) return;
     _animationFinished = true;
+    debugPrint('KOMNIVO_SPLASH: intro animation completed.');
 
     // On native platforms, start Supabase/Firebase only after the full intro
     // has been painted. Web already initializes services in parallel from main.
