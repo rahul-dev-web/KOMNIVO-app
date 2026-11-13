@@ -225,8 +225,9 @@ Deno.serve(async (req: Request) => {
         challenge = { ...challenge, status: "expired" };
       }
 
+      const verificationInProgress = challenge?.status === "verifying";
       return json({
-        status: locked ? "locked" : account.ownership_status === "proof_pending" ? "proof_pending" : "linked_unverified",
+        status: locked ? "locked" : verificationInProgress ? "verifying" : account.ownership_status === "proof_pending" ? "proof_pending" : "linked_unverified",
         ownership_status: account.ownership_status,
         account_id: account.id,
         uid: account.uid,
@@ -358,6 +359,17 @@ Deno.serve(async (req: Request) => {
       if (gate.verified === true) {
         return json({ status: "verified", ownership_status: "verified", account_id: account.id, uid });
       }
+      if (gate.in_progress === true) {
+        return json({
+          status: "verifying",
+          ownership_status: "proof_pending",
+          account_id: account.id,
+          uid,
+          verification_attempts: Number(gate.verification_attempts ?? attempts),
+          attempts_remaining: Number(gate.attempts_remaining ?? Math.max(0, 3 - attempts)),
+          message: "A verification request is already running for this Free Fire profile. Wait for it to finish before generating another code or retrying.",
+        });
+      }
       if (gate.locked === true) {
         return json({
           status: "locked",
@@ -450,9 +462,10 @@ Deno.serve(async (req: Request) => {
 
       // The Postgres RPC is the only counter authority. It locks this account,
       // enforces a 15-second retry interval and reserves no more than 3 requests.
-      const { data: gateData, error: gateError } = await admin.rpc("consume_game_verification_attempt", {
+      const { data: gateData, error: gateError } = await admin.rpc("reserve_game_verification_attempt", {
         p_game_account_id: account.id,
         p_user_id: user.id,
+        p_challenge_id: challenge.id,
       });
       if (gateError) return json({ error: "Could not reserve a verification request." }, 500);
 
@@ -462,6 +475,26 @@ Deno.serve(async (req: Request) => {
       }
       if (gate.error === "account_not_found") {
         return json({ error: "This Free Fire account is no longer linked to your profile." }, 404);
+      }
+      if (gate.error === "challenge_not_found" || gate.error === "challenge_not_active") {
+        return json({
+          status: "no_active_code",
+          error: "This verification code is no longer active. Generate a new code before retrying.",
+        }, 409);
+      }
+      if (gate.expired === true) {
+        return json({
+          status: "expired",
+          error: "This code expired after 30 minutes. Generate a new code; previous verification requests are not reset.",
+          attempts_remaining: Number(gate.attempts_remaining ?? 0),
+        });
+      }
+      if (gate.in_progress === true) {
+        return json({
+          status: "verifying",
+          error: "A verification request is already running for this Free Fire profile. Wait for it to finish.",
+          attempts_remaining: Number(gate.attempts_remaining ?? 0),
+        });
       }
       if (gate.throttled === true) {
         return json({
@@ -486,22 +519,6 @@ Deno.serve(async (req: Request) => {
       const attemptNumber = Number(gate.attempt_number);
       const attemptsRemaining = Number(gate.attempts_remaining);
       const attemptTime = new Date().toISOString();
-
-      const { error: challengeAttemptError } = await admin.from("game_account_verification_challenges")
-        .update({
-          attempts: attemptNumber,
-          last_attempt_at: attemptTime,
-          updated_at: attemptTime,
-        })
-        .eq("id", challenge.id)
-        .eq("status", "pending");
-      if (challengeAttemptError) {
-        return json({
-          status: "proof_pending",
-          error: "The verification request was reserved, but its audit record could not be updated. Contact Support before trying again.",
-          attempts_remaining: attemptsRemaining,
-        }, 500);
-      }
 
       let info: RecordData;
       try {
@@ -633,7 +650,7 @@ Deno.serve(async (req: Request) => {
           updated_at: verifiedAt,
         })
         .eq("id", challenge.id)
-        .eq("status", "pending");
+        .eq("status", "verifying");
 
       if (challengeUpdateError) {
         console.warn("The account is verified but challenge audit update failed.", { code: challengeUpdateError.code });
