@@ -22,6 +22,7 @@ class _KomnivoSplashScreenState extends State<KomnivoSplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   bool _animationFinished = false;
+  bool _animationStarted = false;
   bool _navigationScheduled = false;
 
   @override
@@ -38,15 +39,32 @@ class _KomnivoSplashScreenState extends State<KomnivoSplashScreen>
       animationBehavior: AnimationBehavior.preserve,
     )..addStatusListener(_onAnimationStatus);
 
-    // Start the timeline only after Flutter has actually painted its first
-    // splash frame. This prevents cold-start work from consuming the animation
-    // duration before the player can see it.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      boot_splash.hideBootSplash();
-      debugPrint('KOMNIVO_SPLASH: first frame painted; intro animation started.');
-      _controller.forward();
-    });
+    // A post-frame callback only means Flutter finished building/painting the
+    // widget tree. It does not mean Android's Flutter surface has received and
+    // rasterized a visible frame. On Android, starting the ticker here can make
+    // the whole 2.7-second intro elapse while the surface is still zero-sized
+    // or waiting for its first GPU buffer. Wait for the engine's first
+    // rasterized frame before starting the visible animation.
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _startIntro();
+      });
+    } else {
+      unawaited(_startIntroAfterFirstRasterizedFrame());
+    }
+  }
+
+  Future<void> _startIntroAfterFirstRasterizedFrame() async {
+    await WidgetsBinding.instance.waitUntilFirstFrameRasterized;
+    _startIntro();
+  }
+
+  void _startIntro() {
+    if (!mounted || _animationStarted) return;
+    _animationStarted = true;
+    boot_splash.hideBootSplash();
+    debugPrint('KOMNIVO_SPLASH: first frame rasterized; intro animation started.');
+    _controller.forward();
   }
 
   @override
