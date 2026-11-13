@@ -104,6 +104,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       final status = result['status']?.toString() ?? 'proof_pending';
       final locked = status == 'locked';
+      final verifying = status == 'verifying';
       final verified = status == 'verified';
 
       setState(() {
@@ -123,7 +124,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ? 'This Free Fire account is already verified.'
                 : locked
                     ? 'Contact KOMNIVO Support.'
-                    : 'Verification code is ready.');
+                    : verifying
+                        ? 'A verification request is already running. Wait for it to finish.'
+                        : 'Verification code is ready.');
       });
 
       showMessage(
@@ -132,7 +135,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ? 'This Free Fire account is already verified.'
             : locked
                 ? 'Three verification requests used. Contact KOMNIVO Support.'
-                : 'Code generated. Replace your complete Free Fire Bio with this exact code only.',
+                : verifying
+                    ? 'Verification is already running. Wait for the current request to finish.'
+                    : 'Code generated. Replace your complete Free Fire Bio with this exact code only.',
       );
     } catch (error) {
       if (mounted) {
@@ -248,8 +253,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return value is num ? value.toInt() : 3;
   }
 
+  bool get _isVerifying =>
+      _verification?['status'] == 'verifying' ||
+      _verification?['challenge_status'] == 'verifying';
+
   bool get _isLocked =>
-      _verification?['status'] == 'locked' || _attemptsRemaining <= 0;
+      _verification?['status'] == 'locked' ||
+      (_attemptsRemaining <= 0 && !_isVerified && !_isVerifying);
 
   bool get _hasVisibleActiveCode {
     if (_challengeCode == null || _challengeCode!.isEmpty) return false;
@@ -266,7 +276,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'not_linked';
     final verified = status == 'verified' ||
         verification['ownership_status'] == 'verified';
-    final locked = status == 'locked' || _isLocked;
+    final verifying = status == 'verifying' || _isVerifying;
+    final locked = status == 'locked' || (_isLocked && !verifying);
     final expired = status == 'expired' ||
         verification['challenge_status'] == 'expired';
     final remaining = _attemptsRemaining;
@@ -279,17 +290,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final title = verified
         ? 'Free Fire Ownership Verified'
-        : locked
-            ? 'Verification Attempts Used'
-            : 'Ownership Verification Pending';
+        : verifying
+            ? 'Verification in Progress'
+            : locked
+                ? 'Verification Attempts Used'
+                : 'Ownership Verification Pending';
 
     final message = verified
         ? 'KOMNIVO confirmed the exact code in the complete Bio returned for this UID. You may now restore or edit your previous Bio.'
-        : locked
-            ? 'You have used all three Free Fire verification requests for this UID. Contact KOMNIVO Support for further verification. Generating another code will not reset the limit.'
-            : expired
-                ? 'This code expired after 30 minutes. Generate a new code; your verification-attempt count will remain unchanged.'
-                : 'The code is ready. Replace the complete in-game Bio with only this code, tick the confirmation checkbox and tap Verify. UID profile lookup and Bio matching happen together in one provider request.';
+        : verifying
+            ? 'A single Free Fire profile request is currently checking your Bio. Do not generate another code or start another check. Wait for this request to finish.'
+            : locked
+                ? 'You have used all three Free Fire verification requests for this UID. Contact KOMNIVO Support for further verification. Generating another code will not reset the limit.'
+                : expired
+                    ? 'This code expired after 30 minutes. Generate a new code; your verification-attempt count will remain unchanged.'
+                    : 'The code is ready. Replace the complete in-game Bio with only this code, tick the confirmation checkbox and tap Verify. UID profile lookup and Bio matching happen together in one provider request.';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -301,7 +316,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Icon(
-            verified ? Icons.verified_user : Icons.hourglass_top_rounded,
+            verified
+                ? Icons.verified_user
+                : verifying
+                    ? Icons.sync_rounded
+                    : Icons.hourglass_top_rounded,
             color: accent,
           ),
           const SizedBox(width: 9),
@@ -338,7 +357,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _challengePanel() {
     final code = _challengeCode;
-    if (code == null || code.isEmpty || _isVerified || _isLocked) {
+    if (code == null || code.isEmpty || _isVerified || _isLocked || _isVerifying) {
       return const SizedBox.shrink();
     }
 
@@ -521,6 +540,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         !_loading &&
         !_isLocked &&
         !_isVerified &&
+        !_isVerifying &&
         (!_hasVisibleActiveCode || !sameUid);
 
     return ListView(
