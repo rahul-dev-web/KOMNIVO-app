@@ -25,6 +25,8 @@ The authoritative product scope, rules, decisions and complete delivery blueprin
 - `supabase/functions/` — authenticated Edge Functions, FCM webhook delivery and provider adapters.
 - `tool/` — local/CI scripts that generate Flutter Android and Web scaffolding (including the public policy pages), plus the pinned Flutter builder used by Cloudflare Pages.
 
+**Important for local Android testing:** `android/` and `web/` are generated/ignored folders, not the source of truth. After pulling changes that touch `native/android/` or the platform bootstrap scripts, run ` .\tool\bootstrap-platforms.ps1` from the repository root before `flutter run`. `flutter clean` does not copy native resources into the generated Android project. The bootstrap script verifies that the KOMNIVO launcher resources are active and that Flutter's default launcher PNGs have been removed.
+
 ## Local setup (Windows)
 
 Requirements: Flutter stable (3.44.8 or newer recommended), Android Studio/Android SDK, and JDK 17 for Android builds.
