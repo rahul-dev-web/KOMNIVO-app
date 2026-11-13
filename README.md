@@ -16,7 +16,6 @@ The authoritative product scope, rules, decisions and complete delivery blueprin
 - `lib/features/compete` — event discovery, registration, public match schedule, match check-in, private room credentials and player result workflow.
 - `lib/features/teams` — team profiles, invitations and roster membership.
 - `lib/features/profile` — player identity, server-side Free Fire UID lookup and player-facing ownership-verification status.
-- `lib/features/support` — platform Support-only queue for 48-player solo-room ownership verification; separate from community/event organisers.
 - `lib/features/splash` and `lib/core/komnivo_logo.dart` — shared animated launch screen and repository brand mark for Android and Web.
 - `lib/features/organizer` — event publishing, approval queue, roster lock, group generation, match operations, room credentials, disputes, result approval and standings.
 - `lib/features/liveops` — same-phone Android capture controls and local OCR preview.
