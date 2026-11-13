@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -47,6 +48,10 @@ class _KomnivoSplashScreenState extends State<KomnivoSplashScreen>
   void _onAnimationStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed) return;
     _animationFinished = true;
+
+    // Start Supabase/Firebase only after the full intro has been painted.
+    // The splash remains on-screen as the services initialize.
+    unawaited(StartupCoordinator.initialize());
     _tryNavigate();
   }
 
@@ -148,6 +153,44 @@ class _KomnivoSplashScreenState extends State<KomnivoSplashScreen>
                       ),
                     ),
                     const SizedBox(height: 24),
+                    ValueListenableBuilder<String?>(
+                      valueListenable: StartupCoordinator.error,
+                      builder: (context, message, _) {
+                        return ValueListenableBuilder<bool>(
+                          valueListenable: StartupCoordinator.ready,
+                          builder: (context, isReady, _) {
+                            if (progress < 1.0 || isReady || message != null) {
+                              return const SizedBox.shrink();
+                            }
+                            return Column(
+                              children: [
+                                SizedBox(
+                                  width: 52,
+                                  height: 3,
+                                  child: LinearProgressIndicator(
+                                    minHeight: 3,
+                                    backgroundColor: Color(0xFF273449),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      KomnivoTheme.cyan,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'CONNECTING SERVICES',
+                                  style: TextStyle(
+                                    color: KomnivoTheme.muted,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 2.2,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    ),
                     ValueListenableBuilder<String?>(
                       valueListenable: StartupCoordinator.error,
                       builder: (context, message, _) {
