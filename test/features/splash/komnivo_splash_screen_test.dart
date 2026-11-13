@@ -14,6 +14,7 @@ void main() {
       const MaterialApp(
         home: KomnivoSplashScreen(
           destination: Scaffold(body: Text('Destination')),
+          firstFrameReadyForTest: () async {},
         ),
       ),
     );
