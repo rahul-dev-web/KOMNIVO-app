@@ -33,6 +33,9 @@ class _KomnivoSplashScreenState extends State<KomnivoSplashScreen>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2700),
+      // Keep a visible, short-form intro even when Android has reduced-motion
+      // enabled; didChangeDependencies selects the accessible shorter duration.
+      animationBehavior: AnimationBehavior.preserve,
     )..addStatusListener(_onAnimationStatus);
 
     // Start the timeline only after Flutter has actually painted its first
@@ -44,6 +47,15 @@ class _KomnivoSplashScreenState extends State<KomnivoSplashScreen>
       debugPrint('KOMNIVO_SPLASH: first frame painted; intro animation started.');
       _controller.forward();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    _controller.duration = Duration(
+      milliseconds: reduceMotion ? 650 : 2700,
+    );
   }
 
   void _onStartupChanged() {
