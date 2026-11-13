@@ -11,9 +11,9 @@ void main() {
 
   testWidgets('splash paints before animation and delays startup navigation', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
         home: KomnivoSplashScreen(
-          destination: Scaffold(body: Text('Destination')),
+          destination: const Scaffold(body: Text('Destination')),
           firstFrameReadyForTest: () async {},
         ),
       ),
