@@ -10,6 +10,13 @@ cp -R "$TMP/platforms/android" "$ROOT/android"
 cp -R "$TMP/platforms/web" "$ROOT/web"
 cp "$ROOT/native/android/app/src/main/AndroidManifest.xml" "$ROOT/android/app/src/main/AndroidManifest.xml"
 mkdir -p "$ROOT/android/app/src/main/res"
+
+# flutter create ships stock Flutter launcher PNGs in density-specific mipmap
+# folders. They outrank our density-independent KOMNIVO XML launcher resources.
+for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+  rm -f "$ROOT/android/app/src/main/res/mipmap-$density"/ic_launcher*
+done
+
 cp -R "$ROOT/native/android/app/src/main/res/." "$ROOT/android/app/src/main/res/"
 mkdir -p "$ROOT/android/app/src/main/kotlin/in/komnivo/app"
 cp "$ROOT"/native/android/app/src/main/kotlin/in/komnivo/app/*.kt "$ROOT/android/app/src/main/kotlin/in/komnivo/app/"
