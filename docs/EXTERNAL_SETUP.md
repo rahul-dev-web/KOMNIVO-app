@@ -22,8 +22,8 @@ The project is in Singapore because that is the region selected in the Supabase 
 
 ### Backend work already completed
 
-- Eleven database migrations are applied, including the least-privilege Data API grants migration.
-- Forty-three application tables exist in the `public` schema, and all forty-three have Row Level Security enabled.
+- Fourteen database migrations are applied, including the Bio challenge, challenge-table RLS guard and three-attempt verification controls.
+- Forty-four application tables exist in the `public` schema, and all forty-four have Row Level Security enabled.
 - Anonymous table access is limited to reading the active `games` catalogue. Application tables are granted to authenticated users only, subject to RLS and column-level restrictions.
 - Default table, sequence and function privileges for new `public` objects created by the postgres migration owner have been tightened. Future migrations must grant only the exact privileges they need.
 - Both Storage buckets exist and are private: `community-media` and `match-evidence` (10 MB per file; JPG, PNG, WebP and PDF).
@@ -291,11 +291,11 @@ The release APK currently builds in CI, but Play Store upload signing is not yet
 - [ ] Copy the Supabase publishable key into local run/build values and GitHub Actions variable.
 - [ ] Confirm `public` is exposed in Supabase Data API settings.
 - [ ] Enable Google provider in Supabase and configure the Google OAuth Web Client.
-- [ ] Add Firebase project/app configuration and FCM server credentials.
+- [x] Register Firebase Android/Web apps, configure direct FCM HTTP v1 credentials and the Supabase notifications INSERT webhook; Android, Desktop Chrome and iPhone Home Screen push have been device-tested.
 - [ ] Create the Supabase notification INSERT webhook with the matching private header.
 - [ ] Create LiveKit Cloud project and save its three server secrets (when voice rooms are ready to test).
-- [ ] Review/approve Free Fire provider terms and add its API key (when UID sync is ready to test).
-- [ ] Connect `rahul-dev-web/KOMNIVO-app` to Cloudflare Pages and complete the first `*.pages.dev` deployment.
+- [ ] Confirm the Free Fire provider key and provider terms/quotas. Run the real India Bio round-trip test after confirming the key is active.
+- [x] Connect `rahul-dev-web/KOMNIVO-app` to Cloudflare Pages; production is deployed at `https://komnivo-app.pages.dev/`. Remaining: custom domain and Google Search Console/OAuth branding verification.
 - [ ] Configure Android upload signing and Play Console/legal requirements before public release.
 
 ## 11. Security and implementation notes

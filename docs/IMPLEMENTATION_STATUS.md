@@ -14,7 +14,7 @@ Connected Supabase project:
 - Database: PostgreSQL 17.11
 
 Verified on the project:
-- 13 migrations applied successfully, including the Free Fire Bio challenge schema and its explicit deny-all client RLS policy.
+- 14 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy and profile-wide verification-attempt counter/RPCs.
 - 44 application tables in `public`; all 44 have RLS enabled.
 - Least-privilege grants applied: anonymous users can read only the active `games` catalogue; authenticated access is granted per table and column under RLS. Future `public` tables, sequences and functions created by the postgres migration owner no longer receive broad anon/authenticated default privileges.
 - Two private Storage buckets: `community-media` and `match-evidence`, both limited to 10 MB and JPG/PNG/WebP/PDF.
@@ -26,9 +26,9 @@ Verified on the project:
 - Flutter app shell, responsive dark theme, Google sign-in flow and local preview.
 - Community discovery/create/join entry points and default channels.
 - Direct/group conversation creation, persisted realtime text messages, replies, emoji reactions, secure attachments, local message search and LiveKit voice-room token issuance.
-- Notification centre with read states and notification preferences; `notification-push` Edge Function v8 is deployed ACTIVE and sends FCM HTTP v1 directly through a narrowly scoped Google OAuth refresh token. Supabase secrets and the `public.notifications` INSERT webhook are configured. Android push is verified on Vivo Y20G (foreground Snackbar, background system notification and tap navigation); Desktop Web Push is verified on Windows Chrome. UI styling of the foreground Snackbar is deferred to the later UI-polishing pass.
+- Notification centre with read states and preferences; `notification-push` Edge Function v8 is ACTIVE and sends FCM HTTP v1 directly through a narrowly scoped Google OAuth refresh token. Supabase secrets and the `public.notifications` INSERT webhook are configured. Android push is verified on Vivo Y20G (foreground, background and tap navigation), Desktop Web Push is verified on Windows Chrome, and iOS Home Screen Web Push was verified on a physical iPhone on 13 November 2026. Foreground Snackbar styling remains a later UI-polishing task.
 - Player profile and server-side Free Fire UID lookup adapter.
-- Free Fire ownership verification uses a one-time profile Bio/Signature challenge instead of the 48-player solo-room queue. UID lookup fetches the public profile and generates a 128-bit `KOMNIVO-...` code; the player must replace the entire in-game Bio/Signature with only that code, tick the confirmation checkbox and request verification. The server re-fetches `/info`, compares the exact `socialInfo.signature` value using a SHA-256 hash, enforces a 30-minute expiry, five attempts and 15-second retry spacing, then marks the game account `verified`. Plaintext codes are returned once and never stored; raw Bio/signature is excluded from stored profile snapshots. Both migrations (`202611130001` and `202611130002`) are applied to the live project; `sync-freefire-profile` Edge Function v7 is ACTIVE with JWT verification enabled. A real Free Fire India Bio round-trip test remains outstanding.
+- Free Fire ownership verification uses a one-time Bio/Signature code. Entering a UID and generating the code make no Free Fire provider request. The player replaces the complete in-game Bio with only the exact 128-bit `KOMNIVO-...` code, checks the acknowledgement box, then taps Verify. That single Verify action makes exactly one provider `/info` request; its `basicInfo`, `clanBasicInfo` and `profileInfo` fields populate the game profile while the exact `socialInfo.signature` string is SHA-256 checked against the challenge hash. There is no separate `/stats` request in the verification flow. A database-locked profile-wide counter permits at most three provider verification requests across challenge regeneration, with a 15-second minimum interval. After three requests, the player must contact KOMNIVO Support. Codes expire after 30 minutes; plaintext codes and raw Bio/signature are not stored. Migrations `202611130001`, `202611130002` and `202611130003` are applied; `sync-freefire-profile` Edge Function v8 is ACTIVE with JWT verification. A real Free Fire India Bio round-trip test remains outstanding.
 - UID refresh integrity: the profile sync preserves an existing `ownership_status` (so a previously verified account remains verified) and rejects an in-place UID/region swap. Public profile refresh never changes ownership state; a separate controlled account-relink flow is required for any future UID change.
 - Team creation, invitations and membership acceptance.
 - Event discovery/publishing, team registration, match schedule, standings, check-in, time-released room credentials, evidence upload, opponent confirmation/dispute and result submission.
@@ -41,11 +41,11 @@ Verified on the project:
 ## Still requires owner-controlled external setup
 
 - Confirm `FREEFIRE_API_KEY` is configured as a Supabase Edge Function secret and that the chosen provider plan/usage terms permit KOMNIVO's intended use. Do not expose the key in Flutter, GitHub or this chat.
-- Test UID lookup → one-time code → full Bio replacement → checkbox-gated verify → exact API signature match → Verified notification → Bio restoration. Also test expired/replaced codes, incorrect Bio, provider cache delay, five-attempt lock, duplicate UID claims and preservation of an already-verified account.
+- Test UID entry → code generation with zero Free Fire provider requests → full Bio replacement → checkbox → one `/info` request for both profile mapping and Bio check → exact `socialInfo.signature` match → Verified notification → Bio restoration. Also test mismatched Bio, provider cache delay, 15-second throttling, three-request lock across regenerated codes, code expiry, duplicate UID claims and preservation of an already-verified account.
 
 - Google Cloud OAuth Web Client ID/Secret and enabling Google provider in Supabase Auth.
 - Active Supabase publishable key supplied as local build value and GitHub Actions variable.
-- Firebase Android and Web apps are registered. Direct FCM sender credentials, Supabase Edge Function secrets and the notification INSERT webhook are configured. Android test delivery has been observed on the Vivo Y20G. Browser delivery still needs Cloudflare Pages Firebase Web config/VAPID build variables and end-to-end browser QA.
+- Firebase Android and Web apps are registered. Direct FCM sender credentials, Supabase Edge Function secrets and the notification INSERT webhook are configured. Android, Windows Chrome and iOS Home Screen Web Push have passed end-to-end device tests. Broader device/browser coverage and foreground Snackbar visual polish remain.
 - LiveKit Cloud project URL/API key/API secret if voice rooms are to be tested.
 - Free Fire provider API key and confirmation of current terms, quotas and commercial-use permissions.
 - Cloudflare Pages deployment of the public homepage/policy pages and Google Search Console domain ownership verification (custom domain may be required; do not assume the shared `pages.dev` hostname will pass Google OAuth verification).
@@ -57,7 +57,7 @@ See [EXTERNAL_SETUP.md](EXTERNAL_SETUP.md) for the owner configuration walkthrou
 
 - No OpenAI, Groq, Gemini, Anthropic or other hosted LLM API is wired into this repository. Do not provision an AI API key yet.
 - Rulebook-to-event AI drafting remains product engineering work.
-- Desktop Browser Web Push is verified end-to-end with the existing isolated Firebase Messaging worker, user-initiated permission/token flow and platform-aware token registration. iOS Home Screen PWA support is being prepared separately with an iOS-compatible manifest, Home Screen metadata, app icons and an install-aware permission flow; physical iPhone delivery still requires validation.
+- Desktop Browser Web Push and iOS Home Screen Web Push are verified end-to-end with the isolated Firebase Messaging worker, user-initiated permission/token flow and platform-aware token registration. Physical iPhone delivery was confirmed on 13 November 2026; wider iOS device coverage remains QA.
 - Video calls and member-initiated screen/stream sharing require further LiveKit/WebRTC UI, permission and device/browser work.
 - LiveOps screen-state classification, lobby/result extraction and low-end-device benchmarking remain incomplete.
 - Full moderation queue, self-service account deletion/retention workflows, and legal review of the initial public Privacy Policy/Terms still need completion.
