@@ -58,7 +58,7 @@ function withoutPublicBio(raw: RecordData): RecordData {
 function providerHeaders(apiKey: string): HeadersInit {
   return {
     "x-api-key": apiKey,
-    "User-Agent": "KOMNIVO/1.0 (esports community app)",
+    "User-Agent": "KOMNIVO/1.0 (+https://komnivo-app.pages.dev)",
   };
 }
 
