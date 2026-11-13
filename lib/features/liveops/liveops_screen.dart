@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/komnivo_theme.dart';
@@ -21,7 +20,6 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
   static const _methods = MethodChannel('in.komnivo.app/liveops');
   static const _events = EventChannel('in.komnivo.app/liveops-events');
   final _matchId = TextEditingController();
-  final _tts = FlutterTts();
   StreamSubscription<dynamic>? _subscription;
   String _state = 'Idle';
   String _latestText = 'The assistant has not started observing this screen.';
@@ -34,6 +32,25 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
   void initState() {
     super.initState();
     _matchId.text = widget.initialMatchId ?? '';
+  }
+
+  Future<void> _speak(String text) async {
+    if (widget.preview || !_voice || text.trim().isEmpty) return;
+    try {
+      await _methods.invokeMethod<bool>('speak', {'text': text});
+    } on PlatformException catch (error) {
+      if (mounted) {
+        showMessage(context, error.message ?? 'Voice guidance is unavailable.');
+      }
+    }
+  }
+
+  Future<void> _stopVoice() async {
+    try {
+      await _methods.invokeMethod<void>('stopSpeaking');
+    } catch (_) {
+      // The native activity may already be detached during route teardown.
+    }
   }
 
   Future<void> _start() async {
@@ -54,7 +71,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         if (mounted) setState(() { _capturing = false; _state = 'Capture error'; _latestText = error.toString(); });
       });
       setState(() { _capturing = true; _state = 'Capturing'; });
-      if (_voice) await _tts.speak('LiveOps is active. Screen observation has started.');
+      if (_voice) await _speak('LiveOps is active. Screen observation has started.');
     } on PlatformException catch (error) {
       if (mounted) showMessage(context, error.message ?? error.code);
     } catch (error) {
@@ -86,7 +103,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
     if (text == _lastObservation) return;
     _lastObservation = text;
 
-    if (_voice) await _tts.speak('Screen text detected. Please review the visible information.');
+    if (_voice) await _speak('Screen text detected. Please review the visible information.');
   }
 
   Future<void> _stop() async {
@@ -99,7 +116,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
           'ended_at': DateTime.now().toUtc().toIso8601String(),
         }).eq('id', _sessionId!);
       }
-      await _tts.stop();
+      await _methods.invokeMethod<void>('stopSpeaking');
     } catch (error) {
       if (mounted) showMessage(context, error.toString());
     } finally {
@@ -110,7 +127,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
   @override
   void dispose() {
     _subscription?.cancel();
-    _tts.stop();
+    unawaited(_stopVoice());
     _matchId.dispose();
     super.dispose();
   }
