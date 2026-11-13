@@ -2,8 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/boot_splash.dart' as boot_splash;
 import '../../core/komnivo_logo.dart';
 import '../../core/komnivo_theme.dart';
+import '../../core/startup_coordinator.dart';
 
 class KomnivoSplashScreen extends StatefulWidget {
   const KomnivoSplashScreen({super.key, required this.destination});
@@ -17,19 +19,45 @@ class KomnivoSplashScreen extends StatefulWidget {
 class _KomnivoSplashScreenState extends State<KomnivoSplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  bool _animationFinished = false;
+  bool _navigationScheduled = false;
 
   @override
   void initState() {
     super.initState();
+    StartupCoordinator.ready.addListener(_onStartupChanged);
+    StartupCoordinator.error.addListener(_onStartupChanged);
+
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 2700),
     )..addStatusListener(_onAnimationStatus);
     _controller.forward();
+
+    // The HTML splash stays visible until this first Flutter frame is painted.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      boot_splash.hideBootSplash();
+    });
+  }
+
+  void _onStartupChanged() {
+    _tryNavigate();
   }
 
   void _onAnimationStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed) return;
+    _animationFinished = true;
+    _tryNavigate();
+  }
+
+  void _tryNavigate() {
+    if (!_animationFinished ||
+        !StartupCoordinator.ready.value ||
+        _navigationScheduled) {
+      return;
+    }
+
+    _navigationScheduled = true;
     Future<void>.delayed(const Duration(milliseconds: 250), () {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
@@ -40,6 +68,8 @@ class _KomnivoSplashScreenState extends State<KomnivoSplashScreen>
 
   @override
   void dispose() {
+    StartupCoordinator.ready.removeListener(_onStartupChanged);
+    StartupCoordinator.error.removeListener(_onStartupChanged);
     _controller
       ..removeStatusListener(_onAnimationStatus)
       ..dispose();
@@ -116,6 +146,30 @@ class _KomnivoSplashScreenState extends State<KomnivoSplashScreen>
                           letterSpacing: 3.0,
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 24),
+                    ValueListenableBuilder<String?>(
+                      valueListenable: StartupCoordinator.error,
+                      builder: (context, message, _) {
+                        if (message == null) return const SizedBox.shrink();
+                        return Column(
+                          children: [
+                            Text(
+                              message,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: KomnivoTheme.muted,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: StartupCoordinator.initialize,
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -47,7 +49,9 @@ class _AuthGateState extends State<_AuthGate> {
         if (userId != null && userId != _lastSyncedUser) {
           _lastSyncedUser = userId;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            PushService.syncCurrentToken();
+            // Ask for notification permission only after the app is ready and
+            // the user has an authenticated KOMNIVO session.
+            unawaited(PushService.requestPermissionAndSyncToken());
           });
         }
         if (session == null) {

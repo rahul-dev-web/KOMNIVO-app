@@ -15,32 +15,20 @@ class PushService {
   static bool _initialized = false;
   static StreamSubscription<String>? _tokenRefreshSubscription;
 
-  static Future<void> initialize() async {
+  /// Registers message listeners without showing a permission prompt or
+  /// performing network/token synchronization during app startup.
+  static void initialize() {
     if (_initialized) return;
     _initialized = true;
 
-    // Android handles background messages through the registered Dart handler.
-    // Browser background delivery is handled by firebase-messaging-sw.js.
+    if (!AppConfig.firebaseReady) return;
+
     if (!kIsWeb) {
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
     }
 
     FirebaseMessaging.onMessage.listen(_showForegroundMessage);
 
-    // Browser permission must be requested from an explicit user action.
-    // Do not trigger the browser permission prompt during page startup.
-    if (!kIsWeb) {
-      await FirebaseMessaging.instance.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-      await syncCurrentToken();
-    }
-
-    // FCM rotates registration tokens periodically. Keep the latest token
-    // associated with the current signed-in KOMNIVO account.
-    // ignore: deprecated_member_use
     _tokenRefreshSubscription ??=
         FirebaseMessaging.instance.onTokenRefresh.listen((token) {
       unawaited(saveToken(token, platform: _currentPlatform));
@@ -78,8 +66,30 @@ class PushService {
     );
   }
 
+  /// Called after authentication, not during the startup splash.
+  static Future<void> requestPermissionAndSyncToken() async {
+    if (!AppConfig.firebaseReady) return;
+
+    if (!kIsWeb) {
+      final settings = await FirebaseMessaging.instance.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      if (settings.authorizationStatus != AuthorizationStatus.authorized &&
+          settings.authorizationStatus != AuthorizationStatus.provisional) {
+        return;
+      }
+    }
+
+    await syncCurrentToken();
+  }
+
   static Future<void> syncCurrentToken() async {
-    if (Supabase.instance.client.auth.currentUser == null) return;
+    if (!AppConfig.firebaseReady ||
+        Supabase.instance.client.auth.currentUser == null) {
+      return;
+    }
 
     final messaging = FirebaseMessaging.instance;
     String? token;
@@ -134,8 +144,8 @@ class PushService {
       throw StateError('Browser notification permission was not granted.');
     }
 
-    // firebase_messaging 17.x supports an isolated service-worker path so
-    // FCM does not take over Flutter's own root-scope PWA service worker.
+    // Firebase Messaging uses its isolated worker so it does not take over
+    // Flutter's root-scope PWA service worker.
     // ignore: deprecated_member_use
     final token = await messaging.getToken(
       vapidKey: AppConfig.firebaseVapidKey,
