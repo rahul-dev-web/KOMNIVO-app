@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/boot_splash.dart' as boot_splash;
@@ -49,9 +50,11 @@ class _KomnivoSplashScreenState extends State<KomnivoSplashScreen>
     if (status != AnimationStatus.completed) return;
     _animationFinished = true;
 
-    // Start Supabase/Firebase only after the full intro has been painted.
-    // The splash remains on-screen as the services initialize.
-    unawaited(StartupCoordinator.initialize());
+    // On native platforms, start Supabase/Firebase only after the full intro
+    // has been painted. Web already initializes services in parallel from main.
+    if (!kIsWeb) {
+      unawaited(StartupCoordinator.initialize());
+    }
     _tryNavigate();
   }
 
