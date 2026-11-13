@@ -216,28 +216,37 @@ class KomnivoRepository {
     return client.from('messages').stream(primaryKey: ['id']).eq('channel_id', channelId).order('created_at');
   }
 
-  Future<Map<String, dynamic>> syncFreeFire(String uid, {String region = 'ind'}) async {
+  Future<Map<String, dynamic>> prepareFreeFireVerification(
+    String uid, {
+    String region = 'ind',
+  }) async {
     final response = await client.functions.invoke('sync-freefire-profile', body: {
-      'action': 'lookup',
+      'action': 'prepare',
       'uid': uid.trim(),
       'region': region,
     });
+    final data = response.data is Map
+        ? Map<String, dynamic>.from(response.data as Map)
+        : <String, dynamic>{};
     if (response.status < 200 || response.status >= 300) {
-      final data = response.data;
-      final message = data is Map ? data['error']?.toString() : null;
-      throw Exception(message ?? 'Profile lookup failed (' + response.status.toString() + ').');
+      throw Exception(data['error']?.toString() ??
+          'Could not prepare verification code (' + response.status.toString() + ').');
     }
-    return Map<String, dynamic>.from(response.data as Map);
+    return data;
   }
 
   Future<Map<String, dynamic>> myGameAccountVerification() async {
     final response = await client.functions.invoke('sync-freefire-profile', body: {
       'action': 'status',
     });
+    final data = response.data is Map
+        ? Map<String, dynamic>.from(response.data as Map)
+        : <String, dynamic>{};
     if (response.status < 200 || response.status >= 300) {
-      throw Exception('Could not load Free Fire ownership status (' + response.status.toString() + ').');
+      throw Exception(data['error']?.toString() ??
+          'Could not load Free Fire ownership status (' + response.status.toString() + ').');
     }
-    return Map<String, dynamic>.from(response.data as Map);
+    return data;
   }
 
   Future<Map<String, dynamic>> verifyFreeFireOwnership({
@@ -252,10 +261,14 @@ class KomnivoRepository {
     final data = response.data is Map
         ? Map<String, dynamic>.from(response.data as Map)
         : <String, dynamic>{};
+
+    // 429 is a server-side retry throttle and does not consume one of the
+    // three provider attempts. Return its structured status to the UI.
+    if (response.status == 429) return data;
+
     if (response.status < 200 || response.status >= 300) {
-      final message = data['error']?.toString() ??
-          'Ownership verification failed (' + response.status.toString() + ').';
-      throw Exception(message);
+      throw Exception(data['error']?.toString() ??
+          'Ownership verification failed (' + response.status.toString() + ').');
     }
     return data;
   }
