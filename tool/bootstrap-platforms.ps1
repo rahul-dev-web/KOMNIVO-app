@@ -97,6 +97,34 @@ try {
   }
   Set-Content -Path $WorkerFile -Value $Worker -Encoding utf8
 
+  # Verify that the generated Android project actually points to the
+  # custom launcher resources and that generated Flutter launcher PNGs are gone.
+  $Manifest = Get-Content (Join-Path $Root "android/app/src/main/AndroidManifest.xml") -Raw
+  if ($Manifest -notmatch 'android:icon="@mipmap/ic_launcher"' -or
+      $Manifest -notmatch 'android:roundIcon="@mipmap/ic_launcher"') {
+    throw "Android manifest is not configured for the KOMNIVO launcher icon."
+  }
+  foreach ($Required in @(
+    "mipmap/ic_launcher.xml",
+    "mipmap-anydpi-v26/ic_launcher.xml",
+    "drawable/komnivo_launcher_foreground.xml",
+    "drawable-nodpi/ic_launcher.png"
+  )) {
+    if (-not (Test-Path (Join-Path $ResourceTarget $Required))) {
+      throw "Missing KOMNIVO Android launcher resource: $Required"
+    }
+  }
+  foreach ($Density in @("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi")) {
+    $GeneratedMipmap = Join-Path $ResourceTarget ("mipmap-" + $Density)
+    if (Test-Path $GeneratedMipmap) {
+      $Stale = Get-ChildItem -Path $GeneratedMipmap -File -Filter "ic_launcher*"
+      if ($Stale) {
+        throw "Generated Flutter launcher icon still exists in $GeneratedMipmap"
+      }
+    }
+  }
+
+  Write-Host "KOMNIVO launcher icon resources verified in android/app/src/main/res."
   Write-Host "Android, Web app, public pages and isolated FCM worker are ready."
 } finally {
   if (Test-Path $Temp) { Remove-Item $Temp -Recurse -Force }
