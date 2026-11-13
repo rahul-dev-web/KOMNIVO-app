@@ -187,6 +187,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final verified = status == 'verified' || result['verified'] == true;
       final locked = status == 'locked';
       final expired = status == 'expired';
+      final noActiveCode = status == 'no_active_code';
       final throttled = status == 'throttled';
 
       setState(() {
@@ -213,11 +214,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _bioConfirmed = false;
           _syncMessage = result['error']?.toString() ??
               'All three verification requests are used. Contact KOMNIVO Support.';
-        } else if (expired) {
+        } else if (expired || noActiveCode) {
           _challengeCode = null;
+          _challengeExpiresAt = null;
           _bioConfirmed = false;
           _syncMessage = result['error']?.toString() ??
-              'The code expired. Generate a new code; attempts will not reset.';
+              'There is no active code. Generate a new code; verification attempts will not reset.';
         } else if (throttled) {
           _syncMessage = result['error']?.toString() ??
               'Please wait before trying again. No verification request was consumed.';
@@ -279,7 +281,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final verifying = status == 'verifying' || _isVerifying;
     final locked = status == 'locked' || (_isLocked && !verifying);
     final expired = status == 'expired' ||
-        verification['challenge_status'] == 'expired';
+        status == 'no_active_code' ||
+        verification['challenge_status'] == 'expired' ||
+        (_challengeExpiresAt != null &&
+            !_challengeExpiresAt!.isAfter(DateTime.now()));
     final remaining = _attemptsRemaining;
 
     final accent = verified
@@ -357,7 +362,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _challengePanel() {
     final code = _challengeCode;
-    if (code == null || code.isEmpty || _isVerified || _isLocked || _isVerifying) {
+    if (code == null ||
+        code.isEmpty ||
+        _isVerified ||
+        _isLocked ||
+        _isVerifying ||
+        (_challengeExpiresAt != null &&
+            !_challengeExpiresAt!.isAfter(DateTime.now()))) {
       return const SizedBox.shrink();
     }
 
