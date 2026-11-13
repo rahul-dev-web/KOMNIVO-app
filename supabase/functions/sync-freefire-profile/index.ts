@@ -1,5 +1,22 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { corsHeaders, json, readBearer } from "../_shared/http.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function readBearer(req: Request): string | null {
+  const value = req.headers.get("Authorization");
+  return value?.startsWith("Bearer ") ? value : null;
+}
 
 const PROVIDER = "Free Fire Community API (unofficial)";
 const DEFAULT_BASE_URL = "https://developers.freefirecommunity.com/api/v1";
