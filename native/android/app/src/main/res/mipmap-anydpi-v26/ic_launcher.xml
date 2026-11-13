@@ -3,7 +3,7 @@
     <background android:drawable="@color/komnivo_splash_background" />
     <foreground>
         <inset
-            android:drawable="@drawable/ic_launcher"
-            android:inset="18%" />
+            android:drawable="@drawable/komnivo_launcher_foreground"
+            android:inset="12%" />
     </foreground>
 </adaptive-icon>
