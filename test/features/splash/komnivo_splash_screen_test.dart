@@ -43,6 +43,7 @@ void main() {
     expect(StartupCoordinator.ready.value, isTrue);
 
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
     expect(find.text('Destination'), findsOneWidget);
   });
 }
