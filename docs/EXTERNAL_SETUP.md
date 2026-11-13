@@ -22,7 +22,7 @@ The project is in Singapore because that is the region selected in the Supabase 
 
 ### Backend work already completed
 
-- Fourteen database migrations are applied, including the Bio challenge, challenge-table RLS guard and three-attempt verification controls.
+- Fifteen database migrations are applied, including the Bio challenge, challenge-table RLS guard, three-attempt verification controls and in-flight challenge concurrency guard.
 - Forty-four application tables exist in the `public` schema, and all forty-four have Row Level Security enabled.
 - Anonymous table access is limited to reading the active `games` catalogue. Application tables are granted to authenticated users only, subject to RLS and column-level restrictions.
 - Default table, sequence and function privileges for new `public` objects created by the postgres migration owner have been tightened. Future migrations must grant only the exact privileges they need.
@@ -329,4 +329,4 @@ The previous 48-player solo-room Support workflow is retired. The Free Fire API 
 5. The challenge expires after 30 minutes. Verification attempts are enforced by an atomic Postgres counter on the linked game account: maximum **three provider requests per profile**, including after code regeneration, and at least 15 seconds between requests. A fourth request is blocked and the player is told to contact KOMNIVO Support.
 6. The challenge code is returned to the owner by the authenticated Edge Function and only its SHA-256 hash is stored. Raw Bio/signature is stripped from saved profile snapshots. The challenge table is unavailable to \`anon\` and \`authenticated\`; only the server-side Edge Function can access it.
 
-Live backend state: migrations \`202611130001\`, \`202611130002\` and \`202611130003\` are applied; \`sync-freefire-profile\` v8 is ACTIVE with JWT verification. A real Free Fire India Bio round-trip remains the final integration test. The corresponding migration and code live in the GitHub repository.
+Live backend state: migrations \`202611130001\` through \`202611130004\` are applied; \`sync-freefire-profile\` v9 is ACTIVE with JWT verification. The database reserves attempts atomically, permits at most three provider requests per linked profile, enforces a 15-second retry interval, and prevents a replacement code while a provider request is in flight. A real Free Fire India Bio round-trip remains the final integration test. The corresponding migrations and code live in the GitHub repository.
