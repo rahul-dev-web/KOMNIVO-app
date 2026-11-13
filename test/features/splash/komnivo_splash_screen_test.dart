@@ -20,6 +20,9 @@ void main() {
 
     expect(StartupCoordinator.ready.value, isFalse);
 
+    // Prime the ticker's first timestamp after the post-frame animation start.
+    await tester.pump();
+
     final logo = find
         .descendant(
           of: find.byType(AnimatedBuilder),
