@@ -6,6 +6,9 @@ test -f pubspec.yaml || { echo "Run from the KOMNIVO repository."; exit 1; }
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 flutter create --project-name app --org in.komnivo --platforms android,web "$TMP/platforms"
+# Android and Web are generated/ignored scaffolding. Replace them so stale
+# launcher resources and generated files cannot survive a bootstrap.
+rm -rf "$ROOT/android" "$ROOT/web"
 cp -R "$TMP/platforms/android" "$ROOT/android"
 cp -R "$TMP/platforms/web" "$ROOT/web"
 cp "$ROOT/native/android/app/src/main/AndroidManifest.xml" "$ROOT/android/app/src/main/AndroidManifest.xml"
