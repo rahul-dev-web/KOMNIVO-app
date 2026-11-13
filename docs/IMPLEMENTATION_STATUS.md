@@ -1,6 +1,6 @@
 # KOMNIVO implementation status
 
-Last verified: 12 November 2026.
+Last verified: 13 November 2026.
 
 This file distinguishes work deployed to the connected Supabase project from owner-controlled external credentials and remaining product engineering.
 
@@ -14,8 +14,8 @@ Connected Supabase project:
 - Database: PostgreSQL 17.11
 
 Verified on the project:
-- 11 migrations applied successfully.
-- 43 application tables in `public`; all 43 have RLS enabled.
+- 13 migrations applied successfully, including the Free Fire Bio challenge schema and its explicit deny-all client RLS policy.
+- 44 application tables in `public`; all 44 have RLS enabled.
 - Least-privilege grants applied: anonymous users can read only the active `games` catalogue; authenticated access is granted per table and column under RLS. Future `public` tables, sequences and functions created by the postgres migration owner no longer receive broad anon/authenticated default privileges.
 - Two private Storage buckets: `community-media` and `match-evidence`, both limited to 10 MB and JPG/PNG/WebP/PDF.
 - `public.messages` is enabled in the `supabase_realtime` publication.
@@ -28,7 +28,7 @@ Verified on the project:
 - Direct/group conversation creation, persisted realtime text messages, replies, emoji reactions, secure attachments, local message search and LiveKit voice-room token issuance.
 - Notification centre with read states and notification preferences; `notification-push` Edge Function v8 is deployed ACTIVE and sends FCM HTTP v1 directly through a narrowly scoped Google OAuth refresh token. Supabase secrets and the `public.notifications` INSERT webhook are configured. Android push is verified on Vivo Y20G (foreground Snackbar, background system notification and tap navigation); Desktop Web Push is verified on Windows Chrome. UI styling of the foreground Snackbar is deferred to the later UI-polishing pass.
 - Player profile and server-side Free Fire UID lookup adapter.
-- Free Fire ownership verification now uses a one-time profile Bio/Signature challenge instead of the 48-player solo-room queue. UID lookup fetches the public profile and generates a 128-bit `KOMNIVO-...` code; the player must paste only that code into the full in-game Bio/Signature, tick the confirmation checkbox, and request verification. The server re-fetches `/info`, compares the SHA-256 digest of `socialInfo.signature` against the stored hash, enforces a 30-minute expiry, five attempts and 15-second retry spacing, then marks the game account `verified`. Plaintext codes are returned once and never stored; raw Bio/signature is excluded from stored profile snapshots. Migration and updated Edge Function are committed but not yet applied/deployed to live Supabase.
+- Free Fire ownership verification uses a one-time profile Bio/Signature challenge instead of the 48-player solo-room queue. UID lookup fetches the public profile and generates a 128-bit `KOMNIVO-...` code; the player must replace the entire in-game Bio/Signature with only that code, tick the confirmation checkbox and request verification. The server re-fetches `/info`, compares the exact `socialInfo.signature` value using a SHA-256 hash, enforces a 30-minute expiry, five attempts and 15-second retry spacing, then marks the game account `verified`. Plaintext codes are returned once and never stored; raw Bio/signature is excluded from stored profile snapshots. Both migrations (`202611130001` and `202611130002`) are applied to the live project; `sync-freefire-profile` Edge Function v7 is ACTIVE with JWT verification enabled. A real Free Fire India Bio round-trip test remains outstanding.
 - UID refresh integrity: the profile sync preserves an existing `ownership_status` (so a previously verified account remains verified) and rejects an in-place UID/region swap. Public profile refresh never changes ownership state; a separate controlled account-relink flow is required for any future UID change.
 - Team creation, invitations and membership acceptance.
 - Event discovery/publishing, team registration, match schedule, standings, check-in, time-released room credentials, evidence upload, opponent confirmation/dispute and result submission.
@@ -40,7 +40,7 @@ Verified on the project:
 
 ## Still requires owner-controlled external setup
 
-- Apply `supabase/migrations/202611130001_game_account_bio_ownership_verification.sql` to the connected Supabase project and deploy the updated `sync-freefire-profile` Edge Function. No Platform Support staff bootstrap is required for this ownership-verification path.
+- Confirm `FREEFIRE_API_KEY` is configured as a Supabase Edge Function secret and that the chosen provider plan/usage terms permit KOMNIVO's intended use. Do not expose the key in Flutter, GitHub or this chat.
 - Test UID lookup → one-time code → full Bio replacement → checkbox-gated verify → exact API signature match → Verified notification → Bio restoration. Also test expired/replaced codes, incorrect Bio, provider cache delay, five-attempt lock, duplicate UID claims and preservation of an already-verified account.
 
 - Google Cloud OAuth Web Client ID/Secret and enabling Google provider in Supabase Auth.
@@ -64,12 +64,7 @@ See [EXTERNAL_SETUP.md](EXTERNAL_SETUP.md) for the owner configuration walkthrou
 
 ## Build verification
 
-The latest checked GitHub Actions run for commit `bc829b9e277d84eb50c488aae0e933c468c6c22a` passed:
-- Dart analysis.
-- Flutter tests.
-- Android release APK build.
-- Flutter Web release build.
-- Web staging artifact build.
+Latest checked source commit: `65fa58f5a96d80e75a455bd9a7d01e77686d43a0`. GitHub Actions run #94 has passed Flutter Web staging build; the full analysis/test/Android/Web release workflow has passed Dart analysis and Flutter tests, with Android release APK build still running at the time of this status snapshot. A passing Web staging artifact is not production-launch certification.
 
 The GitHub Pages deploy job was skipped because the repository gate is still disabled/not configured. A passing build is not production-launch certification.
 
