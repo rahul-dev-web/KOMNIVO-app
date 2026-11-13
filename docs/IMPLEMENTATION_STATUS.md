@@ -24,6 +24,7 @@ Verified on the project:
 ## Implemented in source
 
 - Flutter app shell, responsive dark theme, Google sign-in flow and local preview.
+- Cold-start splash rendering (13 November 2026): Android shows a native OS launch splash using the existing KOMNIVO launcher mark before Flutter starts; Android 12+ system splash attributes are configured. `main()` now calls `runApp()` immediately, then initializes Supabase/Firebase after the first Flutter frame while the existing animated Flutter splash is visible. The Flutter splash waits for startup readiness and offers Retry on connection failure. Push permission/token synchronization is deferred until after authentication. Web `native/web/index.html` paints a branded HTML/CSS splash before the Flutter engine loads and removes it only after the first Flutter frame. Latest source commit `dc08f75e7c2af16b205c0af1081bd95e96d2e578`; Web Staging and Cloudflare Pages production deployment passed. Physical Vivo Y20G cold-start QA is still pending.
 - Community discovery/create/join entry points and default channels.
 - Direct/group conversation creation, persisted realtime text messages, replies, emoji reactions, secure attachments, local message search and LiveKit voice-room token issuance.
 - Notification centre with read states and preferences; `notification-push` Edge Function v8 is ACTIVE and sends FCM HTTP v1 directly through a narrowly scoped Google OAuth refresh token. Supabase secrets and the `public.notifications` INSERT webhook are configured. Android push is verified on Vivo Y20G (foreground, background and tap navigation), Desktop Web Push is verified on Windows Chrome, and iOS Home Screen Web Push was verified on a physical iPhone on 13 November 2026. Foreground Snackbar styling remains a later UI-polishing task.
@@ -64,9 +65,9 @@ See [EXTERNAL_SETUP.md](EXTERNAL_SETUP.md) for the owner configuration walkthrou
 
 ## Build verification
 
-Latest checked source commit: `65fa58f5a96d80e75a455bd9a7d01e77686d43a0`. GitHub Actions run #94 has passed Flutter Web staging build; the full analysis/test/Android/Web release workflow has passed Dart analysis and Flutter tests, with Android release APK build still running at the time of this status snapshot. A passing Web staging artifact is not production-launch certification.
+Latest checked source commit: `dc08f75e7c2af16b205c0af1081bd95e96d2e578`. GitHub Actions run #110 has passed Dart analysis and Flutter tests; the Android release APK build is still in progress at the time of this status update. Web Staging run #110 passed. Cloudflare Pages production deployment `11a8a2f3` completed successfully from the same commit at `https://11a8a2f3.komnivo-app.pages.dev/`; stable production origin: `https://komnivo-app.pages.dev/`. The full Android APK build and physical Vivo Y20G cold-start verification are still pending. A passing Web staging/deployment is not production-launch certification.
 
-The GitHub Pages deploy job was skipped because the repository gate is still disabled/not configured. A passing build is not production-launch certification.
+The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is the selected production host.
 
 ## Security and performance review notes
 
