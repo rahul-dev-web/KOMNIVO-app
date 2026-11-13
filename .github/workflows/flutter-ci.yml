@@ -49,3 +49,27 @@ jobs:
             build/app/outputs/flutter-apk/app-release.apk
             build/web/
           if-no-files-found: error
+  windows-bootstrap:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.8
+          cache: true
+
+      - name: Generate and verify native Windows scaffolding
+        shell: pwsh
+        run: .\tool\bootstrap-platforms.ps1
+
+      - name: Resolve packages and analyze
+        shell: pwsh
+        run: |
+          flutter pub get
+          if ($LASTEXITCODE -ne 0) { throw "flutter pub get failed." }
+          flutter analyze --no-fatal-infos
+          if ($LASTEXITCODE -ne 0) { throw "flutter analyze failed." }
