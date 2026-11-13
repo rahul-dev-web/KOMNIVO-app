@@ -155,10 +155,13 @@ Deno.serve(async (req: Request) => {
   const auth = await authenticate(req);
   if ("error" in auth) return auth.error;
 
+  const { user, admin } = auth;
+  let inFlightChallengeId: string | null = null;
+  let inFlightAttemptNumber = 0;
+
   try {
     const body = asRecord(await req.json());
     const action = String(body.action ?? "status");
-    const { user, admin } = auth;
 
     const game = await loadFreeFireGame(admin);
     if (!game) return json({ error: "Free Fire MAX game catalogue entry is unavailable." }, 500);
@@ -227,7 +230,7 @@ Deno.serve(async (req: Request) => {
 
       const verificationInProgress = challenge?.status === "verifying";
       return json({
-        status: locked ? "locked" : verificationInProgress ? "verifying" : account.ownership_status === "proof_pending" ? "proof_pending" : "linked_unverified",
+        status: verificationInProgress ? "verifying" : locked ? "locked" : account.ownership_status === "proof_pending" ? "proof_pending" : "linked_unverified",
         ownership_status: account.ownership_status,
         account_id: account.id,
         uid: account.uid,
@@ -504,11 +507,10 @@ Deno.serve(async (req: Request) => {
           error: "Please wait before starting another verification request. No attempt was consumed.",
         }, 429);
       }
-      if (gate.locked === true) {
-        await admin.from("game_account_verification_challenges")
-          .update({ status: "locked", updated_at: new Date().toISOString() })
-          .eq("id", challenge.id)
-          .eq("status", "pending");
+      // The third reservation is allowed to make its final provider request.
+      // The RPC returns locked=true and reserved=true for that third attempt;
+      // only a non-reserved locked response must stop before fetch().
+      if (gate.locked === true && gate.reserved !== true) {
         return json({
           status: "locked",
           attempts_remaining: 0,
@@ -519,6 +521,8 @@ Deno.serve(async (req: Request) => {
       const attemptNumber = Number(gate.attempt_number);
       const attemptsRemaining = Number(gate.attempts_remaining);
       const attemptTime = new Date().toISOString();
+      inFlightChallengeId = challenge.id;
+      inFlightAttemptNumber = attemptNumber;
 
       let info: RecordData;
       try {
@@ -548,11 +552,17 @@ Deno.serve(async (req: Request) => {
         info = await response.json() as RecordData;
       } catch (providerError) {
         const locked = attemptNumber >= MAX_VERIFY_ATTEMPTS;
-        if (locked) {
-          await admin.from("game_account_verification_challenges")
-            .update({ status: "locked", updated_at: new Date().toISOString() })
-            .eq("id", challenge.id);
-        }
+        // Release the in-flight challenge after every completed provider error.
+        // The request was already counted, so the profile counter is unchanged.
+        await admin.from("game_account_verification_challenges")
+          .update({
+            status: locked ? "locked" : "pending",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", challenge.id)
+          .eq("status", "verifying");
+        inFlightChallengeId = null;
+
         const detail = providerError instanceof Error
           ? providerError.message
           : "The provider could not complete this request.";
@@ -598,9 +608,20 @@ Deno.serve(async (req: Request) => {
         .eq("user_id", user.id);
 
       if (profileSaveError) {
+        // Do not strand this challenge in the in-flight state. This provider
+        // request remains counted even though the profile snapshot save failed.
+        await admin.from("game_account_verification_challenges")
+          .update({
+            status: attemptNumber >= MAX_VERIFY_ATTEMPTS ? "locked" : "pending",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", challenge.id)
+          .eq("status", "verifying");
+        inFlightChallengeId = null;
+
         return json({
-          status: "proof_pending",
-          error: "The provider response was received, but the game profile could not be saved securely. Contact Support before retrying.",
+          status: attemptNumber >= MAX_VERIFY_ATTEMPTS ? "locked" : "proof_pending",
+          error: "The provider response was received, but the game profile could not be saved securely. This request was counted. Contact Support if the issue persists.",
           attempts_remaining: attemptsRemaining,
         }, 500);
       }
@@ -624,7 +645,9 @@ Deno.serve(async (req: Request) => {
             status: locked ? "locked" : "pending",
             updated_at: new Date().toISOString(),
           })
-          .eq("id", challenge.id);
+          .eq("id", challenge.id)
+          .eq("status", "verifying");
+        inFlightChallengeId = null;
 
         return json({
           status: locked ? "locked" : "proof_pending",
@@ -651,6 +674,7 @@ Deno.serve(async (req: Request) => {
         })
         .eq("id", challenge.id)
         .eq("status", "verifying");
+      inFlightChallengeId = null;
 
       if (challengeUpdateError) {
         console.warn("The account is verified but challenge audit update failed.", { code: challengeUpdateError.code });
@@ -679,6 +703,19 @@ Deno.serve(async (req: Request) => {
 
     return json({ error: "Unsupported action. Use prepare, status or verify." }, 400);
   } catch (error) {
+    // Unexpected failures after reserving an attempt must not leave the
+    // challenge permanently stuck in "verifying". The consumed request is
+    // never refunded; a third reserved attempt remains Support-locked.
+    if (inFlightChallengeId) {
+      await admin.from("game_account_verification_challenges")
+        .update({
+          status: inFlightAttemptNumber >= MAX_VERIFY_ATTEMPTS ? "locked" : "pending",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", inFlightChallengeId)
+        .eq("status", "verifying");
+    }
+
     console.error("Free Fire verification handler failed.", {
       error_type: error instanceof Error ? error.name : "UnknownError",
     });
