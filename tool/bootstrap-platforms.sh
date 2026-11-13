@@ -74,4 +74,25 @@ for name in (
 worker.write_text(source)
 PY
 
+# Verify the generated Android project actually selects the KOMNIVO icon.
+grep -Fq 'android:icon="@mipmap/ic_launcher"' android/app/src/main/AndroidManifest.xml
+grep -Fq 'android:roundIcon="@mipmap/ic_launcher"' android/app/src/main/AndroidManifest.xml
+for required in \
+  mipmap/ic_launcher.xml \
+  mipmap-anydpi-v26/ic_launcher.xml \
+  drawable/komnivo_launcher_foreground.xml \
+  drawable-nodpi/ic_launcher.png; do
+  test -f "android/app/src/main/res/$required" || {
+    echo "Missing KOMNIVO Android launcher resource: $required" >&2
+    exit 1
+  }
+done
+for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+  if compgen -G "android/app/src/main/res/mipmap-$density/ic_launcher*" >/dev/null; then
+    echo "Generated Flutter launcher icon still exists in mipmap-$density." >&2
+    exit 1
+  fi
+done
+echo "KOMNIVO launcher icon resources verified in android/app/src/main/res."
+
 echo "Android, Web app, public pages and isolated FCM worker are ready."
