@@ -9,8 +9,17 @@ try {
   flutter create --project-name app --org in.komnivo --platforms android,web $Temp
   if ($LASTEXITCODE -ne 0) { throw "flutter create failed." }
 
-  Copy-Item (Join-Path $Temp "android") (Join-Path $Root "android") -Recurse -Force
-  Copy-Item (Join-Path $Temp "web") (Join-Path $Root "web") -Recurse -Force
+  # These platform folders are generated/ignored build scaffolding. Replace
+  # them so old launcher resources or stale files cannot survive a bootstrap.
+  $AndroidTarget = Join-Path $Root "android"
+  $WebTarget = Join-Path $Root "web"
+  foreach ($Target in @($AndroidTarget, $WebTarget)) {
+    if (Test-Path $Target) {
+      Remove-Item -Path $Target -Recurse -Force
+    }
+  }
+  Copy-Item (Join-Path $Temp "android") $AndroidTarget -Recurse -Force
+  Copy-Item (Join-Path $Temp "web") $WebTarget -Recurse -Force
 
   $Native = Join-Path $Root "native/android/app/src/main"
   Copy-Item (Join-Path $Native "AndroidManifest.xml") (Join-Path $Root "android/app/src/main/AndroidManifest.xml") -Force
