@@ -41,10 +41,16 @@ function makeChallengeCode(): string {
 
 function withoutPublicBio(raw: RecordData): RecordData {
   const clone = JSON.parse(JSON.stringify(raw)) as RecordData;
-  const socialInfo = asRecord(clone.socialInfo);
-  if (Object.keys(socialInfo).length > 0) {
-    delete socialInfo.signature;
-    clone.socialInfo = socialInfo;
+
+  // Provider casing may differ between payload versions. Strip the signature
+  // from both spellings so no player's temporary challenge or previous Bio is
+  // accidentally copied into profile snapshots.
+  for (const key of ["socialInfo", "SocialInfo"]) {
+    const socialInfo = asRecord(clone[key]);
+    if (Object.keys(socialInfo).length > 0) {
+      delete socialInfo.signature;
+      clone[key] = socialInfo;
+    }
   }
   return clone;
 }
@@ -383,7 +389,9 @@ Deno.serve(async (req: Request) => {
 
       const info = await fetchPlayerInfo(base, headers, String(account.region).toLowerCase(), String(account.uid));
       const socialInfo = asRecord(info.socialInfo ?? info.SocialInfo);
-      const currentSignature = typeof socialInfo.signature === "string" ? socialInfo.signature.trim() : "";
+      // Do not trim or otherwise normalise: the Bio must contain the exact
+      // challenge code and nothing before or after it.
+      const currentSignature = typeof socialInfo.signature === "string" ? socialInfo.signature : "";
       const observedHash = currentSignature ? await sha256Hex(currentSignature) : "";
       const attemptCount = Number(challenge.attempts) + 1;
 
@@ -408,6 +416,16 @@ Deno.serve(async (req: Request) => {
       }
 
       const verifiedAt = now.toISOString();
+
+      // The game-account ownership state is the user-visible source of truth.
+      // Update it only after the live Bio has matched exactly. If challenge
+      // bookkeeping then fails, status reads still show Verified and a retry
+      // cannot accidentally undo the completed proof.
+      const { error: accountUpdateError } = await admin.from("game_accounts")
+        .update({ ownership_status: "verified", updated_at: verifiedAt })
+        .eq("id", account.id).eq("user_id", user.id);
+      if (accountUpdateError) return json({ error: "The challenge matched, but the game-account status could not be updated." }, 500);
+
       const { error: challengeUpdateError } = await admin.from("game_account_verification_challenges")
         .update({
           status: "verified",
@@ -416,12 +434,9 @@ Deno.serve(async (req: Request) => {
           attempts: attemptCount,
           updated_at: verifiedAt,
         }).eq("id", challenge.id).eq("status", "pending");
-      if (challengeUpdateError) return json({ error: "The challenge matched, but the verification record could not be finalised." }, 500);
-
-      const { error: accountUpdateError } = await admin.from("game_accounts")
-        .update({ ownership_status: "verified", updated_at: verifiedAt })
-        .eq("id", account.id).eq("user_id", user.id);
-      if (accountUpdateError) return json({ error: "The challenge matched, but the game-account status could not be updated." }, 500);
+      if (challengeUpdateError) {
+        return json({ error: "The account is verified, but the challenge audit record needs a retry." }, 500);
+      }
 
       await admin.from("notifications").insert({
         user_id: user.id,
