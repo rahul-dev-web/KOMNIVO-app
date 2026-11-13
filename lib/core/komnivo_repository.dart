@@ -262,9 +262,12 @@ class KomnivoRepository {
         ? Map<String, dynamic>.from(response.data as Map)
         : <String, dynamic>{};
 
-    // 429 is a server-side retry throttle and does not consume one of the
-    // three provider attempts. Return its structured status to the UI.
-    if (response.status == 429) return data;
+    // 429 is a server-side retry throttle and does not consume an attempt.
+    // A 409 no_active_code is also a recoverable challenge-state response:
+    // the UI clears the stale code and lets the owner generate a replacement.
+    if (response.status == 429 || data['status'] == 'no_active_code') {
+      return data;
+    }
 
     if (response.status < 200 || response.status >= 300) {
       throw Exception(data['error']?.toString() ??
