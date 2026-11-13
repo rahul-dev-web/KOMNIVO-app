@@ -10,9 +10,17 @@ import '../../core/komnivo_theme.dart';
 import '../../core/startup_coordinator.dart';
 
 class KomnivoSplashScreen extends StatefulWidget {
-  const KomnivoSplashScreen({super.key, required this.destination});
+  const KomnivoSplashScreen({
+    super.key,
+    required this.destination,
+    this.firstFrameReadyForTest,
+  });
 
   final Widget destination;
+
+  // Lets widget tests advance the splash without waiting for engine frame timings.
+  @visibleForTesting
+  final Future<void> Function()? firstFrameReadyForTest;
 
   @override
   State<KomnivoSplashScreen> createState() => _KomnivoSplashScreenState();
@@ -55,7 +63,12 @@ class _KomnivoSplashScreenState extends State<KomnivoSplashScreen>
   }
 
   Future<void> _startIntroAfterFirstRasterizedFrame() async {
-    await WidgetsBinding.instance.waitUntilFirstFrameRasterized;
+    final testWait = widget.firstFrameReadyForTest;
+    if (testWait != null) {
+      await testWait();
+    } else {
+      await WidgetsBinding.instance.waitUntilFirstFrameRasterized;
+    }
     _startIntro();
   }
 
