@@ -121,12 +121,12 @@ For Groq, add its values using the Dashboard, or create a temporary ignored file
   - `ai_usage_ledger`, `ai_policy`
 - RLS is enabled on every AI table. The live database check confirms all eight AI tables have RLS enabled and scoped policies.
 - Migrations `202611140003_atomic_ai_daily_budget`, `202611140004_player_ai_public_event_scope` and `202611140005_fix_player_ai_scope_helper` add an atomic private UTC-day request counter and enforce public/private event visibility for Player AI.
-- Edge Function `komnivo-ai` version 6 is ACTIVE with JWT verification. It includes scoped event context and safe chat history.
+- Edge Function `komnivo-ai` version 7 is ACTIVE with JWT verification. It includes scoped event context and safe chat history.
 - Organizer scope is limited to the event organiser or community owner/admin/organiser. Moderators are not granted Organizer AI access by default.
 - Player event context is limited to a player's own registration/roster; community context requires membership.
 - Edge Function `komnivo-ai` is deployed with JWT verification enabled.
 - Flutter has event-scoped Organizer AI and Player AI entry points on their respective event cards, plus a Player AI app-bar entry point. Recent conversations restore by scope; starting a new chat preserves earlier conversations.
-- Organizer AI receives an event-scoped snapshot of rules, scoring, registration summaries, matches and standings. Player AI receives only the signed-in player's own registration/team/match/check-in details. Public events can be discussed before registration; private events remain member/participant scoped.
+- Organizer AI receives an event-scoped snapshot of rules, scoring, registration summaries, matches and standings. Player AI receives only the signed-in player's own registration/team/match/check-in details. Published events in public communities can be discussed before registration and before community join; private events remain member/participant scoped.
 - The Flutter chat restores the latest active conversation for the same scope and supports starting a new chat.
 - The endpoint remains read-only. It does not call event/channel/role/registration/scoring tools.
 - Per-user daily request caps are reserved atomically in a private database counter through a service-role-only RPC. Parallel requests cannot bypass the default 25-attempt UTC-day cap.
