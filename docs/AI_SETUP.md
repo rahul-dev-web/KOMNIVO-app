@@ -121,7 +121,7 @@ For Groq, add its values using the Dashboard, or create a temporary ignored file
   - `ai_usage_ledger`, `ai_policy`
 - RLS is enabled on every AI table. The live database check confirms all eight AI tables have RLS enabled and scoped policies.
 - Migrations `202611140003_atomic_ai_daily_budget`, `202611140004_player_ai_public_event_scope` and `202611140005_fix_player_ai_scope_helper` add an atomic private UTC-day request counter and enforce public/private event visibility for Player AI.
-- Edge Function `komnivo-ai` version 7 is ACTIVE with JWT verification. It includes scoped event context and safe chat history.
+- Edge Function `komnivo-ai` version 8 is ACTIVE with JWT verification. It includes scoped event context and safe chat history.
 - Organizer scope is limited to the event organiser or community owner/admin/organiser. Moderators are not granted Organizer AI access by default.
 - Player event context is limited to a player's own registration/roster; community context requires membership.
 - Edge Function `komnivo-ai` is deployed with JWT verification enabled.
@@ -177,3 +177,8 @@ These remain required product scope. Do not mark the AI system complete until th
 - Review Cloudflare Neuron usage and Groq rate-limit metrics after test sessions.
 - Before production, set community/event budgets, alerts, max prompt/output sizes and a paid-provider fallback policy.
 - Re-check provider prices and data terms at the time paid billing is activated.
+
+
+## Latest backend hardening
+
+The Player AI participation check no longer scans only the first 200 registrations in an event. It checks the signed-in player's captain/roster rows directly. Organizer registration summaries include a database count and clearly indicate when the displayed team list has been truncated.
