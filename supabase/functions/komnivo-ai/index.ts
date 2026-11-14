@@ -467,6 +467,157 @@ async function callModel(
   }
 }
 
+
+type ProposalCard = {
+  id: string;
+  action_type: "create_event_draft";
+  status: string;
+  name: string;
+  description: string;
+  format: string;
+  capacity: number;
+  starts_at: string;
+  registration_closes_at: string | null;
+  game_name: string;
+  expires_at: string;
+  published: false;
+  source_refs: unknown[];
+};
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseToolArguments(call: AiToolCall): Record<string, unknown> {
+  const raw = call.function?.arguments;
+  if (isJsonObject(raw)) return raw;
+  if (typeof raw !== "string") throw new Error("Tool arguments missing.");
+  const parsed: unknown = JSON.parse(raw);
+  if (!isJsonObject(parsed)) throw new Error("Tool arguments must be a JSON object.");
+  return parsed;
+}
+
+async function prepareEventDraftProposal(
+  admin: SupabaseClient,
+  args: Record<string, unknown>,
+  userId: string,
+  conversationId: string,
+  runId: string,
+  communityId: string | null,
+  eventId: string | null,
+  contextSnapshot: Record<string, unknown>,
+): Promise<ProposalCard> {
+  const name = asString(args.name);
+  const description = asString(args.description).slice(0, 2000);
+  const format = asString(args.format);
+  const capacity = Number(args.capacity);
+  const startsAtRaw = asString(args.starts_at);
+  const closesAtRaw = args.registration_closes_at === null
+    ? null
+    : asString(args.registration_closes_at) || null;
+  const gameCode = asString(args.game_code);
+  const rules = isJsonObject(args.rules_json) ? args.rules_json : null;
+  const scoring = isJsonObject(args.scoring_config) ? args.scoring_config : null;
+
+  if (name.length < 3 || name.length > 100) throw new Error("Event name must be 3 to 100 characters.");
+  if (!["solo", "duo", "squad", "custom"].includes(format)) throw new Error("Select a valid tournament format.");
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 1000) throw new Error("Team capacity must be an integer from 1 to 1000.");
+
+  // Require an explicit timezone so server validation is independent of the model/runtime locale.
+  if (!/(Z|[+-]\\d{2}:\\d{2})$/i.test(startsAtRaw)) {
+    throw new Error("Provide the event start time with an explicit timezone.");
+  }
+  const startsAt = new Date(startsAtRaw);
+  if (!Number.isFinite(startsAt.getTime()) || startsAt.getTime() <= Date.now()) {
+    throw new Error("The event start time must be in the future.");
+  }
+  let registrationClosesAt: string | null = null;
+  if (closesAtRaw) {
+    if (!/(Z|[+-]\\d{2}:\\d{2})$/i.test(closesAtRaw)) {
+      throw new Error("Registration close time must include an explicit timezone.");
+    }
+    const closesAt = new Date(closesAtRaw);
+    if (!Number.isFinite(closesAt.getTime()) || closesAt.getTime() >= startsAt.getTime()) {
+      throw new Error("Registration must close before the event starts.");
+    }
+    registrationClosesAt = closesAt.toISOString();
+  }
+  if (!gameCode || gameCode.length > 60) throw new Error("Choose an active game.");
+  if (!rules || !scoring) throw new Error("Rules and scoring must be supplied as structured objects; do not guess them.");
+  if (JSON.stringify(rules).length > 12000 || JSON.stringify(scoring).length > 12000) {
+    throw new Error("Rules or scoring configuration is too large. Split the source document or simplify the proposal.");
+  }
+
+  const { data: game, error: gameError } = await admin.from("games")
+    .select("id,code,name").eq("code", gameCode).eq("is_active", true).maybeSingle();
+  if (gameError || !game) throw new Error("The requested game is not active in KOMNIVO.");
+
+  let resolvedCommunityId = communityId;
+  if (eventId) {
+    const { data: event } = await admin.from("events")
+      .select("id,community_id,organizer_id").eq("id", eventId).maybeSingle();
+    if (!event || event.organizer_id !== userId && !resolvedCommunityId) {
+      if (!event) throw new Error("The selected event no longer exists.");
+    }
+    if (event?.community_id) {
+      if (resolvedCommunityId && resolvedCommunityId !== event.community_id) {
+        throw new Error("Event/community scope mismatch.");
+      }
+      resolvedCommunityId = event.community_id;
+    }
+  }
+
+  const sourceRefs = Array.isArray(contextSnapshot.document_sources)
+    ? (contextSnapshot.document_sources as Array<Record<string, unknown>>).slice(0, 5).map((row) => ({
+        document: asString(row.document),
+        source: asString(row.source),
+        chunk: Number(row.chunk ?? 0),
+      }))
+    : [];
+
+  const payload = {
+    name,
+    description,
+    format,
+    capacity,
+    starts_at: startsAt.toISOString(),
+    registration_closes_at: registrationClosesAt,
+    game_id: game.id,
+    community_id: resolvedCommunityId,
+    rules_json: rules,
+    scoring_config: scoring,
+  };
+
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  const { data: proposal, error: proposalError } = await admin.from("ai_proposals").insert({
+    conversation_id: conversationId,
+    owner_user_id: userId,
+    run_id: runId,
+    action_type: "create_event_draft",
+    proposal: payload,
+    source_refs: sourceRefs,
+    status: "pending_approval",
+    expires_at: expiresAt,
+  }).select("id,status,expires_at").single();
+  if (proposalError || !proposal) throw new Error("Could not save the event draft proposal.");
+
+  return {
+    id: String(proposal.id),
+    action_type: "create_event_draft",
+    status: String(proposal.status),
+    name,
+    description,
+    format,
+    capacity,
+    starts_at: startsAt.toISOString(),
+    registration_closes_at: registrationClosesAt,
+    game_name: String(game.name),
+    expires_at: String(proposal.expires_at),
+    published: false,
+    source_refs: sourceRefs,
+  };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
