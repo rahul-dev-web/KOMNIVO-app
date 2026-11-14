@@ -1,6 +1,6 @@
 # KOMNIVO — External services setup guide
 
-Last checked: 9 November 2026
+Last checked: 14 November 2026
 
 This guide is for the existing repository and the Supabase project already created for KOMNIVO. It separates what is already deployed from the credentials and dashboard steps that still need the project owner's action.
 
@@ -22,15 +22,15 @@ The project is in Singapore because that is the region selected in the Supabase 
 
 ### Backend work already completed
 
-- Fifteen database migrations are applied, including the Bio challenge, challenge-table RLS guard, three-attempt verification controls and in-flight challenge concurrency guard.
-- Forty-four application tables exist in the `public` schema, and all forty-four have Row Level Security enabled.
+- Seventeen database migrations are applied, including the Bio challenge, challenge-table RLS guard, three-attempt verification controls and in-flight challenge concurrency guard.
+- Fifty-two application tables exist in the `public` schema, and all fifty-two have Row Level Security enabled.
 - Anonymous table access is limited to reading the active `games` catalogue. Application tables are granted to authenticated users only, subject to RLS and column-level restrictions.
 - Default table, sequence and function privileges for new `public` objects created by the postgres migration owner have been tightened. Future migrations must grant only the exact privileges they need.
 - Both Storage buckets exist and are private: `community-media` and `match-evidence` (10 MB per file; JPG, PNG, WebP and PDF).
 - The `messages` table is included in the `supabase_realtime` publication.
-- Thirteen Edge Functions are deployed and ACTIVE.
+- Fourteen Edge Functions are deployed and ACTIVE.
 
-Deployed functions: `accept-team-invite`, `approve-result`, `check-in`, `create-community-invite`, `create-community`, `create-conversation`, `create-livekit-token`, `join-community`, `notification-push`, `register-event`, `review-registration`, `submit-result`, and `sync-freefire-profile`.
+Deployed functions: `accept-team-invite`, `approve-result`, `check-in`, `create-community-invite`, `create-community`, `create-conversation`, `create-livekit-token`, `join-community`, `notification-push`, `register-event`, `review-registration`, `submit-result`, `sync-freefire-profile`, and `komnivo-ai`.
 
 All user-facing functions require JWT verification. `notification-push` is the one exception because it is called by a database webhook and checks the private `x-webhook-secret` header itself. Do not remove that header check.
 
@@ -47,8 +47,6 @@ All user-facing functions require JWT verification. `notification-push` is the o
 | Same-phone LiveOps screen OCR | Android MediaProjection + Google ML Kit on-device text recognition | No cloud vision API key |
 | Voice prompts for LiveOps | Device text-to-speech via `flutter_tts` | No cloud voice API key |
 | Organizer AI + Player AI chat | Cloudflare Workers AI (primary) + GroqCloud (alternative); Supabase Edge Function `komnivo-ai` | Yes — Cloudflare account ID/token; optional Groq API key. See `docs/AI_SETUP.md` |
-
-Important: the Notion product specification includes future AI-assisted rulebook drafting. The current repository does not contain an OpenAI, Groq, Gemini, Anthropic or other LLM API integration. Do not purchase or paste an AI API key for KOMNIVO yet. That feature needs a deliberate provider decision and implementation first.
 
 There is also no ChatGPT plugin that needs to be installed. These integrations are normal Flutter packages and Supabase Edge Functions already listed in the repository.
 
