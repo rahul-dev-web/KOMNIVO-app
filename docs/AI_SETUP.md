@@ -58,6 +58,12 @@ Official docs:
 - https://console.groq.com/docs/openai
 - https://console.groq.com/docs/your-data
 
+## Provider smoke test — completed
+
+The connected Cloudflare account successfully ran the selected model `@cf/qwen/qwen3.8-27b` through both the Workers AI model-run API and the OpenAI-compatible Chat Completions API. A low-reasoning test returned a normal Hinglish response. Three test requests consumed approximately 115.3 Neurons in total, well below the 10,000-Neuron daily Free allocation.
+
+This validates the connected Cloudflare account's access and the model identifier. It does **not** mean a dedicated API token has been created or that Supabase Edge Function Secrets are configured. The app's deployed AI endpoint remains unavailable until those secrets are added.
+
 ## 3. Add secrets to Supabase — required before chat can respond
 
 Project:
