@@ -21,7 +21,7 @@ Cloudflare Workers Free includes 10,000 Neurons/day. Neurons measure GPU compute
 3. Open the Workers AI Playground and select **Qwen 3.8 27B**. The model ID must be exactly:
    `@cf/qwen/qwen3.8-27b`
 4. Send a harmless test prompt in the Playground. This is only a model smoke test; it does not connect KOMNIVO.
-5. The Cloudflare account connected for this project is **Jarahul989@gmail.com's Account**. Its Account ID is `b91e7aeefb684d97f231cf52e0178d50`. Keep this as the `CLOUDFLARE_ACCOUNT_ID` value; do not use the Pages project name or a Zone ID.
+5. Open the Cloudflare account overview for the same account that owns the `komnivo-app` Pages project and copy its **Account ID**. Do not use the Pages project name or a Zone ID.
 6. In **My Profile → API Tokens → Create Token → Create Custom Token**, name it `KOMNIVO Workers AI Read`.
 7. Under Permissions choose **Account → Workers AI → Read** (the permission name is `Workers AI Read` in Cloudflare's token permission list). Under Account Resources choose **Include → Specific account → Jarahul989@gmail.com's Account** only. Do not grant Zone, DNS, Workers deployment or account administration permissions.
 8. Create the token and copy it immediately. Cloudflare may not show the secret again.
@@ -75,7 +75,7 @@ Project:
 
 | Secret | Value |
 | --- | --- |
-| `CLOUDFLARE_ACCOUNT_ID` | `b91e7aeefb684d97f231cf52e0178d50` |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Account ID shown on the account overview |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare token with Workers AI: Read |
 | `CLOUDFLARE_MODEL` | `@cf/qwen/qwen3.8-27b` |
 | `AI_PROVIDER` | `cloudflare` |
@@ -93,7 +93,7 @@ From the repository root, create a local secrets file:
 
 ```powershell
 @'
-CLOUDFLARE_ACCOUNT_ID=b91e7aeefb684d97f231cf52e0178d50
+CLOUDFLARE_ACCOUNT_ID=PASTE_ACCOUNT_ID_FROM_CLOUDFLARE_DASHBOARD
 CLOUDFLARE_API_TOKEN=PASTE_TOKEN_HERE
 CLOUDFLARE_MODEL=@cf/qwen/qwen3.8-27b
 AI_PROVIDER=cloudflare
