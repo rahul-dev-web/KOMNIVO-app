@@ -117,7 +117,14 @@ async function canUseScope(
     if (!isParticipant) {
       const publicStatuses = ["published", "registration_open", "live", "completed"];
       if (!publicStatuses.includes(String(event.status))) return false;
-      if (!event.community_id && communityId) return false;
+      if (event.community_id) {
+        const [{ data: eventCommunity }, { data: membership }] = await Promise.all([
+          admin.from("communities").select("visibility").eq("id", event.community_id).maybeSingle(),
+          admin.from("community_members").select("community_id")
+            .eq("community_id", event.community_id).eq("user_id", userId).maybeSingle(),
+        ]);
+        if (!eventCommunity || (eventCommunity.visibility !== "public" && !membership)) return false;
+      }
     }
   }
   return true;
