@@ -71,7 +71,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           ? Map<String, dynamic>.from(response.data as Map)
           : <String, dynamic>{};
       if (response.status < 200 || response.status >= 300) {
-        throw Exception(data['error']?.toString() ?? 'AI request failed (\${response.status}).');
+        throw Exception(data['error']?.toString() ?? 'AI request failed (' + response.status.toString() + ').');
       }
       _conversationId = data['conversation_id']?.toString();
       final reply = data['reply']?.toString() ?? 'No response received.';
