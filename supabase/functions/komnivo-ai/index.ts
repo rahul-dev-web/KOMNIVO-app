@@ -769,11 +769,46 @@ Deno.serve(async (req: Request) => {
       ? ((result.inputTokens * 0.45) + (result.outputTokens * 3.20)) / 1000000
       : ((result.inputTokens * 0.80) + (result.outputTokens * 4.00)) / 1000000;
 
+    let assistantText = result.text.trim();
+    const proposalCards: ProposalCard[] = [];
+    let proposalIssue: string | null = null;
+
+    if (result.toolCalls.length > 0 && effectiveMode === "organizer") {
+      const supportedCall = result.toolCalls.find((call) => call.function?.name === "propose_event_draft");
+      if (supportedCall) {
+        try {
+          const args = parseToolArguments(supportedCall);
+          const card = await prepareEventDraftProposal(
+            admin,
+            args,
+            user.id,
+            conversationId,
+            String(runRow.id),
+            communityId,
+            eventId,
+            contextSnapshot,
+          );
+          proposalCards.push(card);
+          assistantText = "Maine event ka draft proposal taiyar kiya hai. Abhi event create ya publish nahi hua hai. Neeche details check karke Approve draft ya Reject choose karo.";
+        } catch (error) {
+          proposalIssue = error instanceof Error ? error.message : "Proposal could not be prepared.";
+          assistantText = "Main abhi safe draft proposal nahi bana saka: " + proposalIssue + " Missing details confirm karke dobara try karo. Abhi koi event create nahi hua.";
+        }
+      } else {
+        assistantText = "Is action ke liye abhi approved backend tool available nahi hai. Maine koi data change nahi kiya.";
+      }
+    }
+
     const { error: assistantError } = await admin.from("ai_messages").insert({
       conversation_id: conversationId,
       role: "assistant",
-      content: result.text,
-      metadata: { provider: result.provider, model: result.model },
+      content: assistantText,
+      metadata: {
+        provider: result.provider,
+        model: result.model,
+        proposals: proposalCards,
+        proposal_issue: proposalIssue,
+      },
       input_tokens: result.inputTokens,
       output_tokens: result.outputTokens,
     });
@@ -807,7 +842,8 @@ Deno.serve(async (req: Request) => {
 
     return json({
       conversation_id: conversationId,
-      reply: result.text,
+      reply: assistantText,
+      proposals: proposalCards,
       provider: result.provider,
       model: result.model,
       usage: { input_tokens: result.inputTokens, output_tokens: result.outputTokens, estimated_cost_usd: estimatedCost },
