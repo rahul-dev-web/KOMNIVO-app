@@ -159,20 +159,32 @@ async function requestGroq(messages: Array<{role: string; content: string}>) {
 
 async function callModel(messages: Array<{role: string; content: string}>) {
   const primary = (Deno.env.get("AI_PROVIDER") || "cloudflare").toLowerCase() as Provider;
+  const hasCloudflare = Boolean(Deno.env.get("CLOUDFLARE_ACCOUNT_ID") && Deno.env.get("CLOUDFLARE_API_TOKEN"));
+  const hasGroq = Boolean(Deno.env.get("GROQ_API_KEY"));
+
   if (primary === "groq") {
+    if (!hasGroq) {
+      if (hasCloudflare) return await requestCloudflare(messages);
+      throw new Error("NO_AI_PROVIDER_CONFIGURED");
+    }
     try {
       return await requestGroq(messages);
     } catch (error) {
       const retryable = Boolean((error as Error & {retryable?: boolean}).retryable);
-      if (!retryable || !Deno.env.get("CLOUDFLARE_API_TOKEN")) throw error;
+      if (!retryable || !hasCloudflare) throw error;
       return await requestCloudflare(messages);
     }
+  }
+
+  if (!hasCloudflare) {
+    if (hasGroq) return await requestGroq(messages);
+    throw new Error("NO_AI_PROVIDER_CONFIGURED");
   }
   try {
     return await requestCloudflare(messages);
   } catch (error) {
     const retryable = Boolean((error as Error & {retryable?: boolean}).retryable);
-    if (!retryable || !Deno.env.get("GROQ_API_KEY")) throw error;
+    if (!retryable || !hasGroq) throw error;
     return await requestGroq(messages);
   }
 }
@@ -238,13 +250,11 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You do not have permission to use AI in this community or event." }, 403);
   }
 
-  const providerConfigured =
-    (Deno.env.get("AI_PROVIDER") === "groq" && Boolean(Deno.env.get("GROQ_API_KEY"))) ||
-    Boolean(Deno.env.get("CLOUDFLARE_API_TOKEN")) ||
-    Boolean(Deno.env.get("GROQ_API_KEY"));
-  if (!providerConfigured) {
+  const hasCloudflare = Boolean(Deno.env.get("CLOUDFLARE_ACCOUNT_ID") && Deno.env.get("CLOUDFLARE_API_TOKEN"));
+  const hasGroq = Boolean(Deno.env.get("GROQ_API_KEY"));
+  if (!hasCloudflare && !hasGroq) {
     return json({
-      error: "AI provider credentials are missing. Add CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in Supabase Edge Function Secrets.",
+      error: "No AI provider is configured. Add Cloudflare Workers AI credentials or a Groq API key in Supabase Edge Function Secrets.",
       code: "AI_PROVIDER_NOT_CONFIGURED",
     }, 503);
   }
@@ -252,13 +262,13 @@ Deno.serve(async (req: Request) => {
   const dailyLimit = Math.max(1, Math.min(100, Number(Deno.env.get("AI_DAILY_REQUEST_LIMIT") || DEFAULT_DAILY_LIMIT)));
   const dayStart = new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
-  const { count: dailyCount, error: countError } = await admin.from("ai_usage_ledger")
+  const { count: dailyCount, error: countError } = await admin.from("ai_runs")
     .select("id", { count: "exact", head: true })
     .eq("owner_user_id", user.id)
     .gte("created_at", dayStart.toISOString());
   if (countError) return json({ error: "Unable to verify AI usage budget." }, 500);
   if ((dailyCount ?? 0) >= dailyLimit) {
-    return json({ error: "Daily AI testing limit reached. Try again after the UTC daily reset.", code: "AI_DAILY_LIMIT" }, 429);
+    return json({ error: "Daily AI request limit reached. Try again after the UTC daily reset.", code: "AI_DAILY_LIMIT" }, 429);
   }
 
   let conversationId = asString(conversation?.id);
