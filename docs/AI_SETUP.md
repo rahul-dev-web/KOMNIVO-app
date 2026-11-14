@@ -50,7 +50,7 @@ This is optional. Configure it only if you want a second provider ready for fall
 4. The default model ID is `qwen/qwen3.8-27b`; keep `GROQ_MODEL` set to that value unless the Groq console/docs show it has been retired.
 5. Leave `AI_PROVIDER=cloudflare` to keep Cloudflare primary and Groq as fallback. Set `AI_PROVIDER=groq` only when deliberately testing Groq as primary.
 
-Groq free-plan rate limits vary by model and organisation. Check the live **Rate Limits** panel in the Groq console; do not assume a permanent requests-per-day number. The code falls back only on retryable HTTP 429/5xx failures, not on invalid credentials or malformed requests.
+Groq free-plan rate limits vary by model and organisation. Check the live **Rate Limits** panel in the Groq console; do not assume a permanent requests-per-day number. If only one provider is configured, the gateway uses it even if the other is selected as primary. With both configured, the code falls back only on retryable HTTP 429/5xx failures, not on invalid credentials or malformed requests.
 
 Official docs:
 - https://console.groq.com/docs/vision
@@ -135,7 +135,7 @@ After setting Cloudflare secrets:
 6. Check Supabase tables `ai_conversations`, `ai_messages`, `ai_runs` and `ai_usage_ledger`. Verify the rows belong to the signed-in user and the correct event scope.
 7. Test with a non-organiser account against an event-scoped Organizer AI session; it must receive HTTP 403.
 8. Test without provider secrets; the function should return `AI_PROVIDER_NOT_CONFIGURED` / HTTP 503, not expose secrets.
-9. Test the daily cap; default is 25 successful model calls per user per UTC day. Set `AI_DAILY_REQUEST_LIMIT` to a lower number for a controlled test.
+9. Test the daily cap; default is 25 model attempts per user per UTC day. Set `AI_DAILY_REQUEST_LIMIT` to a lower number for a controlled test.
 
 ## 6. Current implementation boundary — important
 
