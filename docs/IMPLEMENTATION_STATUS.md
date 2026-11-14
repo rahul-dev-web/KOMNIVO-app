@@ -92,7 +92,7 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 
 - Migration `202611140003_atomic_ai_daily_budget` creates a private per-user/per-UTC-day counter and a service-role-only reservation RPC.
 - `komnivo-ai` now reserves one request atomically before model execution; concurrent requests cannot race past the configured daily limit. Failed attempts also count toward the daily cap.
-- Supabase `komnivo-ai` Edge Function version 10 is ACTIVE with JWT verification.
+- Supabase `komnivo-ai` Edge Function version 11 is ACTIVE with JWT verification.
 
 
 ## Event-scoped AI context and session recovery — 14 November 2026
@@ -117,4 +117,6 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - Flutter Organizer AI chat now supports uploading rulebooks, schedules, spreadsheets and screenshots, choosing document visibility, uploading to private storage and starting server-side extraction.
 - OCR requires the owner to configure Cloudflare token secrets. Document parsing and retrieval code is deployed but end-to-end file upload/extraction QA is pending the provider token and a signed-in organiser test account.
 
-- Latest verified function versions: `komnivo-ai` v10 and `komnivo-ai-process-document` v2, both ACTIVE with JWT verification.
+- Latest verified function versions: `komnivo-ai` v11 and `komnivo-ai-process-document` v2, both ACTIVE with JWT verification.
+
+- Community-only AI sessions (without a specific event) now retrieve relevant chunks from the authorized community documents as well as event-scoped document retrieval.
