@@ -103,16 +103,19 @@ async function canUseScope(
       if (!eventCommunity || (eventCommunity.visibility !== "public" && !membership)) return false;
     }
 
-    const { data: registrations } = await admin.from("event_registrations")
-      .select("id,captain_user_id").eq("event_id", eventId).limit(200);
-    const rows = registrations ?? [];
-    let isParticipant = rows.some((row) => row.captain_user_id === userId);
-    if (!isParticipant && rows.length > 0) {
-      const ids = rows.map((row) => String(row.id));
-      const { data: playerRows } = await admin.from("registration_players")
-        .select("registration_id").in("registration_id", ids).eq("user_id", userId).limit(1);
-      isParticipant = Boolean(playerRows && playerRows.length > 0);
-    }
+    const [captainRows, playerRows] = await Promise.all([
+      admin.from("event_registrations").select("id")
+        .eq("event_id", eventId).eq("captain_user_id", userId).limit(1),
+      admin.from("registration_players")
+        .select("registration_id,event_registrations!inner(event_id)")
+        .eq("user_id", userId)
+        .eq("event_registrations.event_id", eventId)
+        .limit(1),
+    ]);
+    const isParticipant = Boolean(
+      (captainRows.data && captainRows.data.length > 0)
+      || (playerRows.data && playerRows.data.length > 0)
+    );
 
     if (!isParticipant) {
       const publicStatuses = ["published", "registration_open", "live", "completed"];
@@ -163,7 +166,7 @@ async function buildContext(
 
   if (mode === "organizer") {
     const [registrations, matches, standings] = await Promise.all([
-      admin.from("event_registrations").select("id,status,registered_at,roster_locked,teams(name,tag)")
+      admin.from("event_registrations").select("id,status,registered_at,roster_locked,teams(name,tag)", { count: "exact" })
         .eq("event_id", eventId).order("registered_at").limit(100),
       admin.from("matches").select("id,round_number,group_label,match_number,starts_at,status")
         .eq("event_id", eventId).order("round_number").order("match_number").limit(120),
@@ -174,8 +177,10 @@ async function buildContext(
     const statusCounts: Record<string, number> = {};
     for (const row of regRows) statusCounts[String(row.status)] = (statusCounts[String(row.status)] ?? 0) + 1;
     snapshot.registration_summary = {
-      total_returned: regRows.length,
-      status_counts: statusCounts,
+      records_included: regRows.length,
+      total_registrations: registrations.count ?? null,
+      truncated: (registrations.count ?? regRows.length) > regRows.length,
+      status_counts_for_included_records: statusCounts,
       teams: regRows.map((row) => ({
         team: row.teams, status: row.status, registered_at: row.registered_at, roster_locked: row.roster_locked,
       })),
@@ -186,20 +191,19 @@ async function buildContext(
     return snapshot;
   }
 
-  const eventRegistrations = await admin.from("event_registrations")
-    .select("id,captain_user_id").eq("event_id", eventId).limit(200);
-  const eventRegistrationIds = (eventRegistrations.data ?? []).map((row) => String(row.id));
+  const [captainRows, playerRows] = await Promise.all([
+    admin.from("event_registrations").select("id")
+      .eq("event_id", eventId).eq("captain_user_id", userId).limit(20),
+    admin.from("registration_players")
+      .select("registration_id,event_registrations!inner(event_id)")
+      .eq("user_id", userId)
+      .eq("event_registrations.event_id", eventId)
+      .limit(20),
+  ]);
   const registrationIds = new Set<string>();
-  for (const row of eventRegistrations.data ?? []) {
-    if (row.captain_user_id === userId) registrationIds.add(String(row.id));
-  }
-  if (eventRegistrationIds.length > 0) {
-    const playerRows = await admin.from("registration_players")
-      .select("registration_id").in("registration_id", eventRegistrationIds)
-      .eq("user_id", userId).limit(200);
-    for (const row of playerRows.data ?? []) {
-      if (row.registration_id) registrationIds.add(String(row.registration_id));
-    }
+  for (const row of captainRows.data ?? []) registrationIds.add(String(row.id));
+  for (const row of playerRows.data ?? []) {
+    if (row.registration_id) registrationIds.add(String(row.registration_id));
   }
   if (registrationIds.size === 0) {
     snapshot.player_event_state = { registered: false };
