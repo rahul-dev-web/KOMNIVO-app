@@ -165,6 +165,8 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     final visibility = await _chooseDocumentVisibility();
     if (visibility == null || !mounted) return;
 
+    String? uploadedPath;
+    bool metadataCreated = false;
     try {
       final picked = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -191,6 +193,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
       final unique = '${DateTime.now().microsecondsSinceEpoch}_${math.Random.secure().nextInt(1 << 20)}';
       final path = '${user.id}/${widget.eventId ?? widget.communityId}/${unique}_${safeName}';
+      uploadedPath = path;
 
       setState(() {
         _sending = true;
@@ -215,6 +218,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         'visibility': visibility,
         'processing_status': 'uploaded',
       }).select('id').single();
+      metadataCreated = true;
 
       final processed = await client.functions.invoke(
         'komnivo-ai-process-document',
@@ -237,6 +241,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         'Document processed: ${file.name}. Extracted ${data['extracted_characters'] ?? 0} characters into $count searchable source chunks. ${sources.isEmpty ? '' : 'Sources: $sources. '}Now ask me questions about this document.',
       )));
     } catch (error) {
+      if (uploadedPath != null && !metadataCreated) {
+        try {
+          await Supabase.instance.client.storage.from('ai-documents').remove([uploadedPath]);
+        } catch (_) {
+          // A failed cleanup leaves an unreferenced private object for later review.
+        }
+      }
       if (mounted) {
         setState(() => _items.add(_ChatItem(
           false,
