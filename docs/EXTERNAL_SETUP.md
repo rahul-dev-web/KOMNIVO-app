@@ -22,15 +22,15 @@ The project is in Singapore because that is the region selected in the Supabase 
 
 ### Backend work already completed
 
-- Twenty-one database migrations are applied, including the Bio challenge, challenge-table RLS guard, three-attempt verification controls and in-flight challenge concurrency guard.
-- Fifty-two application tables exist in the `public` schema, and all fifty-two have Row Level Security enabled.
+- Twenty-two database migrations are applied, including the Bio challenge, challenge-table RLS guard, three-attempt verification controls and in-flight challenge concurrency guard.
+- Fifty-three application tables exist in the `public` schema, and all fifty-two have Row Level Security enabled.
 - Anonymous table access is limited to reading the active `games` catalogue. Application tables are granted to authenticated users only, subject to RLS and column-level restrictions.
 - Default table, sequence and function privileges for new `public` objects created by the postgres migration owner have been tightened. Future migrations must grant only the exact privileges they need.
 - Both Storage buckets exist and are private: `community-media` and `match-evidence` (10 MB per file; JPG, PNG, WebP and PDF).
 - The `messages` table is included in the `supabase_realtime` publication.
-- Fourteen Edge Functions are deployed and ACTIVE.
+- Fifteen Edge Functions are deployed and ACTIVE.
 
-Deployed functions: `accept-team-invite`, `approve-result`, `check-in`, `create-community-invite`, `create-community`, `create-conversation`, `create-livekit-token`, `join-community`, `notification-push`, `register-event`, `review-registration`, `submit-result`, `sync-freefire-profile`, and `komnivo-ai`.
+Deployed functions: `accept-team-invite`, `approve-result`, `check-in`, `create-community-invite`, `create-community`, `create-conversation`, `create-livekit-token`, `join-community`, `notification-push`, `register-event`, `review-registration`, `submit-result`, `sync-freefire-profile`, and `komnivo-ai`, `komnivo-ai-process-document`.
 
 All user-facing functions require JWT verification. `notification-push` is the one exception because it is called by a database webhook and checks the private `x-webhook-secret` header itself. Do not remove that header check.
 
@@ -46,7 +46,8 @@ All user-facing functions require JWT verification. `notification-push` is the o
 | Free Fire UID profile sync | Free Fire Community API (unofficial) | Yes — provider API key |
 | Same-phone LiveOps screen OCR | Android MediaProjection + Google ML Kit on-device text recognition | No cloud vision API key |
 | Voice prompts for LiveOps | Device text-to-speech via `flutter_tts` | No cloud voice API key |
-| Organizer AI + Player AI chat | Cloudflare Workers AI (primary) + GroqCloud (alternative); Supabase Edge Function `komnivo-ai` | Yes — Cloudflare account ID/token; optional Groq API key. See `docs/AI_SETUP.md` |
+| Organizer AI + Player AI | Cloudflare Workers AI (primary) + GroqCloud (alternative); authenticated Edge Function `komnivo-ai` | Yes — Cloudflare account ID/token; optional Groq API key. See `docs/AI_SETUP.md` |
+| Organizer document ingestion | Private Supabase Storage bucket `ai-documents`; `komnivo-ai-process-document` extracts PDF/DOCX/XLSX/XLS/CSV/TXT/MD and OCRs PNG/JPEG/WebP using Cloudflare Vision | Uses the same Cloudflare token for image OCR; other supported formats parse server-side |
 
 There is also no ChatGPT plugin that needs to be installed. These integrations are normal Flutter packages and Supabase Edge Functions already listed in the repository.
 
