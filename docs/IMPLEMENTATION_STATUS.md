@@ -14,7 +14,7 @@ Connected Supabase project:
 - Database: PostgreSQL 17.11
 
 Verified on the project:
-- 18 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy, profile-wide three-request counter/RPCs and challenge in-flight concurrency guard.
+- 21 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy, profile-wide three-request counter/RPCs and challenge in-flight concurrency guard.
 - 52 application tables in `public`; all 52 have RLS enabled.
 - Least-privilege grants applied: anonymous users can read only the active `games` catalogue; authenticated access is granted per table and column under RLS. Future `public` tables, sequences and functions created by the postgres migration owner no longer receive broad anon/authenticated default privileges.
 - Two private Storage buckets: `community-media` and `match-evidence`, both limited to 10 MB and JPG/PNG/WebP/PDF.
@@ -92,4 +92,13 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 
 - Migration `202611140003_atomic_ai_daily_budget` creates a private per-user/per-UTC-day counter and a service-role-only reservation RPC.
 - `komnivo-ai` now reserves one request atomically before model execution; concurrent requests cannot race past the configured daily limit. Failed attempts also count toward the daily cap.
-- Supabase `komnivo-ai` Edge Function version 5 is ACTIVE with JWT verification.
+- Supabase `komnivo-ai` Edge Function version 6 is ACTIVE with JWT verification.
+
+
+## Event-scoped AI context and session recovery — 14 November 2026
+
+- Organizer AI receives a limited live event snapshot: event rules/scoring configuration, registration status/team list, matches, standings and (where applicable) community channel metadata. It does not receive player contact details or room passwords.
+- Player AI receives only its own registration/team/match/check-in details for an event. Public event rules can be discussed before registration; private-event context still requires membership or registration.
+- Public/private event visibility is enforced in both the Edge Function and the database RLS scope helper.
+- AI chat restores the latest active conversation for the same mode/event/community after reopening. Users can start a new chat without deleting earlier conversations.
+- These assistants remain read-only. No AI-generated event or membership operation is executed yet.
