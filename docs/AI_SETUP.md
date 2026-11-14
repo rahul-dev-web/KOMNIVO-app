@@ -124,7 +124,9 @@ For Groq, add its values using the Dashboard, or create a temporary ignored file
 - Player event context is limited to a player's own registration/roster; community context requires membership.
 - Edge Function `komnivo-ai` is deployed with JWT verification enabled.
 - Flutter has an Organizer AI entry point on each event card and a Player AI entry point in the app bar.
-- The current chat endpoint is read-only. It stores conversations, messages and usage; it does not call event/channel/role/registration/scoring tools.
+- Organizer AI receives an event-scoped snapshot of rules, scoring, registration summaries, matches and standings. Player AI receives only the signed-in player's own registration/team/match/check-in details. Public events can be discussed before registration; private events remain member/participant scoped.
+- The Flutter chat restores the latest active conversation for the same scope and supports starting a new chat.
+- The endpoint remains read-only. It does not call event/channel/role/registration/scoring tools.
 - Per-user daily request caps are reserved atomically in a private database counter through a service-role-only RPC. Parallel requests cannot bypass the default 25-attempt UTC-day cap.
 
 ## 5. Smoke test
@@ -152,7 +154,7 @@ Not implemented in this first code slice:
 - Approval UI and execution of channel/role/permission/event/registration/scrim operations.
 - Deterministic points-table ingestion, validation and standings publication.
 - Recurring scrim scheduling and notification automation.
-- Full player-context retrieval for event-specific live status.
+- Additional player-context workflows outside an explicitly opened event scope (for example, cross-event upcoming schedule and notifications).
 - Provider benchmark/evaluation harness and token/Neuron telemetry beyond provider-reported token counts.
 
 These remain required product scope. Do not mark the AI system complete until those workflows are implemented and tested. The first chat endpoint deliberately refuses to claim that it can execute those operations.
