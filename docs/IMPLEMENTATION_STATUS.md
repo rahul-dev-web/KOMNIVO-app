@@ -92,7 +92,7 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 
 - Migration `202611140003_atomic_ai_daily_budget` creates a private per-user/per-UTC-day counter and a service-role-only reservation RPC.
 - `komnivo-ai` now reserves one request atomically before model execution; concurrent requests cannot race past the configured daily limit. Failed attempts also count toward the daily cap.
-- Supabase `komnivo-ai` Edge Function version 6 is ACTIVE with JWT verification.
+- Supabase `komnivo-ai` Edge Function version 7 is ACTIVE with JWT verification.
 
 
 ## Event-scoped AI context and session recovery — 14 November 2026
@@ -102,3 +102,5 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - Public/private event visibility is enforced in both the Edge Function and the database RLS scope helper.
 - AI chat restores the latest active conversation for the same mode/event/community after reopening. Users can start a new chat without deleting earlier conversations.
 - These assistants remain read-only. No AI-generated event or membership operation is executed yet.
+
+- Public event access correction: signed-in players can ask about published events in public communities without joining the community; private communities/events remain member/participant-scoped. This is enforced by the AI Edge Function v7 and the database scope helper.
