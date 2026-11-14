@@ -537,7 +537,10 @@ async function prepareEventDraftProposal(
       throw new Error("Registration close time must include an explicit timezone.");
     }
     const closesAt = new Date(closesAtRaw);
-    if (!Number.isFinite(closesAt.getTime()) || closesAt.getTime() >= startsAt.getTime()) {
+    if (!Number.isFinite(closesAt.getTime()) || closesAt.getTime() <= Date.now()) {
+      throw new Error("Registration close time must also be in the future.");
+    }
+    if (closesAt.getTime() >= startsAt.getTime()) {
       throw new Error("Registration must close before the event starts.");
     }
     registrationClosesAt = closesAt.toISOString();
