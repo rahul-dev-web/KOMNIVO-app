@@ -32,7 +32,7 @@ Cloudflare Workers Free includes 10,000 Neurons/day. Neurons measure GPU compute
 The deployed Edge Function calls Cloudflare's OpenAI-compatible Chat Completions endpoint:
 `https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/v1/chat/completions`
 
-The code's default model is `@cf/qwen/qwen3.8-27b`. It supports text, image/vision input, reasoning and function calling, but the current KOMNIVO chat endpoint only uses text chat; file ingestion and action tools are not yet enabled.
+The code's default model is `@cf/qwen/qwen3.8-27b`. KOMNIVO uses text chat, document retrieval and a typed Organizer `propose_event_draft` tool. The proposal is not executed until a separate approval action; that action creates a DRAFT event only.
 
 Official docs:
 - https://developers.cloudflare.com/workers-ai/models/qwen3.8-27b/
@@ -116,19 +116,20 @@ For Groq, add its values using the Dashboard, or create a temporary ignored file
 
 - Supabase migrations `202611140001_organizer_ai_foundation`, `202611140002_ai_fk_indexes` and `202611140006_ai_document_ingestion` create:
   - `ai_conversations`, `ai_messages`
-  - `ai_documents`, `ai_document_chunks`, `ai_document_chunks`
+  - `ai_documents`, `ai_document_chunks`
   - `ai_proposals`, `ai_runs`, `ai_actions`
   - `ai_usage_ledger`, `ai_policy`
 - RLS is enabled on every AI table. The live database check confirms all eight AI tables have RLS enabled and scoped policies.
 - Migrations `202611140003_atomic_ai_daily_budget`, `202611140004_player_ai_public_event_scope` and `202611140005_fix_player_ai_scope_helper` add an atomic private UTC-day request counter and enforce public/private event visibility for Player AI.
-- Edge Function `komnivo-ai` version 11 is ACTIVE with JWT verification. It includes scoped event context and safe chat history.
+- Edge Function `komnivo-ai` v13 is ACTIVE with JWT verification. It includes scoped event context, source-grounded document retrieval, safe chat history and a typed event-draft proposal tool.
 - Organizer scope is limited to the event organiser or community owner/admin/organiser. Moderators are not granted Organizer AI access by default.
 - Player event context is limited to a player's own registration/roster; community context requires membership.
-- Edge Function `komnivo-ai-process-document` v2 is ACTIVE with JWT verification. Both AI Edge Functions require JWT verification.
+- Edge Function `komnivo-ai-process-document` v4 and `komnivo-ai-proposal-action` v3 are ACTIVE with JWT verification. All three AI Edge Functions require JWT verification.
 - Flutter has event-scoped Organizer AI and Player AI entry points on their respective event cards, plus a Player AI app-bar entry point. Recent conversations restore by scope; starting a new chat preserves earlier conversations.
 - Organizer AI receives an event-scoped snapshot of rules, scoring, registration summaries, matches and standings. Player AI receives only the signed-in player's own registration/team/match/check-in details. Published events in public communities can be discussed before registration and before community join; private events remain member/participant scoped.
 - The Flutter chat restores the latest active conversation for the same scope and supports starting a new chat.
-- The endpoint remains read-only. It does not call event/channel/role/registration/scoring tools.
+- Organizer AI supports only one write path at present: a typed event-draft proposal. The organiser must explicitly approve; the resolver creates `draft` status only. No automatic publication.
+- Player AI remains read-only; community/channel/role/permission/registration/scrim/scoring/result/notification tools remain unimplemented.
 - Per-user daily request caps are reserved atomically in a private database counter through a service-role-only RPC. Parallel requests cannot bypass the default 25-attempt UTC-day cap.
 
 ## 5. Smoke test
@@ -153,7 +154,7 @@ Not implemented in this first code slice:
 - PDF/DOCX/XLSX/CSV/PNG/JPEG/WebP/TXT/Markdown upload and source-linked extraction is implemented for the supported file types. Remaining: user-facing reprocessing/version comparison, richer spreadsheet row/column citations and OCR evaluation for complex images.
 - Document chunking, retrieval and version comparison.
 - Tool/function calling with typed action schemas.
-- Approval UI and execution of channel/role/permission/event/registration/scrim operations.
+- Approval UI and execution of additional channel/role/permission/registration/scrim/score/result operations. Only the event-draft create action is implemented so far.
 - Deterministic points-table ingestion, validation and standings publication.
 - Recurring scrim scheduling and notification automation.
 - Additional player-context workflows outside an explicitly opened event scope (for example, cross-event upcoming schedule and notifications).
@@ -168,7 +169,7 @@ These remain required product scope. Do not mark the AI system complete until th
 - Use synthetic data while testing prompts and uploaded rulebooks.
 - Do not paste passwords, personal phone numbers or private roster exports into the AI chat.
 - The LLM is not the source of truth for permissions, scores, qualification or event state.
-- Any future write tool must re-check the signed-in actor's authority on the server, validate its JSON schema and business rules, require approval where configured, use an idempotency key and write an audit record.
+- Every additional write tool must re-check the signed-in actor's authority on the server, validate JSON schema and business rules, require approval where configured, use an idempotency key and write an audit record. The event-draft approval resolver already follows this boundary.
 
 ## 8. Cost controls
 
@@ -182,3 +183,11 @@ These remain required product scope. Do not mark the AI system complete until th
 ## Latest backend hardening
 
 The Player AI participation check no longer scans only the first 200 registrations in an event. It checks the signed-in player's captain/roster rows directly. Organizer registration summaries include a database count and clearly indicate when the displayed team list has been truncated.
+
+
+## Event-draft proposal and approval — latest implementation
+
+- Organizer model requests can return the strict `propose_event_draft` function call. Server-side code validates values and creates only a pending proposal with source refs and 30-minute expiry.
+- Flutter renders proposal details (game, format, team capacity, start, optional registration close, document sources) and requires a deliberate Approve draft or Reject click.
+- JWT-protected Edge Function `komnivo-ai-proposal-action` v3 resolves the action through a service-role-only database RPC. The SQL function checks the actual signed-in actor ID's current organiser authority, revalidates event fields, writes an audit row and uses an idempotency key. Approval creates `events.status='draft'`; it does not publish or open registration.
+- Live Edge Function versions: `komnivo-ai` v13, `komnivo-ai-process-document` v4, `komnivo-ai-proposal-action` v3. Provider token still needs to be stored in Supabase, so end-to-end LLM function-calling and approval testing has not yet been performed.
