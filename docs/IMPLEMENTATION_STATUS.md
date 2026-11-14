@@ -116,3 +116,5 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - Organizer AI retrieves up to five relevant chunks from only the selected event/community, and the prompt requires source citations. Player AI only retrieves public documents or participant-visible documents when the player is an event participant/community member.
 - Flutter Organizer AI chat now supports uploading rulebooks, schedules, spreadsheets and screenshots, choosing document visibility, uploading to private storage and starting server-side extraction.
 - OCR requires the owner to configure Cloudflare token secrets. Document parsing and retrieval code is deployed but end-to-end file upload/extraction QA is pending the provider token and a signed-in organiser test account.
+
+- Latest verified function versions: `komnivo-ai` v10 and `komnivo-ai-process-document` v2, both ACTIVE with JWT verification.
