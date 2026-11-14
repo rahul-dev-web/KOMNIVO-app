@@ -108,7 +108,7 @@ async function requestCloudflare(messages: Array<{role: string; content: string}
     {
       method: "POST",
       headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: 1200 }),
+      body: JSON.stringify({ model, messages, temperature: 0.3, max_completion_tokens: 1200, reasoning_effort: "low" }),
       signal: AbortSignal.timeout(60000),
     },
   );
