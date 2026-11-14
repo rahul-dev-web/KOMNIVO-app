@@ -14,7 +14,7 @@ Connected Supabase project:
 - Database: PostgreSQL 17.11
 
 Verified on the project:
-- 22 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy, profile-wide three-request counter/RPCs and challenge in-flight concurrency guard.
+- 24 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy, profile-wide three-request counter/RPCs and challenge in-flight concurrency guard.
 - 53 application tables in `public`; all 53 have RLS enabled.
 - Least-privilege grants applied: anonymous users can read only the active `games` catalogue; authenticated access is granted per table and column under RLS. Future `public` tables, sequences and functions created by the postgres migration owner no longer receive broad anon/authenticated default privileges.
 - Three private Storage buckets: `community-media` and `match-evidence` (10 MB, JPG/PNG/WebP/PDF), plus `ai-documents` (25 MB, document and image MIME allow-list).
@@ -83,7 +83,7 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - Added and applied migration `202611140001_organizer_ai_foundation`: eight AI tables with RLS, explicit owner/scope access, least-privilege grants and private helper functions.
 - Deployed authenticated Edge Function `komnivo-ai` v11. It supports Cloudflare Workers AI as primary and GroqCloud as an optional fallback/provider, persists conversation/run/usage records, retrieves scope-filtered source chunks and enforces a per-user daily request cap (default 25 model attempts).
 - Added Player AI entry points in the app bar and on public event cards, plus event-scoped Organizer AI entry points on organiser event cards. Recent scoped conversations restore on reopen; users can start a new chat.
-- The endpoint is deliberately read-only. It does not yet ingest uploaded files, retrieve live tournament records, execute typed actions, create channels/roles/events, approve registrations or publish results. These remain required product scope and must not be marked complete.
+- The first approved write workflow is an event-draft proposal: Organizer AI may call a typed `propose_event_draft` tool, which stores a pending proposal. The organiser must explicitly approve it; the service-role-only resolver rechecks the actor's current owner/admin/organiser rights and creates an event with `status='draft'` only. It never publishes. Other write operations (channels/roles/permissions, registrations, recurring scrims, scoring/result publication and notifications) remain required work.
 - Provider credentials are not yet configured. The function will return `AI_PROVIDER_NOT_CONFIGURED` until the project owner adds `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` to Supabase Edge Function Secrets. Optional Groq secrets are `GROQ_API_KEY` and `GROQ_MODEL`.
 - Follow `docs/AI_SETUP.md` for exact external setup and smoke tests.
 
@@ -92,7 +92,7 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 
 - Migration `202611140003_atomic_ai_daily_budget` creates a private per-user/per-UTC-day counter and a service-role-only reservation RPC.
 - `komnivo-ai` now reserves one request atomically before model execution; concurrent requests cannot race past the configured daily limit. Failed attempts also count toward the daily cap.
-- Supabase `komnivo-ai` Edge Function version 11 is ACTIVE with JWT verification.
+- Supabase `komnivo-ai` Edge Function v13 is ACTIVE with JWT verification; `komnivo-ai-process-document` v4 and `komnivo-ai-proposal-action` v3 are also ACTIVE with JWT verification.
 
 
 ## Event-scoped AI context and session recovery — 14 November 2026
@@ -101,7 +101,7 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - Player AI receives only its own registration/team/match/check-in details for an event. Public event rules can be discussed before registration; private-event context still requires membership or registration.
 - Public/private event visibility is enforced in both the Edge Function and the database RLS scope helper.
 - AI chat restores the latest active conversation for the same mode/event/community after reopening. Users can start a new chat without deleting earlier conversations.
-- These assistants remain read-only. No AI-generated event or membership operation is executed yet.
+- Player AI remains read-only. Organizer AI can propose an event draft and execute only the explicitly approved draft-creation operation; no AI membership, role, channel, registration or results write is enabled.
 
 - Public event access correction: signed-in players can ask about published events in public communities without joining the community; private communities/events remain member/participant-scoped. This is enforced by the AI Edge Function v7 and the database scope helper.
 
@@ -117,6 +117,16 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - Flutter Organizer AI chat now supports uploading rulebooks, schedules, spreadsheets and screenshots, choosing document visibility, uploading to private storage and starting server-side extraction.
 - OCR requires the owner to configure Cloudflare token secrets. Document parsing and retrieval code is deployed but end-to-end file upload/extraction QA is pending the provider token and a signed-in organiser test account.
 
-- Latest verified function versions: `komnivo-ai` v11 and `komnivo-ai-process-document` v2, both ACTIVE with JWT verification.
+- Latest verified function versions: `komnivo-ai` v13, `komnivo-ai-process-document` v4 and `komnivo-ai-proposal-action` v3, both ACTIVE with JWT verification.
 
 - Community-only AI sessions (without a specific event) now retrieve relevant chunks from the authorized community documents as well as event-scoped document retrieval.
+
+
+## Organizer AI approval-gated event draft — 14 November 2026
+
+- Applied migrations `202611140007_organizer_ai_approval_execution` and `202611140008_fix_ai_service_role_actor_check`.
+- `komnivo-ai` v13 exposes one typed Organizer tool: `propose_event_draft`. It validates name, game, format, capacity, timezone-aware future start and registration close, rules/scoring object sizes, and derives community scope from the authenticated conversation—not model arguments.
+- A tool call creates a pending `ai_proposals` row with a 30-minute expiry and source references. It does not create an event.
+- `komnivo-ai-proposal-action` v3 requires a valid JWT and owner-matching proposal. Approval/rejection is processed by a service-role-only SQL resolver that uses the verified actor ID to recheck current event/community organiser permissions, locks the proposal, validates again, uses an idempotency key, writes `ai_actions` and `audit_logs`, and inserts a new event with status `draft` only.
+- Flutter renders proposal cards with source references and explicit Approve draft / Reject controls. After approval, the organiser event list refreshes when returning from AI. The app states the event is not published.
+- End-to-end provider tool-call and approval QA is pending Cloudflare token setup and a signed-in organiser test; Deno type-check/Flutter checks are run in CI.
