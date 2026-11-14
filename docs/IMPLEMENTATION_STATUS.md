@@ -14,7 +14,7 @@ Connected Supabase project:
 - Database: PostgreSQL 17.11
 
 Verified on the project:
-- 17 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy, profile-wide three-request counter/RPCs and challenge in-flight concurrency guard.
+- 18 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy, profile-wide three-request counter/RPCs and challenge in-flight concurrency guard.
 - 52 application tables in `public`; all 52 have RLS enabled.
 - Least-privilege grants applied: anonymous users can read only the active `games` catalogue; authenticated access is granted per table and column under RLS. Future `public` tables, sequences and functions created by the postgres migration owner no longer receive broad anon/authenticated default privileges.
 - Two private Storage buckets: `community-media` and `match-evidence`, both limited to 10 MB and JPG/PNG/WebP/PDF.
@@ -86,3 +86,10 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - The endpoint is deliberately read-only. It does not yet ingest uploaded files, retrieve live tournament records, execute typed actions, create channels/roles/events, approve registrations or publish results. These remain required product scope and must not be marked complete.
 - Provider credentials are not yet configured. The function will return `AI_PROVIDER_NOT_CONFIGURED` until the project owner adds `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` to Supabase Edge Function Secrets. Optional Groq secrets are `GROQ_API_KEY` and `GROQ_MODEL`.
 - Follow `docs/AI_SETUP.md` for exact external setup and smoke tests.
+
+
+## AI daily budget hardening — 14 November 2026
+
+- Migration `202611140003_atomic_ai_daily_budget` creates a private per-user/per-UTC-day counter and a service-role-only reservation RPC.
+- `komnivo-ai` now reserves one request atomically before model execution; concurrent requests cannot race past the configured daily limit. Failed attempts also count toward the daily cap.
+- Supabase `komnivo-ai` Edge Function version 5 is ACTIVE with JWT verification.
