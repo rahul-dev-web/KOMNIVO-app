@@ -116,7 +116,7 @@ For Groq, add its values using the Dashboard, or create a temporary ignored file
 
 - Supabase migrations `202611140001_organizer_ai_foundation` and `202611140002_ai_fk_indexes` create:
   - `ai_conversations`, `ai_messages`
-  - `ai_documents`
+  - `ai_documents`, `ai_document_chunks`
   - `ai_proposals`, `ai_runs`, `ai_actions`
   - `ai_usage_ledger`, `ai_policy`
 - RLS is enabled on every AI table. The live database check confirms all eight AI tables have RLS enabled and scoped policies.
@@ -150,7 +150,7 @@ After setting Cloudflare secrets:
 This deployment is the secure AI foundation and initial chat surface, not the complete Organizer AI operating system yet.
 
 Not implemented in this first code slice:
-- PDF/DOCX/XLSX/CSV/image upload and source-linked extraction.
+- PDF/DOCX/XLSX/CSV/PNG/JPEG/WebP/TXT/Markdown upload and source-linked extraction is implemented for the supported file types. Remaining: user-facing reprocessing/version comparison, richer spreadsheet row/column citations and OCR evaluation for complex images.
 - Document chunking, retrieval and version comparison.
 - Tool/function calling with typed action schemas.
 - Approval UI and execution of channel/role/permission/event/registration/scrim operations.
