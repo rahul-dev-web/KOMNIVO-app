@@ -14,12 +14,12 @@ Connected Supabase project:
 - Database: PostgreSQL 17.11
 
 Verified on the project:
-- 21 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy, profile-wide three-request counter/RPCs and challenge in-flight concurrency guard.
-- 52 application tables in `public`; all 52 have RLS enabled.
+- 22 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy, profile-wide three-request counter/RPCs and challenge in-flight concurrency guard.
+- 53 application tables in `public`; all 53 have RLS enabled.
 - Least-privilege grants applied: anonymous users can read only the active `games` catalogue; authenticated access is granted per table and column under RLS. Future `public` tables, sequences and functions created by the postgres migration owner no longer receive broad anon/authenticated default privileges.
 - Two private Storage buckets: `community-media` and `match-evidence`, both limited to 10 MB and JPG/PNG/WebP/PDF.
 - `public.messages` is enabled in the `supabase_realtime` publication.
-- All 14 repository Edge Functions deployed and ACTIVE. User-facing functions have JWT verification enabled; `notification-push` uses its dedicated `x-webhook-secret` check.
+- All 15 repository Edge Functions deployed and ACTIVE. User-facing functions have JWT verification enabled; `notification-push` uses its dedicated `x-webhook-secret` check.
 
 ## Implemented in source
 
@@ -92,7 +92,7 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 
 - Migration `202611140003_atomic_ai_daily_budget` creates a private per-user/per-UTC-day counter and a service-role-only reservation RPC.
 - `komnivo-ai` now reserves one request atomically before model execution; concurrent requests cannot race past the configured daily limit. Failed attempts also count toward the daily cap.
-- Supabase `komnivo-ai` Edge Function version 8 is ACTIVE with JWT verification.
+- Supabase `komnivo-ai` Edge Function version 10 is ACTIVE with JWT verification.
 
 
 ## Event-scoped AI context and session recovery — 14 November 2026
@@ -106,3 +106,13 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - Public event access correction: signed-in players can ask about published events in public communities without joining the community; private communities/events remain member/participant-scoped. This is enforced by the AI Edge Function v7 and the database scope helper.
 
 - Tournament-scale guard: player participation is checked through direct captain/roster lookups (not the first 200 event registrations). Organizer registration summaries include an exact count and indicate if the displayed team list is truncated.
+
+
+## AI document ingestion — 14 November 2026
+
+- Applied migration `202611140006_ai_document_ingestion`; created private Storage bucket `ai-documents` with 25 MB cap, allowed MIME list and owner-folder upload/download/delete policies.
+- Added `public.ai_document_chunks` with RLS, source/page/sheet provenance and a GIN full-text search index. Added document visibility values: `organizer_only`, `participants`, `public`.
+- Deployed JWT-protected Edge Function `komnivo-ai-process-document` v2. It extracts text from PDF (up to 120 pages), DOCX, XLSX/XLS, CSV, TXT and Markdown; screenshots PNG/JPEG/WebP use Qwen 3.8 Vision through the same Cloudflare API token and consume the user's atomic daily AI request budget.
+- Organizer AI retrieves up to five relevant chunks from only the selected event/community, and the prompt requires source citations. Player AI only retrieves public documents or participant-visible documents when the player is an event participant/community member.
+- Flutter Organizer AI chat now supports uploading rulebooks, schedules, spreadsheets and screenshots, choosing document visibility, uploading to private storage and starting server-side extraction.
+- OCR requires the owner to configure Cloudflare token secrets. Document parsing and retrieval code is deployed but end-to-end file upload/extraction QA is pending the provider token and a signed-in organiser test account.
