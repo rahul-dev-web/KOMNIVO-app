@@ -77,28 +77,51 @@ async function canUseScope(
     return true;
   }
 
+  let communityVisible = false;
   if (communityId) {
-    const { data: membership } = await admin.from("community_members")
-      .select("community_id").eq("community_id", communityId).eq("user_id", userId).maybeSingle();
-    if (!membership) return false;
+    const [{ data: community }, { data: membership }] = await Promise.all([
+      admin.from("communities").select("id,visibility").eq("id", communityId).maybeSingle(),
+      admin.from("community_members").select("community_id").eq("community_id", communityId).eq("user_id", userId).maybeSingle(),
+    ]);
+    if (!community) return false;
+    communityVisible = community.visibility === "public" || Boolean(membership);
+    if (!communityVisible) return false;
   }
+
   if (eventId) {
+    const { data: event } = await admin.from("events")
+      .select("id,status,community_id").eq("id", eventId).maybeSingle();
+    if (!event) return false;
+    if (communityId && event.community_id !== communityId) return false;
+
+    if (event.community_id && !communityId) {
+      const [{ data: eventCommunity }, { data: membership }] = await Promise.all([
+        admin.from("communities").select("visibility").eq("id", event.community_id).maybeSingle(),
+        admin.from("community_members").select("community_id")
+          .eq("community_id", event.community_id).eq("user_id", userId).maybeSingle(),
+      ]);
+      if (!eventCommunity || (eventCommunity.visibility !== "public" && !membership)) return false;
+    }
+
     const { data: registrations } = await admin.from("event_registrations")
-      .select("id,captain_user_id").eq("event_id", eventId);
+      .select("id,captain_user_id").eq("event_id", eventId).limit(200);
     const rows = registrations ?? [];
-    const isCaptain = rows.some((row) => row.captain_user_id === userId);
-    if (!isCaptain) {
+    let isParticipant = rows.some((row) => row.captain_user_id === userId);
+    if (!isParticipant && rows.length > 0) {
       const ids = rows.map((row) => String(row.id));
-      if (ids.length === 0) return false;
       const { data: playerRows } = await admin.from("registration_players")
         .select("registration_id").in("registration_id", ids).eq("user_id", userId).limit(1);
-      if (!playerRows || playerRows.length === 0) return false;
+      isParticipant = Boolean(playerRows && playerRows.length > 0);
+    }
+
+    if (!isParticipant) {
+      const publicStatuses = ["published", "registration_open", "live", "completed"];
+      if (!publicStatuses.includes(String(event.status))) return false;
+      if (!event.community_id && communityId) return false;
     }
   }
   return true;
 }
-
-
 async function buildContext(
   admin: SupabaseClient,
   userId: string,
