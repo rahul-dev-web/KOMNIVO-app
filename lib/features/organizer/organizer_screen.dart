@@ -124,14 +124,17 @@ class _OrganizerScreenState extends State<OrganizerScreen> {
                 ])),
                 IconButton(
                   tooltip: 'Ask Organizer AI',
-                  onPressed: widget.preview ? null : () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => AiAssistantScreen(
-                      mode: 'organizer',
-                      eventId: event['id']?.toString(),
-                      communityId: event['community_id']?.toString(),
-                    )),
-                  ),
+                  onPressed: widget.preview ? null : () async {
+                    await Navigator.push<void>(
+                      context,
+                      MaterialPageRoute(builder: (_) => AiAssistantScreen(
+                        mode: 'organizer',
+                        eventId: event['id']?.toString(),
+                        communityId: event['community_id']?.toString(),
+                      )),
+                    );
+                    if (mounted) _reloadEvents();
+                  },
                   icon: const Icon(Icons.auto_awesome, color: KomnivoTheme.accent),
                 ),
                 IconButton(
