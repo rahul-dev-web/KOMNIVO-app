@@ -12,9 +12,7 @@ This guide configures the free-first AI foundation already added to the KOMNIVO 
 | Alternative/fallback | GroqCloud | `qwen/qwen3.8-27b` | Fallback when the primary returns a retryable quota/server error, or selectable as primary |
 | Provider routing | Supabase Edge Function | `komnivo-ai` | Keeps provider keys out of Flutter/Web clients |
 
-Cloudflare's Workers Free plan includes 10,000 Neurons/day. Neurons are a compute allowance, not a fixed token count; actual requests per day depend on prompt/output size and model usage. On Free, inference pauses after the allowance until the daily reset or a plan change. Do not enable paid billing for initial tests.
-
-Cloudflare Workers Paid currently has a $5/month minimum and includes 10,000 Neurons/day, with additional usage billed separately. Re-check current prices before enabling it.
+Cloudflare Workers Free includes 10,000 Neurons/day. Neurons measure GPU compute, not a fixed token count; actual requests per day depend on prompt/output size and model usage. The allowance resets at 00:00 UTC. Once the Free allocation is exhausted, requests fail until the reset. Workers Paid is required to go beyond that allowance; usage above the free 10,000/day is priced at $0.011 per 1,000 Neurons. Do not enable paid billing for initial tests. The selected Qwen model's published list price is $0.45 per million input tokens and $3.20 per million output tokens.
 
 ## 1. Cloudflare Workers AI — primary provider
 
@@ -23,9 +21,10 @@ Cloudflare Workers Paid currently has a $5/month minimum and includes 10,000 Neu
 3. Open the Workers AI Playground and select **Qwen 3.8 27B**. The model ID must be exactly:
    `@cf/qwen/qwen3.8-27b`
 4. Send a harmless test prompt in the Playground. This is only a model smoke test; it does not connect KOMNIVO.
-5. Open the account overview and copy the **Account ID**. Do not use the Pages project name or zone ID.
-6. In **My Profile → API Tokens → Create Token**, create a custom token with only the account permission **Workers AI: Read**. Scope it to the account hosting KOMNIVO. Do not grant Zone, DNS, Workers deployment or account administration permissions.
-7. Create the token and copy it immediately. Cloudflare may not show the secret again.
+5. The Cloudflare account connected for this project is **Jarahul989@gmail.com's Account**. Its Account ID is `b91e7aeefb684d97f231cf52e0178d50`. Keep this as the `CLOUDFLARE_ACCOUNT_ID` value; do not use the Pages project name or a Zone ID.
+6. In **My Profile → API Tokens → Create Token → Create Custom Token**, name it `KOMNIVO Workers AI Read`.
+7. Under Permissions choose **Account → Workers AI → Read** (the permission name is `Workers AI Read` in Cloudflare's token permission list). Under Account Resources choose **Include → Specific account → Jarahul989@gmail.com's Account** only. Do not grant Zone, DNS, Workers deployment or account administration permissions.
+8. Create the token and copy it immediately. Cloudflare may not show the secret again.
 8. Keep both values private:
    - Account ID → `CLOUDFLARE_ACCOUNT_ID`
    - API token → `CLOUDFLARE_API_TOKEN`
@@ -58,11 +57,9 @@ Official docs:
 - https://console.groq.com/docs/openai
 - https://console.groq.com/docs/your-data
 
-## Provider smoke test — completed
+## Provider smoke test — pending owner token
 
-The connected Cloudflare account successfully ran the selected model `@cf/qwen/qwen3.8-27b` through both the Workers AI model-run API and the OpenAI-compatible Chat Completions API. A low-reasoning test returned a normal Hinglish response. Three test requests consumed approximately 115.3 Neurons in total, well below the 10,000-Neuron daily Free allocation.
-
-This validates the connected Cloudflare account's access and the model identifier. It does **not** mean a dedicated API token has been created or that Supabase Edge Function Secrets are configured. The app's deployed AI endpoint remains unavailable until those secrets are added.
+The model identifier and OpenAI-compatible endpoint are confirmed in Cloudflare's current documentation. The dedicated least-privilege API token has not yet been created, so a live request from KOMNIVO's Supabase Edge Function has not been verified. Complete the token step above, store it in Supabase, then run the app smoke test below. Do not treat the provider as connected before that test passes.
 
 ## 3. Add secrets to Supabase — required before chat can respond
 
@@ -78,7 +75,7 @@ Project:
 
 | Secret | Value |
 | --- | --- |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
+| `CLOUDFLARE_ACCOUNT_ID` | `b91e7aeefb684d97f231cf52e0178d50` |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare token with Workers AI: Read |
 | `CLOUDFLARE_MODEL` | `@cf/qwen/qwen3.8-27b` |
 | `AI_PROVIDER` | `cloudflare` |
@@ -96,7 +93,7 @@ From the repository root, create a local secrets file:
 
 ```powershell
 @'
-CLOUDFLARE_ACCOUNT_ID=PASTE_ACCOUNT_ID_HERE
+CLOUDFLARE_ACCOUNT_ID=b91e7aeefb684d97f231cf52e0178d50
 CLOUDFLARE_API_TOKEN=PASTE_TOKEN_HERE
 CLOUDFLARE_MODEL=@cf/qwen/qwen3.8-27b
 AI_PROVIDER=cloudflare
@@ -128,6 +125,7 @@ For Groq, add its values using the Dashboard, or create a temporary ignored file
 - Edge Function `komnivo-ai` is deployed with JWT verification enabled.
 - Flutter has an Organizer AI entry point on each event card and a Player AI entry point in the app bar.
 - The current chat endpoint is read-only. It stores conversations, messages and usage; it does not call event/channel/role/registration/scoring tools.
+- Per-user daily request caps are reserved atomically in a private database counter through a service-role-only RPC. Parallel requests cannot bypass the default 25-attempt UTC-day cap.
 
 ## 5. Smoke test
 
@@ -170,7 +168,7 @@ These remain required product scope. Do not mark the AI system complete until th
 
 ## 8. Cost controls
 
-- Start with `AI_DAILY_REQUEST_LIMIT=25` per user. This is an application guardrail; Cloudflare's 10,000 Neurons/day is a separate account quota.
+- Start with `AI_DAILY_REQUEST_LIMIT=25` per user. The counter is atomic per user and UTC day; Cloudflare's 10,000 Neurons/day is a separate account quota.
 - Do not enable Cloudflare Workers Paid or preload credits during initial testing.
 - Review Cloudflare Neuron usage and Groq rate-limit metrics after test sessions.
 - Before production, set community/event budgets, alerts, max prompt/output sizes and a paid-provider fallback policy.
