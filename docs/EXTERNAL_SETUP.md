@@ -22,7 +22,7 @@ The project is in Singapore because that is the region selected in the Supabase 
 
 ### Backend work already completed
 
-- Seventeen database migrations are applied, including the Bio challenge, challenge-table RLS guard, three-attempt verification controls and in-flight challenge concurrency guard.
+- Eighteen database migrations are applied, including the Bio challenge, challenge-table RLS guard, three-attempt verification controls and in-flight challenge concurrency guard.
 - Fifty-two application tables exist in the `public` schema, and all fifty-two have Row Level Security enabled.
 - Anonymous table access is limited to reading the active `games` catalogue. Application tables are granted to authenticated users only, subject to RLS and column-level restrictions.
 - Default table, sequence and function privileges for new `public` objects created by the postgres migration owner have been tightened. Future migrations must grant only the exact privileges they need.
