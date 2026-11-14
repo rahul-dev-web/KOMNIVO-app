@@ -168,17 +168,14 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     String? uploadedPath;
     bool metadataCreated = false;
     try {
-      final picked = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'docx', 'xlsx', 'xls', 'csv', 'txt', 'md', 'png', 'jpg', 'jpeg', 'webp'],
-        allowMultiple: false,
-        withData: true,
       );
-      if (picked == null || picked.files.isEmpty) return;
+      if (file == null) return;
 
-      final file = picked.files.single;
-      final bytes = file.bytes;
-      if (bytes == null || bytes.isEmpty) {
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
         throw Exception('Could not read this file. Try selecting it again.');
       }
       if (bytes.length > 25 * 1024 * 1024) {
