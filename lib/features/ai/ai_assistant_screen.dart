@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -112,6 +115,141 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     _input.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  Future<String?> _chooseDocumentVisibility() async {
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Who can use this document?'),
+        content: const Text('Choose who may receive answers grounded in this uploaded file. You can change the choice by uploading a new version later.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'organizer_only'),
+            child: const Text('Organisers only'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, 'participants'),
+            child: const Text('Event participants'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, 'public'),
+            child: const Text('Public event members'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _contentType(String extension) {
+    switch (extension.toLowerCase()) {
+      case 'pdf': return 'application/pdf';
+      case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'xlsx': return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case 'xls': return 'application/vnd.ms-excel';
+      case 'csv': return 'text/csv';
+      case 'txt': return 'text/plain';
+      case 'md': return 'text/markdown';
+      case 'png': return 'image/png';
+      case 'jpg':
+      case 'jpeg': return 'image/jpeg';
+      case 'webp': return 'image/webp';
+      default: return 'application/octet-stream';
+    }
+  }
+
+  Future<void> _uploadDocument() async {
+    if (!_organizer || _sending || _restoring || widget.communityId == null && widget.eventId == null) {
+      return;
+    }
+    final visibility = await _chooseDocumentVisibility();
+    if (visibility == null || !mounted) return;
+
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'docx', 'xlsx', 'xls', 'csv', 'txt', 'md', 'png', 'jpg', 'jpeg', 'webp'],
+        allowMultiple: false,
+        withData: true,
+      );
+      if (picked == null || picked.files.isEmpty) return;
+
+      final file = picked.files.single;
+      final bytes = file.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        throw Exception('Could not read this file. Try selecting it again.');
+      }
+      if (bytes.length > 25 * 1024 * 1024) {
+        throw Exception('AI documents must be 25 MB or smaller.');
+      }
+
+      final client = Supabase.instance.client;
+      final user = client.auth.currentUser;
+      if (user == null) throw Exception('Sign in again before uploading a document.');
+      final extension = (file.extension ?? '').toLowerCase();
+      final mime = _contentType(extension);
+      final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      final unique = '${DateTime.now().microsecondsSinceEpoch}_${math.Random.secure().nextInt(1 << 20)}';
+      final path = '${user.id}/${widget.eventId ?? widget.communityId}/${unique}_${safeName}';
+
+      setState(() {
+        _sending = true;
+        _items.add(_ChatItem(true, 'Uploading document: ${file.name}'));
+      });
+      _scrollToBottom();
+
+      await client.storage.from('ai-documents').uploadBinary(
+        path,
+        bytes,
+        fileOptions: FileOptions(contentType: mime, upsert: false),
+      );
+
+      final document = await client.from('ai_documents').insert({
+        'owner_user_id': user.id,
+        'community_id': widget.communityId,
+        'event_id': widget.eventId,
+        'storage_path': path,
+        'original_filename': file.name,
+        'content_type': mime,
+        'file_size': bytes.length,
+        'visibility': visibility,
+        'processing_status': 'uploaded',
+      }).select('id').single();
+
+      final processed = await client.functions.invoke(
+        'komnivo-ai-process-document',
+        body: {'document_id': document['id']},
+      );
+      final data = processed.data is Map
+          ? Map<String, dynamic>.from(processed.data as Map)
+          : <String, dynamic>{};
+      if (processed.status < 200 || processed.status >= 300) {
+        throw Exception(data['error']?.toString() ?? 'Document extraction failed.');
+      }
+
+      if (!mounted) return;
+      final count = data['chunk_count']?.toString() ?? '0';
+      final sources = (data['sources'] is List)
+          ? (data['sources'] as List).map((value) => value.toString()).take(6).join(', ')
+          : '';
+      setState(() => _items.add(_ChatItem(
+        false,
+        'Document processed: ${file.name}. Extracted ${data['extracted_characters'] ?? 0} characters into $count searchable source chunks. ${sources.isEmpty ? '' : 'Sources: $sources. '}Now ask me questions about this document.',
+      )));
+    } catch (error) {
+      if (mounted) {
+        setState(() => _items.add(_ChatItem(
+          false,
+          'Document upload/processing failed. ${error.toString().replaceFirst('Exception: ', '')}',
+          isError: true,
+        )));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _sending = false);
+        _scrollToBottom();
+      }
+    }
   }
 
   Future<void> _send() async {
@@ -260,6 +398,12 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                 ),
               ),
               const SizedBox(width: 8),
+              if (_organizer)
+                IconButton(
+                  tooltip: 'Upload rulebook, spreadsheet or screenshot',
+                  onPressed: _sending || _restoring ? null : _uploadDocument,
+                  icon: const Icon(Icons.attach_file, color: KomnivoTheme.cyan),
+                ),
               IconButton.filled(
                 onPressed: _sending || _restoring ? null : _send,
                 icon: const Icon(Icons.arrow_upward_rounded),
