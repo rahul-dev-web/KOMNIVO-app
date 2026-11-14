@@ -17,7 +17,7 @@ Verified on the project:
 - 22 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy, profile-wide three-request counter/RPCs and challenge in-flight concurrency guard.
 - 53 application tables in `public`; all 53 have RLS enabled.
 - Least-privilege grants applied: anonymous users can read only the active `games` catalogue; authenticated access is granted per table and column under RLS. Future `public` tables, sequences and functions created by the postgres migration owner no longer receive broad anon/authenticated default privileges.
-- Two private Storage buckets: `community-media` and `match-evidence`, both limited to 10 MB and JPG/PNG/WebP/PDF.
+- Three private Storage buckets: `community-media` and `match-evidence` (10 MB, JPG/PNG/WebP/PDF), plus `ai-documents` (25 MB, document and image MIME allow-list).
 - `public.messages` is enabled in the `supabase_realtime` publication.
 - All 15 repository Edge Functions deployed and ACTIVE. User-facing functions have JWT verification enabled; `notification-push` uses its dedicated `x-webhook-secret` check.
 
@@ -81,7 +81,7 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 ## AI foundation — 14 November 2026
 
 - Added and applied migration `202611140001_organizer_ai_foundation`: eight AI tables with RLS, explicit owner/scope access, least-privilege grants and private helper functions.
-- Deployed authenticated Edge Function `komnivo-ai` v1. It supports Cloudflare Workers AI as primary and GroqCloud as an optional fallback/provider, persists conversation/run/usage records and enforces a per-user daily request cap (default 25 model attempts).
+- Deployed authenticated Edge Function `komnivo-ai` v11. It supports Cloudflare Workers AI as primary and GroqCloud as an optional fallback/provider, persists conversation/run/usage records, retrieves scope-filtered source chunks and enforces a per-user daily request cap (default 25 model attempts).
 - Added Player AI entry points in the app bar and on public event cards, plus event-scoped Organizer AI entry points on organiser event cards. Recent scoped conversations restore on reopen; users can start a new chat.
 - The endpoint is deliberately read-only. It does not yet ingest uploaded files, retrieve live tournament records, execute typed actions, create channels/roles/events, approve registrations or publish results. These remain required product scope and must not be marked complete.
 - Provider credentials are not yet configured. The function will return `AI_PROVIDER_NOT_CONFIGURED` until the project owner adds `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` to Supabase Edge Function Secrets. Optional Groq secrets are `GROQ_API_KEY` and `GROQ_MODEL`.
