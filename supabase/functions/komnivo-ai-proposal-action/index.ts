@@ -47,6 +47,13 @@ Deno.serve(async (req: Request) => {
     return json({ error: `Proposal is ${proposal.status}, not awaiting approval.` }, 409);
   }
 
+  const expiresAt = proposal.expires_at ? Date.parse(String(proposal.expires_at)) : null;
+  if (expiresAt !== null && Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
+    await admin.from("ai_proposals").update({ status: "expired" })
+      .eq("id", proposalId).eq("owner_user_id", user.id).eq("status", "pending_approval");
+    return json({ error: "This proposal expired. Ask Organizer AI to prepare a new one.", code: "PROPOSAL_EXPIRED" }, 409);
+  }
+
   const { data: result, error } = await admin.rpc("resolve_organizer_ai_proposal", {
     p_proposal_id: proposalId,
     p_user_id: user.id,
