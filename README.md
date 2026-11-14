@@ -22,7 +22,8 @@ The authoritative product scope, rules, decisions and complete delivery blueprin
 - `native/android/` — Kotlin MediaProjection capture bridge and on-device ML Kit OCR.
 - `native/web/` — Flutter Web shell plus public product homepage, privacy policy, terms of service and KOMNIVO SVG brand mark.
 - `supabase/migrations/` — core schema, RLS, tournament workflows, invite security and private RPC implementations.
-- `supabase/functions/` — authenticated Edge Functions, FCM webhook delivery and provider adapters.
+- `supabase/functions/` — authenticated Edge Functions, FCM webhook delivery and provider adapters, including the provider-routed Organizer/Player AI chat gateway.
+- `docs/AI_SETUP.md` — Cloudflare Workers AI/Groq provider setup, Supabase secrets, testing and current AI implementation boundaries.
 - `tool/` — local/CI scripts that generate Flutter Android and Web scaffolding (including the public policy pages), plus the pinned Flutter builder used by Cloudflare Pages.
 
 **Important for local Android testing:** `android/` and `web/` are generated/ignored folders, not the source of truth. After pulling changes that touch `native/android/` or the platform bootstrap scripts, run `\.\tool\bootstrap-platforms.ps1` from the repository root before `flutter run`. `flutter clean` does not copy native resources into the generated Android project. The bootstrap script verifies that the KOMNIVO launcher resources are active and that Flutter's default launcher PNGs have been removed.
