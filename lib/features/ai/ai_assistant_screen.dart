@@ -81,7 +81,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       if (!mounted) return;
       setState(() => _items.add(_ChatItem(
         false,
-        'Request complete nahi ho saka. ${error.toString().replaceFirst('Exception: ', '')}',
+        'Request complete nahi ho saka. ${error.toString().replaceFirst("Exception: ", "")}',
         isError: true,
       )));
     } finally {
