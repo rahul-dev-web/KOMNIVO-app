@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/komnivo_logo.dart';
+import '../ai/ai_assistant_screen.dart';
 import '../community/community_screen.dart';
 import '../compete/compete_screen.dart';
 import '../home/home_screen.dart';
@@ -64,6 +65,13 @@ class _AppShellState extends State<AppShell> {
           const Text('KOMNIVO', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.4)),
         ]),
         actions: [
+          IconButton(
+            tooltip: 'Player AI Assistant',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const AiAssistantScreen(mode: 'player')),
+            ),
+            icon: const Icon(Icons.auto_awesome_outlined),
+          ),
           IconButton(
             tooltip: 'LiveOps Assistant',
             onPressed: () => setState(() {
