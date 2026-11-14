@@ -226,6 +226,17 @@ Deno.serve(async (req: Request) => {
   }).eq("id", documentId).eq("owner_user_id", user.id);
 
   try {
+    const mimeType = String(document.content_type);
+    if (mimeType.startsWith("image/")) {
+      const dailyLimit = Math.max(1, Math.min(100, Number(Deno.env.get("AI_DAILY_REQUEST_LIMIT") || 25)));
+      const { data: reserved, error: reservationError } = await admin.rpc("reserve_ai_request", {
+        p_user_id: user.id,
+        p_daily_limit: dailyLimit,
+      });
+      if (reservationError) throw new Error("AI_DAILY_BUDGET_RESERVATION_FAILED");
+      if (reserved !== true) throw new Error("AI_DAILY_LIMIT");
+    }
+
     const { data: file, error: downloadError } = await admin.storage
       .from("ai-documents").download(String(document.storage_path));
     if (downloadError || !file) throw new Error("DOCUMENT_DOWNLOAD_FAILED");
@@ -288,7 +299,7 @@ Deno.serve(async (req: Request) => {
       processing_status: "failed",
       extracted_metadata: { last_error_code: code.slice(0, 100), failed_at: new Date().toISOString() },
     }).eq("id", documentId).eq("owner_user_id", user.id);
-    const status = code === "IMAGE_OCR_PROVIDER_NOT_CONFIGURED" ? 503 : 422;
+    const status = code === "IMAGE_OCR_PROVIDER_NOT_CONFIGURED" || code === "AI_DAILY_BUDGET_RESERVATION_FAILED" ? 503 : code === "AI_DAILY_LIMIT" ? 429 : 422;
     return json({
       error: "Document processing failed. Check file type, extraction support and configured provider.",
       code,
