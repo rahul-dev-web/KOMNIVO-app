@@ -260,14 +260,12 @@ Deno.serve(async (req: Request) => {
   }
 
   const dailyLimit = Math.max(1, Math.min(100, Number(Deno.env.get("AI_DAILY_REQUEST_LIMIT") || DEFAULT_DAILY_LIMIT)));
-  const dayStart = new Date();
-  dayStart.setUTCHours(0, 0, 0, 0);
-  const { count: dailyCount, error: countError } = await admin.from("ai_runs")
-    .select("id", { count: "exact", head: true })
-    .eq("owner_user_id", user.id)
-    .gte("created_at", dayStart.toISOString());
-  if (countError) return json({ error: "Unable to verify AI usage budget." }, 500);
-  if ((dailyCount ?? 0) >= dailyLimit) {
+  const { data: reserved, error: reservationError } = await admin.rpc("reserve_ai_request", {
+    p_user_id: user.id,
+    p_daily_limit: dailyLimit,
+  });
+  if (reservationError) return json({ error: "Unable to reserve AI usage budget." }, 500);
+  if (reserved !== true) {
     return json({ error: "Daily AI request limit reached. Try again after the UTC daily reset.", code: "AI_DAILY_LIMIT" }, 429);
   }
 
@@ -322,7 +320,7 @@ Deno.serve(async (req: Request) => {
     const durationMs = Date.now() - startedAt;
     const estimatedCost = result.provider === "cloudflare"
       ? ((result.inputTokens * 0.45) + (result.outputTokens * 3.20)) / 1000000
-      : 0;
+      : ((result.inputTokens * 0.80) + (result.outputTokens * 4.00)) / 1000000;
 
     const { error: assistantError } = await admin.from("ai_messages").insert({
       conversation_id: conversationId,
