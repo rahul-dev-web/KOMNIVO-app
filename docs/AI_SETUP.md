@@ -95,14 +95,14 @@ CLOUDFLARE_API_TOKEN=PASTE_TOKEN_HERE
 CLOUDFLARE_MODEL=@cf/qwen/qwen3.8-27b
 AI_PROVIDER=cloudflare
 AI_DAILY_REQUEST_LIMIT=25
-'@ | Set-Content -Encoding ascii .ai-secrets.tmp
+'@ | Set-Content -Encoding ascii .env.ai.tmp
 ```
 
 Push it to the correct project:
 
 ```powershell
-supabase secrets set --project-ref krqysdkbyhshwpfmimfw --env-file .ai-secrets.tmp
-Remove-Item .ai-secrets.tmp
+supabase secrets set --project-ref krqysdkbyhshwpfmimfw --env-file .env.ai.tmp
+Remove-Item .env.ai.tmp
 ```
 
 If the CLI asks you to log in or link the project, follow the Supabase CLI prompts. Do not commit the temporary file. The repository ignores `.env*`; still delete the temporary file after upload.
