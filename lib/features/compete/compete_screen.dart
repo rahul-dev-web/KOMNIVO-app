@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/komnivo_repository.dart';
+import '../ai/ai_assistant_screen.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
 import 'event_matches_screen.dart';
@@ -122,6 +123,14 @@ class _CompeteScreenState extends State<CompeteScreen> {
                 child: Text(_joining.contains(eventId) ? 'Joining…' : 'Register'),
               ),
               onOpen: () => _openEvent(row),
+              onPlayerAi: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => AiAssistantScreen(
+                  mode: 'player',
+                  eventId: eventId,
+                  communityId: row['community_id']?.toString(),
+                )),
+              ),
             );
           }),
         ]);
@@ -131,10 +140,11 @@ class _CompeteScreenState extends State<CompeteScreen> {
 }
 
 class _EventCard extends StatelessWidget {
-  const _EventCard({required this.name, required this.game, required this.date, required this.prize, this.action, this.onOpen});
+  const _EventCard({required this.name, required this.game, required this.date, required this.prize, this.action, this.onOpen, this.onPlayerAi});
   final String name, game, date, prize;
   final Widget? action;
   final VoidCallback? onOpen;
+  final VoidCallback? onPlayerAi;
   @override
   Widget build(BuildContext context) => Container(
     margin: const EdgeInsets.only(bottom: 13),
@@ -145,7 +155,14 @@ class _EventCard extends StatelessWidget {
         Container(width: 42, height: 42, decoration: BoxDecoration(color: const Color(0xFF2A244C), borderRadius: BorderRadius.circular(13)), child: const Icon(Icons.emoji_events, color: KomnivoTheme.accent)),
         const SizedBox(width: 12),
         Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))),
-        const Icon(Icons.more_horiz, color: KomnivoTheme.muted),
+        if (onPlayerAi != null)
+          IconButton(
+            tooltip: 'Ask Player AI about this event',
+            onPressed: onPlayerAi,
+            icon: const Icon(Icons.auto_awesome, color: KomnivoTheme.cyan),
+          )
+        else
+          const Icon(Icons.more_horiz, color: KomnivoTheme.muted),
       ]),
       const SizedBox(height: 13),
       Text(game, style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 12, fontWeight: FontWeight.w700)),
