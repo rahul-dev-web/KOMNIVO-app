@@ -18,6 +18,21 @@ class KomnivoRepository {
     return List<Map<String, dynamic>>.from(rows);
   }
 
+  /// Reads only the current user's own membership rows. This includes the
+  /// owner row inserted by the database's after-community-created trigger.
+  Future<Map<String, Map<String, dynamic>>> myCommunityMemberships() async {
+    final rows = await client.from('community_members')
+        .select('community_id,role')
+        .eq('user_id', userId);
+    final memberships = <String, Map<String, dynamic>>{};
+    for (final row in rows) {
+      final membership = Map<String, dynamic>.from(row);
+      final id = membership['community_id']?.toString();
+      if (id != null && id.isNotEmpty) memberships[id] = membership;
+    }
+    return memberships;
+  }
+
   Future<Map<String, dynamic>> createCommunity({
     required String name,
     required String description,
@@ -109,6 +124,519 @@ class KomnivoRepository {
     if (communityId != null) query = query.eq('community_id', communityId);
     final rows = await query.order('created_at').limit(50);
     return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<Map<String, dynamic>> updateCommunity({
+    required String communityId,
+    required String name,
+    required String description,
+    required String visibility,
+  }) async {
+    final row = await client.from('communities').update({
+      'name': name.trim(),
+      'description': description.trim(),
+      'visibility': visibility,
+    }).eq('id', communityId).select().single();
+    return Map<String, dynamic>.from(row);
+  }
+
+  Future<Map<String, dynamic>> createCommunityChannel({
+    required String communityId,
+    required String name,
+    required String description,
+    required String kind,
+  }) async {
+    final normalizedName = name.trim().toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-|-
+    final rows = await client.from('messages')
+      .select('*, profiles!messages_sender_id_fkey(display_name, avatar_url)')
+      .eq('channel_id', channelId).order('created_at').limit(100);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<String> sendMessage(
+    String channelId,
+    String body, {
+    String? parentMessageId,
+  }) async {
+    final text = body.trim();
+    if (text.isEmpty) throw Exception('Message cannot be empty.');
+    final row = await client.from('messages').insert({
+      'channel_id': channelId,
+      'sender_id': userId,
+      'body': text,
+      'parent_message_id': parentMessageId,
+    }).select('id').single();
+    return row['id'] as String;
+  }
+
+  Future<String> sendMessageAttachment(
+    String channelId,
+    PlatformFile file, {
+    String? parentMessageId,
+  }) async {
+    final contentType = _contentTypeFor(file.extension);
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) throw Exception('The selected attachment is empty.');
+    if (bytes.length > 10 * 1024 * 1024) {
+      throw Exception('Attachments must be 10 MB or smaller.');
+    }
+
+    final messageId = await sendMessage(
+      channelId,
+      'Shared a file: ${file.name}',
+      parentMessageId: parentMessageId,
+    );
+    final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final path = '$userId/$channelId/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+
+    await client.storage.from('community-media').uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(contentType: contentType, upsert: false),
+    );
+    await client.from('message_attachments').insert({
+      'message_id': messageId,
+      'uploaded_by': userId,
+      'storage_path': path,
+      'content_type': contentType,
+      'file_size': bytes.length,
+    });
+    return messageId;
+  }
+
+  Future<List<Map<String, dynamic>>> messageAttachments(String messageId) async {
+    final rows = await client.from('message_attachments')
+      .select('id,storage_path,content_type,file_size')
+      .eq('message_id', messageId)
+      .order('created_at');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<String> messageAttachmentUrl(String storagePath) async {
+    final result = await client.storage.from('community-media')
+      .createSignedUrl(storagePath, 3600);
+    return result;
+  }
+
+  Future<List<Map<String, dynamic>>> messageReactions(String messageId) async {
+    final rows = await client.from('message_reactions')
+      .select('emoji,user_id')
+      .eq('message_id', messageId);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> toggleMessageReaction(String messageId, String emoji) async {
+    final existing = await client.from('message_reactions')
+      .select('message_id')
+      .eq('message_id', messageId)
+      .eq('user_id', userId)
+      .eq('emoji', emoji)
+      .maybeSingle();
+
+    if (existing != null) {
+      await client.from('message_reactions').delete()
+        .eq('message_id', messageId)
+        .eq('user_id', userId)
+        .eq('emoji', emoji);
+    } else {
+      await client.from('message_reactions').insert({
+        'message_id': messageId,
+        'user_id': userId,
+        'emoji': emoji,
+      });
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> messageStream(String channelId) {
+    return client.from('messages').stream(primaryKey: ['id']).eq('channel_id', channelId).order('created_at');
+  }
+
+  Future<Map<String, dynamic>> prepareFreeFireVerification(
+    String uid, {
+    String region = 'ind',
+  }) async {
+    final response = await client.functions.invoke('sync-freefire-profile', body: {
+      'action': 'prepare',
+      'uid': uid.trim(),
+      'region': region,
+    });
+    final data = response.data is Map
+        ? Map<String, dynamic>.from(response.data as Map)
+        : <String, dynamic>{};
+    if (response.status < 200 || response.status >= 300) {
+      throw Exception(data['error']?.toString() ??
+          'Could not prepare verification code (' + response.status.toString() + ').');
+    }
+    return data;
+  }
+
+  Future<Map<String, dynamic>> myGameAccountVerification() async {
+    final response = await client.functions.invoke('sync-freefire-profile', body: {
+      'action': 'status',
+    });
+    final data = response.data is Map
+        ? Map<String, dynamic>.from(response.data as Map)
+        : <String, dynamic>{};
+    if (response.status < 200 || response.status >= 300) {
+      throw Exception(data['error']?.toString() ??
+          'Could not load Free Fire ownership status (' + response.status.toString() + ').');
+    }
+    return data;
+  }
+
+  Future<Map<String, dynamic>> verifyFreeFireOwnership({
+    required String accountId,
+    required bool bioConfirmed,
+  }) async {
+    final response = await client.functions.invoke('sync-freefire-profile', body: {
+      'action': 'verify',
+      'account_id': accountId,
+      'bio_confirmed': bioConfirmed,
+    });
+    final data = response.data is Map
+        ? Map<String, dynamic>.from(response.data as Map)
+        : <String, dynamic>{};
+
+    // 429 is a server-side retry throttle and does not consume an attempt.
+    // A 409 no_active_code is also a recoverable challenge-state response:
+    // the UI clears the stale code and lets the owner generate a replacement.
+    if (response.status == 429 || data['status'] == 'no_active_code') {
+      return data;
+    }
+
+    if (response.status < 200 || response.status >= 300) {
+      throw Exception(data['error']?.toString() ??
+          'Ownership verification failed (' + response.status.toString() + ').');
+    }
+    return data;
+  }
+
+  String _contentTypeFor(String? extension) {
+    switch (extension?.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'pdf':
+        return 'application/pdf';
+      default:
+        throw Exception('Unsupported evidence file. Use JPG, PNG, WebP or PDF.');
+    }
+  }
+
+  Future<String> uploadEvidence(PlatformFile file, String matchId) async {
+    final contentType = _contentTypeFor(file.extension);
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) throw Exception('The selected evidence file is empty.');
+    if (bytes.length > 10 * 1024 * 1024) {
+      throw Exception('Evidence files must be 10 MB or smaller.');
+    }
+
+    final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final path = '$userId/$matchId/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+    await client.storage.from('match-evidence').uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(contentType: contentType, upsert: false),
+    );
+    return path;
+  }
+
+  Future<List<Map<String, dynamic>>> myNotifications() async {
+    final rows = await client.from('notifications').select().eq('user_id', userId)
+      .order('created_at', ascending: false).limit(60);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> markNotificationRead(String notificationId) async {
+    await client.from('notifications').update({
+      'read_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', notificationId).eq('user_id', userId);
+  }
+
+  Future<void> updateNotificationPreferences(Map<String, bool> values) async {
+    await client.from('notification_preferences').upsert({
+      'user_id': userId,
+      ...values,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id');
+  }
+
+  Future<Map<String, dynamic>> notificationPreferences() async {
+    final row = await client.from('notification_preferences')
+      .select().eq('user_id', userId).maybeSingle();
+    return row ?? {
+      'push_enabled': true,
+      'message_push': true,
+      'mention_push': true,
+      'event_push': true,
+      'tournament_push': true,
+      'marketing_push': false,
+    };
+  }
+}
+), '');
+    final row = await client.from('channels').insert({
+      'community_id': communityId,
+      'name': normalizedName,
+      'description': description.trim(),
+      'kind': kind,
+      'is_private': false,
+      'created_by': userId,
+    }).select().single();
+    return Map<String, dynamic>.from(row);
+  }
+
+  Future<Map<String, dynamic>> updateCommunityChannel({
+    required String channelId,
+    required String name,
+    required String description,
+  }) async {
+    final normalizedName = name.trim().toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-|-
+    final rows = await client.from('messages')
+      .select('*, profiles!messages_sender_id_fkey(display_name, avatar_url)')
+      .eq('channel_id', channelId).order('created_at').limit(100);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<String> sendMessage(
+    String channelId,
+    String body, {
+    String? parentMessageId,
+  }) async {
+    final text = body.trim();
+    if (text.isEmpty) throw Exception('Message cannot be empty.');
+    final row = await client.from('messages').insert({
+      'channel_id': channelId,
+      'sender_id': userId,
+      'body': text,
+      'parent_message_id': parentMessageId,
+    }).select('id').single();
+    return row['id'] as String;
+  }
+
+  Future<String> sendMessageAttachment(
+    String channelId,
+    PlatformFile file, {
+    String? parentMessageId,
+  }) async {
+    final contentType = _contentTypeFor(file.extension);
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) throw Exception('The selected attachment is empty.');
+    if (bytes.length > 10 * 1024 * 1024) {
+      throw Exception('Attachments must be 10 MB or smaller.');
+    }
+
+    final messageId = await sendMessage(
+      channelId,
+      'Shared a file: ${file.name}',
+      parentMessageId: parentMessageId,
+    );
+    final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final path = '$userId/$channelId/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+
+    await client.storage.from('community-media').uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(contentType: contentType, upsert: false),
+    );
+    await client.from('message_attachments').insert({
+      'message_id': messageId,
+      'uploaded_by': userId,
+      'storage_path': path,
+      'content_type': contentType,
+      'file_size': bytes.length,
+    });
+    return messageId;
+  }
+
+  Future<List<Map<String, dynamic>>> messageAttachments(String messageId) async {
+    final rows = await client.from('message_attachments')
+      .select('id,storage_path,content_type,file_size')
+      .eq('message_id', messageId)
+      .order('created_at');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<String> messageAttachmentUrl(String storagePath) async {
+    final result = await client.storage.from('community-media')
+      .createSignedUrl(storagePath, 3600);
+    return result;
+  }
+
+  Future<List<Map<String, dynamic>>> messageReactions(String messageId) async {
+    final rows = await client.from('message_reactions')
+      .select('emoji,user_id')
+      .eq('message_id', messageId);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> toggleMessageReaction(String messageId, String emoji) async {
+    final existing = await client.from('message_reactions')
+      .select('message_id')
+      .eq('message_id', messageId)
+      .eq('user_id', userId)
+      .eq('emoji', emoji)
+      .maybeSingle();
+
+    if (existing != null) {
+      await client.from('message_reactions').delete()
+        .eq('message_id', messageId)
+        .eq('user_id', userId)
+        .eq('emoji', emoji);
+    } else {
+      await client.from('message_reactions').insert({
+        'message_id': messageId,
+        'user_id': userId,
+        'emoji': emoji,
+      });
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> messageStream(String channelId) {
+    return client.from('messages').stream(primaryKey: ['id']).eq('channel_id', channelId).order('created_at');
+  }
+
+  Future<Map<String, dynamic>> prepareFreeFireVerification(
+    String uid, {
+    String region = 'ind',
+  }) async {
+    final response = await client.functions.invoke('sync-freefire-profile', body: {
+      'action': 'prepare',
+      'uid': uid.trim(),
+      'region': region,
+    });
+    final data = response.data is Map
+        ? Map<String, dynamic>.from(response.data as Map)
+        : <String, dynamic>{};
+    if (response.status < 200 || response.status >= 300) {
+      throw Exception(data['error']?.toString() ??
+          'Could not prepare verification code (' + response.status.toString() + ').');
+    }
+    return data;
+  }
+
+  Future<Map<String, dynamic>> myGameAccountVerification() async {
+    final response = await client.functions.invoke('sync-freefire-profile', body: {
+      'action': 'status',
+    });
+    final data = response.data is Map
+        ? Map<String, dynamic>.from(response.data as Map)
+        : <String, dynamic>{};
+    if (response.status < 200 || response.status >= 300) {
+      throw Exception(data['error']?.toString() ??
+          'Could not load Free Fire ownership status (' + response.status.toString() + ').');
+    }
+    return data;
+  }
+
+  Future<Map<String, dynamic>> verifyFreeFireOwnership({
+    required String accountId,
+    required bool bioConfirmed,
+  }) async {
+    final response = await client.functions.invoke('sync-freefire-profile', body: {
+      'action': 'verify',
+      'account_id': accountId,
+      'bio_confirmed': bioConfirmed,
+    });
+    final data = response.data is Map
+        ? Map<String, dynamic>.from(response.data as Map)
+        : <String, dynamic>{};
+
+    // 429 is a server-side retry throttle and does not consume an attempt.
+    // A 409 no_active_code is also a recoverable challenge-state response:
+    // the UI clears the stale code and lets the owner generate a replacement.
+    if (response.status == 429 || data['status'] == 'no_active_code') {
+      return data;
+    }
+
+    if (response.status < 200 || response.status >= 300) {
+      throw Exception(data['error']?.toString() ??
+          'Ownership verification failed (' + response.status.toString() + ').');
+    }
+    return data;
+  }
+
+  String _contentTypeFor(String? extension) {
+    switch (extension?.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      case 'pdf':
+        return 'application/pdf';
+      default:
+        throw Exception('Unsupported evidence file. Use JPG, PNG, WebP or PDF.');
+    }
+  }
+
+  Future<String> uploadEvidence(PlatformFile file, String matchId) async {
+    final contentType = _contentTypeFor(file.extension);
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) throw Exception('The selected evidence file is empty.');
+    if (bytes.length > 10 * 1024 * 1024) {
+      throw Exception('Evidence files must be 10 MB or smaller.');
+    }
+
+    final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final path = '$userId/$matchId/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+    await client.storage.from('match-evidence').uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(contentType: contentType, upsert: false),
+    );
+    return path;
+  }
+
+  Future<List<Map<String, dynamic>>> myNotifications() async {
+    final rows = await client.from('notifications').select().eq('user_id', userId)
+      .order('created_at', ascending: false).limit(60);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> markNotificationRead(String notificationId) async {
+    await client.from('notifications').update({
+      'read_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', notificationId).eq('user_id', userId);
+  }
+
+  Future<void> updateNotificationPreferences(Map<String, bool> values) async {
+    await client.from('notification_preferences').upsert({
+      'user_id': userId,
+      ...values,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }, onConflict: 'user_id');
+  }
+
+  Future<Map<String, dynamic>> notificationPreferences() async {
+    final row = await client.from('notification_preferences')
+      .select().eq('user_id', userId).maybeSingle();
+    return row ?? {
+      'push_enabled': true,
+      'message_push': true,
+      'mention_push': true,
+      'event_push': true,
+      'tournament_push': true,
+      'marketing_push': false,
+    };
+  }
+}
+), '');
+    final row = await client.from('channels').update({
+      'name': normalizedName,
+      'description': description.trim(),
+    }).eq('id', channelId).select().single();
+    return Map<String, dynamic>.from(row);
   }
 
   Future<List<Map<String, dynamic>>> messages(String channelId) async {
