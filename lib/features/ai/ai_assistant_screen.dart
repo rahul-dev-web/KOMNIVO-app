@@ -150,7 +150,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Who can use this document?'),
-        content: const Text('Choose who may receive answers grounded in this uploaded file. You can change the choice by uploading a new version later.'),
+        content: const Text('Choose who may receive answers grounded in this uploaded file. This visibility applies to this uploaded copy.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, 'organizer_only'),
