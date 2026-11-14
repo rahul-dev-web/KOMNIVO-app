@@ -240,7 +240,10 @@ async function buildContext(
     }
   }
 
-  if (!eventId) return snapshot;
+  if (!eventId) {
+    await attachDocumentSources(admin, snapshot, mode, userId, communityId, eventId, userQuery);
+    return snapshot;
+  }
   const { data: event } = await admin.from("events")
     .select("id,name,description,format,status,starts_at,registration_closes_at,capacity,rules_json,scoring_config,community_id,game_id")
     .eq("id", eventId).maybeSingle();
