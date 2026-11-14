@@ -65,6 +65,17 @@ Deno.serve(async (req: Request) => {
       : raw.includes("permission") || raw.includes("organizer") ? "PERMISSION_CHANGED"
       : raw.includes("not awaiting") ? "PROPOSAL_NOT_PENDING"
       : "PROPOSAL_RESOLUTION_FAILED";
+
+    // A second concurrent approval may wait on the proposal row lock and then
+    // observe status=executed. Return the already-created event rather than
+    // turning a duplicate tap into an apparent failure.
+    if (decision === "approve" && code === "PROPOSAL_NOT_PENDING") {
+      const { data: prior } = await admin.from("ai_actions").select("result")
+        .eq("idempotency_key", `ai-proposal:${proposalId}`)
+        .eq("owner_user_id", user.id).eq("status", "succeeded").maybeSingle();
+      if (prior?.result) return json({ ...prior.result, already_executed: true, decision });
+    }
+
     const status = code === "PROPOSAL_EXPIRED" || code === "PROPOSAL_NOT_PENDING" ? 409
       : code === "PERMISSION_CHANGED" ? 403 : 400;
     return json({
