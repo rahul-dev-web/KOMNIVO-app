@@ -23,14 +23,14 @@ The project is in Singapore because that is the region selected in the Supabase 
 ### Backend work already completed
 
 - Twenty-two database migrations are applied, including the Bio challenge, challenge-table RLS guard, three-attempt verification controls and in-flight challenge concurrency guard.
-- Fifty-three application tables exist in the `public` schema, and all fifty-two have Row Level Security enabled.
+- Fifty-three application tables exist in the `public` schema, and all fifty-three have Row Level Security enabled.
 - Anonymous table access is limited to reading the active `games` catalogue. Application tables are granted to authenticated users only, subject to RLS and column-level restrictions.
 - Default table, sequence and function privileges for new `public` objects created by the postgres migration owner have been tightened. Future migrations must grant only the exact privileges they need.
-- Both Storage buckets exist and are private: `community-media` and `match-evidence` (10 MB per file; JPG, PNG, WebP and PDF).
+- Three Storage buckets are private: `community-media` and `match-evidence` (10 MB; JPG/PNG/WebP/PDF), plus `ai-documents` (25 MB; PDF/DOCX/XLSX/XLS/CSV/TXT/MD/PNG/JPEG/WebP).
 - The `messages` table is included in the `supabase_realtime` publication.
 - Fifteen Edge Functions are deployed and ACTIVE.
 
-Deployed functions: `accept-team-invite`, `approve-result`, `check-in`, `create-community-invite`, `create-community`, `create-conversation`, `create-livekit-token`, `join-community`, `notification-push`, `register-event`, `review-registration`, `submit-result`, `sync-freefire-profile`, and `komnivo-ai`, `komnivo-ai-process-document`.
+Deployed functions: `accept-team-invite`, `approve-result`, `check-in`, `create-community-invite`, `create-community`, `create-conversation`, `create-livekit-token`, `join-community`, `notification-push`, `register-event`, `review-registration`, `submit-result`, `sync-freefire-profile`, `komnivo-ai` and `komnivo-ai-process-document`.
 
 All user-facing functions require JWT verification. `notification-push` is the one exception because it is called by a database webhook and checks the private `x-webhook-secret` header itself. Do not remove that header check.
 
