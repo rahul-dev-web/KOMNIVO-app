@@ -29,6 +29,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   String? _conversationId;
   bool _sending = false;
   bool _restoring = true;
+  String? _resolvingProposalId;
 
   bool get _organizer => widget.mode == 'organizer';
 
@@ -69,24 +70,51 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       final conversationId = rows.first['id']?.toString();
       if (conversationId == null || conversationId.isEmpty) return;
 
-      final messages = await client.from('ai_messages')
-          .select('role,content')
-          .eq('conversation_id', conversationId)
-          .inFilter('role', ['user', 'assistant'])
-          .order('created_at')
-          .limit(60);
+      final results = await Future.wait([
+        client.from('ai_messages')
+            .select('role,content,metadata')
+            .eq('conversation_id', conversationId)
+            .inFilter('role', ['user', 'assistant'])
+            .order('created_at')
+            .limit(60),
+        client.from('ai_proposals')
+            .select('id,action_type,proposal,source_refs,status,expires_at')
+            .eq('conversation_id', conversationId)
+            .order('created_at'),
+      ]);
       if (!mounted) return;
+      final messages = List<Map<String, dynamic>>.from(results[0] as List);
+      final proposals = List<Map<String, dynamic>>.from(results[1] as List);
+      final proposalCards = proposals.map((row) {
+        final payload = row['proposal'] is Map
+            ? Map<String, dynamic>.from(row['proposal'] as Map)
+            : <String, dynamic>{};
+        final gameName = payload['game_name']?.toString() ?? 'Free Fire MAX';
+        return _ChatItem(
+          false,
+          'Organizer AI event proposal',
+          proposal: {
+            'id': row['id'],
+            'status': row['status'],
+            'expires_at': row['expires_at'],
+            'source_refs': row['source_refs'] ?? [],
+            'game_name': gameName,
+            ...payload,
+          },
+        );
+      }).toList();
 
       setState(() {
         _conversationId = conversationId;
         _items
           ..clear()
-          ..addAll(List<Map<String, dynamic>>.from(messages).map((row) {
+          ..addAll(messages.map((row) {
             return _ChatItem(
               row['role'] == 'user',
               row['content']?.toString() ?? '',
             );
-          }));
+          }))
+          ..addAll(proposalCards);
       });
       _scrollToBottom();
     } catch (_) {
@@ -289,8 +317,16 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       }
       _conversationId = data['conversation_id']?.toString();
       final reply = data['reply']?.toString() ?? 'No response received.';
+      final proposals = data['proposals'] is List
+          ? List<Map<String, dynamic>>.from((data['proposals'] as List).whereType<Map>())
+          : <Map<String, dynamic>>[];
       if (!mounted) return;
-      setState(() => _items.add(_ChatItem(false, reply)));
+      setState(() {
+        _items.add(_ChatItem(false, reply));
+        for (final proposal in proposals) {
+          _items.add(_ChatItem(false, 'Organizer AI event proposal', proposal: proposal));
+        }
+      });
     } catch (error) {
       if (!mounted) return;
       setState(() => _items.add(_ChatItem(
@@ -303,6 +339,54 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         setState(() => _sending = false);
         _scrollToBottom();
       }
+    }
+  }
+
+  Future<void> _resolveProposal(String proposalId, String decision) async {
+    if (_resolvingProposalId != null) return;
+    setState(() => _resolvingProposalId = proposalId);
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'komnivo-ai-proposal-action',
+        body: {'proposal_id': proposalId, 'decision': decision},
+      );
+      final data = response.data is Map
+          ? Map<String, dynamic>.from(response.data as Map)
+          : <String, dynamic>{};
+      if (response.status < 200 || response.status >= 300) {
+        throw Exception(data['error']?.toString() ?? 'Proposal action failed.');
+      }
+      if (!mounted) return;
+
+      final index = _items.indexWhere((item) => item.proposal?['id']?.toString() == proposalId);
+      if (index >= 0) {
+        final current = _items[index];
+        final updatedProposal = <String, dynamic>{
+          ...?current.proposal,
+          'status': decision == 'reject' ? 'rejected' : 'executed',
+          'result': data,
+        };
+        setState(() => _items[index] = current.copyWith(proposal: updatedProposal));
+      }
+      if (decision == 'approve') {
+        setState(() => _items.add(_ChatItem(
+          false,
+          'Approved. Draft event “${data['name'] ?? 'event'}” has been created. Status: DRAFT. It is not published yet. Open the organiser workspace to review and publish it when ready.',
+        )));
+      } else {
+        setState(() => _items.add(const _ChatItem(false, 'Proposal rejected. No event was created.')));
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _items.add(_ChatItem(
+          false,
+          'Proposal could not be resolved. ${error.toString().replaceFirst('Exception: ', '')}',
+          isError: true,
+        )));
+      }
+    } finally {
+      if (mounted) setState(() => _resolvingProposalId = null);
+      _scrollToBottom();
     }
   }
 
@@ -360,6 +444,17 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                 );
               }
               final item = _items[index];
+              if (item.proposal != null) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _EventProposalCard(
+                    proposal: item.proposal!,
+                    busy: _resolvingProposalId == item.proposal!['id']?.toString(),
+                    onApprove: () => _resolveProposal(item.proposal!['id'].toString(), 'approve'),
+                    onReject: () => _resolveProposal(item.proposal!['id'].toString(), 'reject'),
+                  ),
+                );
+              }
               return Align(
                 alignment: item.fromUser ? Alignment.centerRight : Alignment.centerLeft,
                 child: Container(
@@ -426,8 +521,150 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 }
 
 class _ChatItem {
-  const _ChatItem(this.fromUser, this.text, {this.isError = false});
+  const _ChatItem(this.fromUser, this.text, {this.isError = false, this.proposal});
+
   final bool fromUser;
   final String text;
   final bool isError;
+  final Map<String, dynamic>? proposal;
+
+  _ChatItem copyWith({Map<String, dynamic>? proposal}) => _ChatItem(
+    fromUser,
+    text,
+    isError: isError,
+    proposal: proposal ?? this.proposal,
+  );
+}
+
+class _EventProposalCard extends StatelessWidget {
+  const _EventProposalCard({
+    required this.proposal,
+    required this.busy,
+    required this.onApprove,
+    required this.onReject,
+  });
+
+  final Map<String, dynamic> proposal;
+  final bool busy;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = proposal['status']?.toString() ?? 'pending_approval';
+    final name = proposal['name']?.toString() ?? 'Tournament';
+    final format = proposal['format']?.toString() ?? 'squad';
+    final capacity = proposal['capacity']?.toString() ?? '—';
+    final game = proposal['game_name']?.toString() ?? 'Game';
+    final startsAt = DateTime.tryParse(proposal['starts_at']?.toString() ?? '');
+    final close = DateTime.tryParse(proposal['registration_closes_at']?.toString() ?? '');
+    final sources = proposal['source_refs'] is List
+        ? (proposal['source_refs'] as List).whereType<Map>().map((row) {
+            final file = row['document']?.toString() ?? '';
+            final source = row['source']?.toString() ?? '';
+            return [file, source].where((part) => part.isNotEmpty).join(' — ');
+          }).where((value) => value.isNotEmpty).toList()
+        : <String>[];
+    final pending = status == 'pending_approval';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: KomnivoTheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: KomnivoTheme.cyan.withValues(alpha: 0.55)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.auto_awesome, color: KomnivoTheme.cyan),
+          const SizedBox(width: 8),
+          const Expanded(child: Text('EVENT DRAFT PROPOSAL', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.8, fontSize: 11))),
+          Text(
+            status.replaceAll('_', ' ').toUpperCase(),
+            style: TextStyle(
+              color: pending ? KomnivoTheme.cyan : KomnivoTheme.muted,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ]),
+        const SizedBox(height: 13),
+        Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 5),
+        Text(proposal['description']?.toString() ?? '', style: const TextStyle(color: KomnivoTheme.muted, height: 1.35)),
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          _ProposalChip(icon: Icons.sports_esports, label: game),
+          _ProposalChip(icon: Icons.groups_outlined, label: format.toUpperCase()),
+          _ProposalChip(icon: Icons.people_outline, label: '$capacity teams'),
+        ]),
+        const SizedBox(height: 10),
+        if (startsAt != null)
+          _ProposalInfo(icon: Icons.event_outlined, label: 'Starts: ${startsAt.toLocal()}'),
+        if (close != null)
+          _ProposalInfo(icon: Icons.lock_clock_outlined, label: 'Registration closes: ${close.toLocal()}'),
+        if (sources.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          const Text('Based on uploaded sources', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11)),
+          const SizedBox(height: 4),
+          ...sources.take(4).map((source) => _ProposalInfo(icon: Icons.description_outlined, label: source)),
+        ],
+        const SizedBox(height: 10),
+        const Text(
+          'Approving creates a DRAFT event only. It will not open registration or publish automatically.',
+          style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35),
+        ),
+        if (pending) ...[
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: busy ? null : onReject,
+                child: const Text('Reject'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton(
+                onPressed: busy ? null : onApprove,
+                child: Text(busy ? 'Processing…' : 'Approve draft'),
+              ),
+            ),
+          ]),
+        ],
+      ]),
+    );
+  }
+}
+
+class _ProposalChip extends StatelessWidget {
+  const _ProposalChip({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+    decoration: BoxDecoration(color: const Color(0xFF20263A), borderRadius: BorderRadius.circular(12)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 13, color: KomnivoTheme.cyan),
+      const SizedBox(width: 5),
+      Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+    ]),
+  );
+}
+
+class _ProposalInfo extends StatelessWidget {
+  const _ProposalInfo({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 5),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(icon, size: 14, color: KomnivoTheme.muted),
+      const SizedBox(width: 7),
+      Expanded(child: Text(label, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11))),
+    ]),
+  );
 }
