@@ -60,3 +60,6 @@ verify_jwt = true
 
 [functions.komnivo-ai-process-document]
 verify_jwt = true
+
+[functions.komnivo-ai-proposal-action]
+verify_jwt = true
