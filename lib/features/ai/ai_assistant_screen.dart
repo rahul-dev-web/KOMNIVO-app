@@ -25,6 +25,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   final List<_ChatItem> _items = [];
   String? _conversationId;
   bool _sending = false;
+  bool _restoring = true;
 
   bool get _organizer => widget.mode == 'organizer';
 
@@ -37,6 +38,73 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           ? 'Main KOMNIVO Organizer AI hoon. Tournament roadmap, rules, registrations, scrims aur points table planning mein help kar sakta hoon. Abhi chat read-only hai; main koi event ya setting change nahi kar sakta.'
           : 'Namaste! Main KOMNIVO Player AI hoon. App, teams, tournament rules aur registration process samajhne mein help karunga.',
     ));
+    _restoreConversation();
+  }
+
+  Future<void> _restoreConversation() async {
+    try {
+      final client = Supabase.instance.client;
+      var query = client.from('ai_conversations')
+          .select('id')
+          .eq('owner_user_id', client.auth.currentUser!.id)
+          .eq('mode', widget.mode)
+          .eq('status', 'active');
+
+      if (widget.communityId == null) {
+        query = query.isFilter('community_id', null);
+      } else {
+        query = query.eq('community_id', widget.communityId!);
+      }
+      if (widget.eventId == null) {
+        query = query.isFilter('event_id', null);
+      } else {
+        query = query.eq('event_id', widget.eventId!);
+      }
+
+      final rows = await query.order('updated_at', ascending: false).limit(1);
+      if (rows.isEmpty) return;
+      final conversationId = rows.first['id']?.toString();
+      if (conversationId == null || conversationId.isEmpty) return;
+
+      final messages = await client.from('ai_messages')
+          .select('role,content')
+          .eq('conversation_id', conversationId)
+          .inFilter('role', ['user', 'assistant'])
+          .order('created_at')
+          .limit(60);
+      if (!mounted) return;
+
+      setState(() {
+        _conversationId = conversationId;
+        _items
+          ..clear()
+          ..addAll(List<Map<String, dynamic>>.from(messages).map((row) {
+            return _ChatItem(
+              row['role'] == 'user',
+              row['content']?.toString() ?? '',
+            );
+          }));
+      });
+      _scrollToBottom();
+    } catch (_) {
+      // Chat remains usable when history lookup is unavailable.
+    } finally {
+      if (mounted) setState(() => _restoring = false);
+    }
+  }
+
+  void _startNewConversation() {
+    setState(() {
+      _conversationId = null;
+      _items
+        ..clear()
+        ..add(_ChatItem(
+          false,
+          _organizer
+              ? 'New Organizer AI chat. Main current event ke rules, teams aur match status se related planning mein help karunga.'
+              : 'New Player AI chat. KOMNIVO ya tournament se related kuch bhi poochho.',
+        ));
+    });
   }
 
   @override
@@ -48,7 +116,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   Future<void> _send() async {
     final message = _input.text.trim();
-    if (message.isEmpty || _sending) return;
+    if (message.isEmpty || _sending || _restoring) return;
     setState(() {
       _sending = true;
       _items.add(_ChatItem(true, message));
@@ -112,6 +180,11 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           const Icon(Icons.auto_awesome, color: KomnivoTheme.cyan),
           const SizedBox(width: 10),
           Expanded(child: Text(_organizer ? 'Organizer AI' : 'Player AI')),
+          IconButton(
+            tooltip: 'New chat',
+            onPressed: _sending || _restoring ? null : _startNewConversation,
+            icon: const Icon(Icons.add_comment_outlined),
+          ),
         ]),
       ),
       body: Column(children: [
@@ -129,9 +202,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           child: ListView.builder(
             controller: _scroll,
             padding: const EdgeInsets.fromLTRB(14, 18, 14, 18),
-            itemCount: _items.length + (_sending ? 1 : 0),
+            itemCount: _items.length + ((_sending || _restoring) ? 1 : 0),
             itemBuilder: (context, index) {
-              if (_sending && index == _items.length) {
+              if ((_sending || _restoring) && index == _items.length) {
                 return const Align(
                   alignment: Alignment.centerLeft,
                   child: Padding(
@@ -188,7 +261,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
               ),
               const SizedBox(width: 8),
               IconButton.filled(
-                onPressed: _sending ? null : _send,
+                onPressed: _sending || _restoring ? null : _send,
                 icon: const Icon(Icons.arrow_upward_rounded),
                 style: IconButton.styleFrom(backgroundColor: KomnivoTheme.cyan, foregroundColor: Colors.black),
               ),
