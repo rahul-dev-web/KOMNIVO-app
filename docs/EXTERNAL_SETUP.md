@@ -46,11 +46,15 @@ All user-facing functions require JWT verification. `notification-push` is the o
 | Free Fire UID profile sync | Free Fire Community API (unofficial) | Yes — provider API key |
 | Same-phone LiveOps screen OCR | Android MediaProjection + Google ML Kit on-device text recognition | No cloud vision API key |
 | Voice prompts for LiveOps | Device text-to-speech via `flutter_tts` | No cloud voice API key |
-| AI / LLM rulebook assistant | Not wired into the current code | No AI key to configure now |
+| Organizer AI + Player AI chat | Cloudflare Workers AI (primary) + GroqCloud (alternative); Supabase Edge Function `komnivo-ai` | Yes — Cloudflare account ID/token; optional Groq API key. See `docs/AI_SETUP.md` |
 
 Important: the Notion product specification includes future AI-assisted rulebook drafting. The current repository does not contain an OpenAI, Groq, Gemini, Anthropic or other LLM API integration. Do not purchase or paste an AI API key for KOMNIVO yet. That feature needs a deliberate provider decision and implementation first.
 
 There is also no ChatGPT plugin that needs to be installed. These integrations are normal Flutter packages and Supabase Edge Functions already listed in the repository.
+
+## AI provider setup (new)
+
+The free-first AI provider selection, API token permissions, Supabase secret names, Windows setup commands and smoke tests are documented in [`docs/AI_SETUP.md`](AI_SETUP.md). The initial authenticated AI chat gateway is deployed; it remains unavailable until the project owner adds the provider credentials to Supabase Edge Function Secrets. Do not add AI provider secrets to GitHub or Cloudflare Pages build variables.
 
 ## 3. Supabase — app connection and dashboard checks
 
