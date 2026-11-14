@@ -1,6 +1,6 @@
 # KOMNIVO implementation status
 
-Last verified: 13 November 2026.
+Last verified: 14 November 2026.
 
 This file distinguishes work deployed to the connected Supabase project from owner-controlled external credentials and remaining product engineering.
 
@@ -14,12 +14,12 @@ Connected Supabase project:
 - Database: PostgreSQL 17.11
 
 Verified on the project:
-- 15 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy, profile-wide three-request counter/RPCs and challenge in-flight concurrency guard.
-- 44 application tables in `public`; all 44 have RLS enabled.
+- 17 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy, profile-wide three-request counter/RPCs and challenge in-flight concurrency guard.
+- 52 application tables in `public`; all 52 have RLS enabled.
 - Least-privilege grants applied: anonymous users can read only the active `games` catalogue; authenticated access is granted per table and column under RLS. Future `public` tables, sequences and functions created by the postgres migration owner no longer receive broad anon/authenticated default privileges.
 - Two private Storage buckets: `community-media` and `match-evidence`, both limited to 10 MB and JPG/PNG/WebP/PDF.
 - `public.messages` is enabled in the `supabase_realtime` publication.
-- All 13 repository Edge Functions deployed and ACTIVE. User-facing functions have JWT verification enabled; `notification-push` uses its dedicated `x-webhook-secret` check.
+- All 14 repository Edge Functions deployed and ACTIVE. User-facing functions have JWT verification enabled; `notification-push` uses its dedicated `x-webhook-secret` check.
 
 ## Implemented in source
 
