@@ -156,13 +156,21 @@ async function buildContext(
     return snapshot;
   }
 
-  const captainRows = await admin.from("event_registrations").select("id,captain_user_id")
-    .eq("event_id", eventId).eq("captain_user_id", userId);
-  const playerRows = await admin.from("registration_players").select("registration_id")
-    .eq("user_id", userId);
+  const eventRegistrations = await admin.from("event_registrations")
+    .select("id,captain_user_id").eq("event_id", eventId).limit(200);
+  const eventRegistrationIds = (eventRegistrations.data ?? []).map((row) => String(row.id));
   const registrationIds = new Set<string>();
-  for (const row of captainRows.data ?? []) registrationIds.add(String(row.id));
-  for (const row of playerRows.data ?? []) if (row.registration_id) registrationIds.add(String(row.registration_id));
+  for (const row of eventRegistrations.data ?? []) {
+    if (row.captain_user_id === userId) registrationIds.add(String(row.id));
+  }
+  if (eventRegistrationIds.length > 0) {
+    const playerRows = await admin.from("registration_players")
+      .select("registration_id").in("registration_id", eventRegistrationIds)
+      .eq("user_id", userId).limit(200);
+    for (const row of playerRows.data ?? []) {
+      if (row.registration_id) registrationIds.add(String(row.registration_id));
+    }
+  }
   if (registrationIds.size === 0) {
     snapshot.player_event_state = { registered: false };
     return snapshot;
