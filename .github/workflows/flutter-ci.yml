@@ -49,6 +49,21 @@ jobs:
             build/app/outputs/flutter-apk/app-release.apk
             build/web/
           if-no-files-found: error
+
+  edge-function-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type-check KOMNIVO AI Edge Function
+        run: deno check supabase/functions/komnivo-ai/index.ts
+
   windows-bootstrap:
     runs-on: windows-latest
     steps:
