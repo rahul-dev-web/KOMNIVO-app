@@ -57,3 +57,6 @@ verify_jwt = false
 
 [functions.komnivo-ai]
 verify_jwt = true
+
+[functions.komnivo-ai-process-document]
+verify_jwt = true
