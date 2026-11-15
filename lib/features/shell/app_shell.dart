@@ -52,7 +52,7 @@ class _AppShellState extends State<AppShell> {
         title: Row(children: [
           KomnivoLogo(size: compactToolbar ? 28 : 31, borderRadius: 9),
           const SizedBox(width: 10),
-          const Text(
+          Text(
             'KOMNIVO',
             style: TextStyle(
               fontWeight: FontWeight.w900,
@@ -132,7 +132,7 @@ class _AppShellState extends State<AppShell> {
               ),
             ),
           ),
-        ],,
+        ],
       ),
       body: SafeArea(child: body),
       bottomNavigationBar: (_showLiveOps || _showProfile)
