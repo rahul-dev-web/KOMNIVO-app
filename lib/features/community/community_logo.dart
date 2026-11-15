@@ -136,3 +136,17 @@ class _CommunityLogoState extends State<CommunityLogo> {
     );
   }
 }
+
+String communityLogoMimeType(String extension) {
+  switch (extension.toLowerCase()) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    default:
+      throw ArgumentError.value(extension, 'extension', 'Unsupported community logo type.');
+  }
+}
