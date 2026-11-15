@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -125,17 +126,48 @@ class KomnivoRepository {
     return List<Map<String, dynamic>>.from(rows);
   }
 
+  Future<String> uploadCommunityLogo({
+    required String communityId,
+    required Uint8List bytes,
+    required String extension,
+    required String contentType,
+  }) async {
+    if (bytes.isEmpty || bytes.length > 2 * 1024 * 1024) {
+      throw Exception('Community logo must be smaller than 2 MB.');
+    }
+    const allowed = {'jpg', 'jpeg', 'png', 'webp'};
+    final normalizedExtension = extension.toLowerCase();
+    if (!allowed.contains(normalizedExtension)) {
+      throw Exception('Use a JPG, PNG or WebP community logo.');
+    }
+
+    final path = '$userId/$communityId/logo-${DateTime.now().microsecondsSinceEpoch}.$normalizedExtension';
+    await client.storage.from('community-media').uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(
+        contentType: contentType,
+        cacheControl: '3600',
+      ),
+    );
+    return path;
+  }
+
   Future<Map<String, dynamic>> updateCommunity({
     required String communityId,
     required String name,
     required String description,
     required String visibility,
+    String? iconUrl,
   }) async {
-    final row = await client.from('communities').update({
+    final updates = <String, dynamic>{
       'name': name.trim(),
       'description': description.trim(),
       'visibility': visibility,
-    }).eq('id', communityId).select().single();
+    };
+    if (iconUrl != null) updates['icon_url'] = iconUrl;
+    final row = await client.from('communities').update(updates)
+        .eq('id', communityId).select().single();
     return Map<String, dynamic>.from(row);
   }
 
