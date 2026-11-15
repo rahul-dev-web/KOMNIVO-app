@@ -164,8 +164,10 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
           ],
         ),
       );
+  }
 
   Widget _channelTile(Map<String, dynamic> channel) {
+    final compact = widget.embedded && MediaQuery.sizeOf(context).width < 600;
     final kind = channel['kind']?.toString() ?? 'text';
     final name = channel['name']?.toString() ?? 'channel';
     final isVoice = kind == 'voice';
@@ -215,7 +217,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: compact ? 10 : 12,
                           fontWeight: FontWeight.w800,
                         ),
@@ -315,7 +317,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: compact ? 11 : 14,
                       fontWeight: FontWeight.w900,
                     ),
@@ -435,7 +437,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                           : 'Welcome to the community. Pick a channel and start connecting.',
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Colors.white70,
                         fontSize: compact ? 10 : 12,
                         height: 1.4,
