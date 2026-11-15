@@ -202,3 +202,8 @@ The `komnivo-ai` Edge Function was deployed as version 15 with JWT verification 
 Migration `202611150001_contextual_ai_owner_notification` is applied. After the existing community bootstrap trigger creates the creator's Owner membership, a second idempotent trigger inserts one `community_owner_ai_ready` notification for that creator. The notification says that Organizer AI help is available for that community and Player features remain available. Existing communities are not retroactively notified.
 
 Do not mark the AI system production-complete. Remaining engineering includes one unified Flutter assistant/context selector (to be designed only after the product owner chooses a Canva theme), broader allowlisted organizer tools for channels/categories/roles/permissions, registration workflows, recurring scrims, deterministic points-table ingestion/publication, player-wide discovery/support flows, and permission regression tests.
+
+
+### Owner onboarding notification — 15 November 2026
+
+A successful community creation now inserts one `community_owner_ai_ready` notification only after the existing database bootstrap has created the creator's `owner` membership. The notification uses the existing `notifications` table and push pipeline, is idempotent per user/community, and is not backfilled for older communities. `notification-push` v11 maps this notification kind to the existing `event_push` preference so users' community-event push preferences are respected. The in-app notifications screen renders the new kind using its generic notification icon; the current Flutter UI has not otherwise been changed.
