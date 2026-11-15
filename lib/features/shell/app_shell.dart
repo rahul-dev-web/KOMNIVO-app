@@ -19,7 +19,7 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  // Community is the current landing destination. Team remains the first tab.
+  // Community is the first destination shown at app launch; Home is intentionally removed.
   int _index = 1;
   bool _showLiveOps = false;
   bool _showProfile = false;
@@ -119,7 +119,7 @@ class _AppShellState extends State<AppShell> {
                 NavigationDestination(
                   icon: Icon(Icons.chat_bubble_outline),
                   selectedIcon: Icon(Icons.chat_bubble),
-                  label: 'Inbox',
+                  label: 'DM',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.emoji_events_outlined),
