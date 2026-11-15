@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -55,14 +57,15 @@ class _CommunityScreenState extends State<CommunityScreen> {
       var community = Map<String, dynamic>.from(raw);
       if (!mounted) return;
 
-      final logoFile = draft.logoFile;
-      if (logoFile != null && logoFile.bytes != null && logoFile.extension != null) {
+      final logoBytes = draft.logoBytes;
+      final logoExtension = draft.logoExtension;
+      if (logoBytes != null && logoExtension != null) {
         try {
           final logoPath = await KomnivoRepository.instance.uploadCommunityLogo(
             communityId: community['id'].toString(),
-            bytes: logoFile.bytes!,
-            extension: logoFile.extension!,
-            contentType: communityLogoMimeType(logoFile.extension!),
+            bytes: logoBytes,
+            extension: logoExtension,
+            contentType: communityLogoMimeType(logoExtension),
           );
           community = await KomnivoRepository.instance.updateCommunity(
             communityId: community['id'].toString(),
@@ -220,12 +223,14 @@ class _CommunityDraft {
     this.name,
     this.description,
     this.visibility, {
-    this.logoFile,
+    this.logoBytes,
+    this.logoExtension,
   });
   final String name;
   final String description;
   final String visibility;
-  final PlatformFile? logoFile;
+  final Uint8List? logoBytes;
+  final String? logoExtension;
 }
 
 class _CreateCommunityDialog extends StatefulWidget {
@@ -240,32 +245,42 @@ class _CreateCommunityDialogState extends State<_CreateCommunityDialog> {
   final _name = TextEditingController();
   final _description = TextEditingController();
   String _visibility = 'public';
-  PlatformFile? _logoFile;
+  Uint8List? _logoBytes;
+  String? _logoExtension;
+  String? _logoName;
 
   Future<void> _pickLogo() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      allowMultiple: false,
-      withData: true,
-    );
-    if (result == null || result.files.isEmpty) return;
+    final file = await FilePicker.pickFile(type: FileType.image);
+    if (!mounted || file == null) return;
 
-    final file = result.files.single;
     final extension = file.extension?.toLowerCase() ?? '';
     if (!const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)) {
       showMessage(context, 'Choose a JPG, PNG or WebP image.');
       return;
     }
-    final bytes = file.bytes;
-    if (bytes == null || bytes.isEmpty) {
+
+    final length = await file.length();
+    if (!mounted) return;
+    if (length == null || length == 0) {
       showMessage(context, 'Could not read the selected image. Please choose it again.');
       return;
     }
-    if (bytes.length > 2 * 1024 * 1024) {
+    if (length > 2 * 1024 * 1024) {
       showMessage(context, 'Community logos must be 2 MB or smaller.');
       return;
     }
-    setState(() => _logoFile = file);
+
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    if (bytes.isEmpty) {
+      showMessage(context, 'Could not read the selected image. Please choose it again.');
+      return;
+    }
+    setState(() {
+      _logoBytes = bytes;
+      _logoExtension = extension;
+      _logoName = file.name;
+    });
   }
 
   @override
@@ -333,10 +348,10 @@ class _CreateCommunityDialogState extends State<_CreateCommunityDialog> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      if (_logoFile != null && _logoFile!.bytes != null)
+                      if (_logoBytes != null)
                         ClipRRect(
                           borderRadius: BorderRadius.circular(13),
-                          child: Image.memory(_logoFile!.bytes!, width: 48, height: 48, fit: BoxFit.cover),
+                          child: Image.memory(_logoBytes!, width: 48, height: 48, fit: BoxFit.cover),
                         )
                       else
                         CommunityLogo(
@@ -350,7 +365,7 @@ class _CreateCommunityDialogState extends State<_CreateCommunityDialog> {
                           children: [
                             const Text('Community logo', style: TextStyle(fontWeight: FontWeight.w700)),
                             Text(
-                              _logoFile?.name ?? 'Optional · JPG, PNG or WebP · max 2 MB',
+                              _logoName ?? 'Optional · JPG, PNG or WebP · max 2 MB',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10),
@@ -361,7 +376,7 @@ class _CreateCommunityDialogState extends State<_CreateCommunityDialog> {
                       TextButton.icon(
                         onPressed: _pickLogo,
                         icon: const Icon(Icons.image_outlined, size: 17),
-                        label: Text(_logoFile == null ? 'Add' : 'Change'),
+                        label: Text(_logoBytes == null ? 'Add' : 'Change'),
                       ),
                     ],
                   ),
@@ -431,7 +446,8 @@ class _CreateCommunityDialogState extends State<_CreateCommunityDialog> {
                   _name.text.trim(),
                   _description.text.trim(),
                   _visibility,
-                  logoFile: _logoFile,
+                  logoBytes: _logoBytes,
+                  logoExtension: _logoExtension,
                 ),
               );
             },
