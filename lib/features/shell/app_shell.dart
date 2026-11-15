@@ -4,11 +4,9 @@ import '../../core/komnivo_logo.dart';
 import '../ai/ai_assistant_screen.dart';
 import '../community/community_screen.dart';
 import '../compete/compete_screen.dart';
-import '../home/home_screen.dart';
 import '../inbox/inbox_screen.dart';
 import '../inbox/notifications_screen.dart';
 import '../liveops/liveops_screen.dart';
-import '../organizer/organizer_screen.dart';
 import '../profile/profile_screen.dart';
 import '../teams/teams_screen.dart';
 
@@ -21,40 +19,31 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  int _index = 0;
+  // Community is the current landing destination. Team remains the first tab.
+  int _index = 1;
   bool _showLiveOps = false;
-  bool _showOrganizer = false;
   bool _showProfile = false;
 
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      HomeScreen(
-        preview: widget.preview,
-        onLiveOps: () => setState(() {
-          _showLiveOps = true;
-          _showOrganizer = false;
-          _showProfile = false;
-        }),
-        onOrganizer: () => setState(() {
-          _showOrganizer = true;
-          _showLiveOps = false;
-          _showProfile = false;
-        }),
-      ),
-      CommunityScreen(preview: widget.preview),
-      CompeteScreen(preview: widget.preview),
       TeamsScreen(preview: widget.preview),
+      CommunityScreen(preview: widget.preview),
       InboxScreen(preview: widget.preview),
+      CompeteScreen(preview: widget.preview),
     ];
 
     final Widget body = _showLiveOps
-        ? LiveOpsScreen(preview: widget.preview, onBack: () => setState(() => _showLiveOps = false))
-        : _showOrganizer
-            ? OrganizerScreen(preview: widget.preview, onBack: () => setState(() => _showOrganizer = false))
-            : _showProfile
-                ? ProfileScreen(preview: widget.preview, onBack: () => setState(() => _showProfile = false))
-                : pages[_index];
+        ? LiveOpsScreen(
+            preview: widget.preview,
+            onBack: () => setState(() => _showLiveOps = false),
+          )
+        : _showProfile
+            ? ProfileScreen(
+                preview: widget.preview,
+                onBack: () => setState(() => _showProfile = false),
+              )
+            : pages[_index];
 
     return Scaffold(
       appBar: AppBar(
@@ -62,13 +51,18 @@ class _AppShellState extends State<AppShell> {
         title: Row(children: [
           const KomnivoLogo(size: 31, borderRadius: 9),
           const SizedBox(width: 10),
-          const Text('KOMNIVO', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.4)),
+          const Text(
+            'KOMNIVO',
+            style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.4),
+          ),
         ]),
         actions: [
           IconButton(
-            tooltip: 'Player AI Assistant',
+            tooltip: 'Ask KOMNIVO AI',
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const AiAssistantScreen(mode: 'player')),
+              MaterialPageRoute<void>(
+                builder: (_) => const AiAssistantScreen(mode: 'player'),
+              ),
             ),
             icon: const Icon(Icons.auto_awesome_outlined),
           ),
@@ -76,24 +70,16 @@ class _AppShellState extends State<AppShell> {
             tooltip: 'LiveOps Assistant',
             onPressed: () => setState(() {
               _showLiveOps = true;
-              _showOrganizer = false;
               _showProfile = false;
             }),
             icon: const Icon(Icons.radar_outlined),
           ),
           IconButton(
-            tooltip: 'Organiser workspace',
-            onPressed: () => setState(() {
-              _showOrganizer = true;
-              _showLiveOps = false;
-              _showProfile = false;
-            }),
-            icon: const Icon(Icons.dashboard_customize_outlined),
-          ),
-          IconButton(
             tooltip: 'Notifications',
             onPressed: () => Navigator.of(context, rootNavigator: true).push(
-              MaterialPageRoute<void>(builder: (_) => const NotificationsScreen()),
+              MaterialPageRoute<void>(
+                builder: (_) => const NotificationsScreen(),
+              ),
             ),
             icon: const Icon(Icons.notifications_none_outlined),
           ),
@@ -104,25 +90,42 @@ class _AppShellState extends State<AppShell> {
               onPressed: () => setState(() {
                 _showProfile = true;
                 _showLiveOps = false;
-                _showOrganizer = false;
               }),
-              icon: const CircleAvatar(radius: 16, child: Icon(Icons.person_outline, size: 18)),
+              icon: const CircleAvatar(
+                radius: 16,
+                child: Icon(Icons.person_outline, size: 18),
+              ),
             ),
           ),
         ],
       ),
       body: SafeArea(child: body),
-      bottomNavigationBar: (_showLiveOps || _showOrganizer || _showProfile)
+      bottomNavigationBar: (_showLiveOps || _showProfile)
           ? null
           : NavigationBar(
               selectedIndex: _index,
               onDestinationSelected: (value) => setState(() => _index = value),
               destinations: const [
-                NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
-                NavigationDestination(icon: Icon(Icons.groups_outlined), selectedIcon: Icon(Icons.groups), label: 'Community'),
-                NavigationDestination(icon: Icon(Icons.emoji_events_outlined), selectedIcon: Icon(Icons.emoji_events), label: 'Compete'),
-                NavigationDestination(icon: Icon(Icons.shield_outlined), selectedIcon: Icon(Icons.shield), label: 'Teams'),
-                NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: 'Inbox'),
+                NavigationDestination(
+                  icon: Icon(Icons.shield_outlined),
+                  selectedIcon: Icon(Icons.shield),
+                  label: 'Team',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.groups_outlined),
+                  selectedIcon: Icon(Icons.groups),
+                  label: 'Community',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.chat_bubble_outline),
+                  selectedIcon: Icon(Icons.chat_bubble),
+                  label: 'Inbox',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.emoji_events_outlined),
+                  selectedIcon: Icon(Icons.emoji_events),
+                  label: 'Compete',
+                ),
               ],
             ),
     );
