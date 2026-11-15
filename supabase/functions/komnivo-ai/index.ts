@@ -325,11 +325,10 @@ async function buildContext(
     };
     snapshot.matches = matches.data ?? [];
     snapshot.standings = standings.data ?? [];
-    snapshot.context_note = "Organizer event snapshot omits individual player contact details and room passwords.";
-    await attachDocumentSources(admin, snapshot, capabilities, userQuery);
-    return snapshot;
+    snapshot.organizer_context_note = "Organizer event snapshot omits individual player contact details and room passwords.";
   }
 
+  // Player capabilities stay active even when this same user also organises the selected event.
   const [captainRows, playerRows] = await Promise.all([
     admin.from("event_registrations").select("id")
       .eq("event_id", capabilities.eventId).eq("captain_user_id", userId).limit(20),
@@ -378,7 +377,7 @@ async function buildContext(
   } else {
     snapshot.player_matches = [];
   }
-  snapshot.context_note = "Only this player's own registration, team, match and check-in state is included. Room passwords and other players' private data are excluded.";
+  snapshot.player_context_note = "Only this player's own registration, team, match and check-in state is included. Room passwords and other players' private data are excluded.";
   await attachDocumentSources(admin, snapshot, capabilities, userQuery);
   return snapshot;
 }
