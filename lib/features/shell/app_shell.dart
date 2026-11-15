@@ -26,6 +26,7 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final compactToolbar = MediaQuery.sizeOf(context).width < 480;
     final pages = <Widget>[
       CommunityScreen(preview: widget.preview),
       CompeteScreen(preview: widget.preview),
@@ -47,33 +48,67 @@ class _AppShellState extends State<AppShell> {
 
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 20,
+        titleSpacing: compactToolbar ? 12 : 20,
         title: Row(children: [
-          const KomnivoLogo(size: 31, borderRadius: 9),
+          KomnivoLogo(size: compactToolbar ? 28 : 31, borderRadius: 9),
           const SizedBox(width: 10),
           const Text(
             'KOMNIVO',
-            style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.4),
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: compactToolbar ? 16 : 18,
+              letterSpacing: compactToolbar ? .9 : 1.4,
+            ),
           ),
         ]),
         actions: [
-          IconButton(
-            tooltip: 'Ask KOMNIVO AI',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const AiAssistantScreen(mode: 'player'),
+          if (compactToolbar)
+            PopupMenuButton<String>(
+              tooltip: 'More tools',
+              onSelected: (value) {
+                if (value == 'ai') {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AiAssistantScreen(mode: 'player'),
+                    ),
+                  );
+                } else {
+                  setState(() {
+                    _showLiveOps = true;
+                    _showProfile = false;
+                  });
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem<String>(
+                  value: 'ai',
+                  child: Text('Ask KOMNIVO AI'),
+                ),
+                PopupMenuItem<String>(
+                  value: 'liveops',
+                  child: Text('LiveOps Assistant'),
+                ),
+              ],
+            )
+          else ...[
+            IconButton(
+              tooltip: 'Ask KOMNIVO AI',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const AiAssistantScreen(mode: 'player'),
+                ),
               ),
+              icon: const Icon(Icons.auto_awesome_outlined),
             ),
-            icon: const Icon(Icons.auto_awesome_outlined),
-          ),
-          IconButton(
-            tooltip: 'LiveOps Assistant',
-            onPressed: () => setState(() {
-              _showLiveOps = true;
-              _showProfile = false;
-            }),
-            icon: const Icon(Icons.radar_outlined),
-          ),
+            IconButton(
+              tooltip: 'LiveOps Assistant',
+              onPressed: () => setState(() {
+                _showLiveOps = true;
+                _showProfile = false;
+              }),
+              icon: const Icon(Icons.radar_outlined),
+            ),
+          ],
           IconButton(
             tooltip: 'Notifications',
             onPressed: () => Navigator.of(context, rootNavigator: true).push(
@@ -97,7 +132,7 @@ class _AppShellState extends State<AppShell> {
               ),
             ),
           ),
-        ],
+        ],,
       ),
       body: SafeArea(child: body),
       bottomNavigationBar: (_showLiveOps || _showProfile)
