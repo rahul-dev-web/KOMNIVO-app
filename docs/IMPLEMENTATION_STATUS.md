@@ -150,3 +150,10 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - Latest CI run 43670839881: Edge Function type-check passed; Flutter analysis and tests passed; Windows bootstrap passed. At the time of this update, Android release build was still running and Web release build had not started. Do not describe CI as fully green until all jobs complete.
 - Notion product decision recorded in AI Blueprint Section 19.
 - Remaining: final CI result; unified Flutter UI/context selection; additional organizer tools (channels/categories/roles/permissions, registration, recurring scrims and standings/results); broad player workflows; end-to-end and cross-community authorization tests. AI is not production-complete.
+
+
+### Owner notification push-preference follow-up — 15 November 2026
+
+- Updated `notification-push` source and deployed version 11 (JWT remains disabled because this function is invoked by the existing database webhook with its configured shared secret).
+- The `community_owner_ai_ready` notification kind maps to `event_push`, respecting the user's existing Community events push preference.
+- The in-app notification uses the existing generic notification card/icon; no Flutter screen layout or navigation was modified.
