@@ -144,8 +144,10 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => page));
   }
 
-  Widget _sectionTitle(String title, {Widget? trailing}) => Padding(
-        padding: const EdgeInsets.fromLTRB(2, 18, 2, 9),
+  Widget _sectionTitle(String title, {Widget? trailing}) {
+    final compact = widget.embedded && MediaQuery.sizeOf(context).width < 600;
+    return Padding(
+        padding: EdgeInsets.fromLTRB(2, compact ? 12 : 18, 2, compact ? 6 : 9),
         child: Row(
           children: [
             Text(
@@ -189,19 +191,22 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
           onTap: () => _openChannel(channel),
           borderRadius: BorderRadius.circular(12),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 7 : 10,
+              vertical: compact ? 6 : 8,
+            ),
             child: Row(
               children: [
                 Container(
-                  width: 34,
-                  height: 34,
+                  width: compact ? 27 : 34,
+                  height: compact ? 27 : 34,
                   decoration: BoxDecoration(
                     color: KomnivoTheme.surfaceRaised,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon, color: tint, size: 18),
+                  child: Icon(icon, color: tint, size: compact ? 15 : 18),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: compact ? 6 : 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -211,11 +216,12 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 12,
+                          fontSize: compact ? 10 : 12,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      if ((channel['description'] ?? '').toString().isNotEmpty) ...[
+                      if (!compact &&
+                          (channel['description'] ?? '').toString().isNotEmpty) ...[
                         const SizedBox(height: 2),
                         Text(
                           channel['description'].toString(),
@@ -243,6 +249,10 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                   IconButton(
                     tooltip: 'Edit channel',
                     visualDensity: VisualDensity.compact,
+                    constraints: compact
+                        ? const BoxConstraints.tightFor(width: 28, height: 28)
+                        : const BoxConstraints(),
+                    padding: EdgeInsets.zero,
                     onPressed: () => _editChannel(channel),
                     icon: const Icon(
                       Icons.edit_outlined,
@@ -284,6 +294,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     final title = _community['name']?.toString() ?? 'Community';
     final description =
         _community['description']?.toString().trim() ?? '';
+    final compact = widget.embedded && MediaQuery.sizeOf(context).width < 600;
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: !widget.embedded,
@@ -292,9 +303,9 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
             CommunityLogo(
               name: title,
               imagePath: _community['icon_url']?.toString(),
-              size: 34,
+              size: compact ? 28 : 34,
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: compact ? 6 : 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -305,7 +316,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 14,
+                      fontSize: compact ? 11 : 14,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -329,12 +340,20 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
               tooltip: 'Create channel',
               onPressed: _addChannel,
               icon: const Icon(Icons.add_circle_outline),
+              constraints: compact
+                  ? const BoxConstraints.tightFor(width: 34, height: 48)
+                  : const BoxConstraints(),
+              padding: EdgeInsets.zero,
             ),
           if (_canManage)
             IconButton(
               tooltip: 'Edit community',
               onPressed: _editCommunity,
               icon: const Icon(Icons.settings_outlined),
+              constraints: compact
+                  ? const BoxConstraints.tightFor(width: 34, height: 48)
+                  : const BoxConstraints(),
+              padding: EdgeInsets.zero,
             ),
         ],
       ),
@@ -384,10 +403,15 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
           }).toList();
 
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 8 : 16,
+              compact ? 7 : 10,
+              compact ? 8 : 16,
+              compact ? 16 : 28,
+            ),
             children: [
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(compact ? 11 : 16),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
                   gradient: const LinearGradient(
@@ -413,8 +437,8 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white70,
-                        fontSize: 12,
-                        height: 1.45,
+                        fontSize: compact ? 10 : 12,
+                        height: 1.4,
                       ),
                     ),
                     const SizedBox(height: 13),
@@ -460,7 +484,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 15),
+              SizedBox(height: compact ? 9 : 15),
               TextField(
                 onChanged: (value) => setState(() => _channelQuery = value),
                 decoration: const InputDecoration(
@@ -469,7 +493,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                   isDense: true,
                 ),
               ),
-              const SizedBox(height: 13),
+              SizedBox(height: compact ? 7 : 13),
               _sectionTitle(
                 'Channels',
                 trailing: Row(
