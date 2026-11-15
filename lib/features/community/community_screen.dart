@@ -477,7 +477,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   );
 
         final sidebarWidth = (MediaQuery.sizeOf(context).width * .29)
-            .clamp(280.0, 350.0);
+            .clamp(280.0, 350.0)
+            .toDouble();
 
         return Row(
           children: [
@@ -1079,11 +1080,11 @@ class _CommunityPreviewPane extends StatelessWidget {
                         spacing: 9,
                         runSpacing: 9,
                         children: [
-                          _InfoPill(
+                          _CommunityMetaPill(
                             icon: Icons.people_outline,
                             label: '${community['member_count'] ?? 1} members',
                           ),
-                          _InfoPill(
+                          _CommunityMetaPill(
                             icon: isPublic ? Icons.public : Icons.lock_outline,
                             label: isPublic ? 'PUBLIC' : 'INVITE ONLY',
                           ),
@@ -1155,6 +1156,39 @@ class _CommunityWelcomePane extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      );
+}
+
+
+class _CommunityMetaPill extends StatelessWidget {
+  const _CommunityMetaPill({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: KomnivoTheme.surfaceRaised,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: KomnivoTheme.line),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: KomnivoTheme.muted),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                color: KomnivoTheme.muted,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
         ),
       );
 }
