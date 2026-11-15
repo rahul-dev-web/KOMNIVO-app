@@ -103,7 +103,7 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - AI chat restores the latest active conversation for the same mode/event/community after reopening. Users can start a new chat without deleting earlier conversations.
 - Player AI remains read-only. Organizer AI can propose an event draft and execute only the explicitly approved draft-creation operation; no AI membership, role, channel, registration or results write is enabled.
 
-- Public event access correction: signed-in players can ask about published events in public communities without joining the community; private communities/events remain member/participant-scoped. This is enforced by the AI Edge Function v7 and the database scope helper.
+- Public event access correction: signed-in players can ask about published events in public communities without joining the community; private communities/events remain member/participant-scoped. This is enforced by the AI Edge Function v13 and the database scope helper.
 
 - Tournament-scale guard: player participation is checked through direct captain/roster lookups (not the first 200 event registrations). Organizer registration summaries include an exact count and indicate if the displayed team list is truncated.
 
@@ -130,3 +130,10 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - `komnivo-ai-proposal-action` v3 requires a valid JWT and owner-matching proposal. Approval/rejection is processed by a service-role-only SQL resolver that uses the verified actor ID to recheck current event/community organiser permissions, locks the proposal, validates again, uses an idempotency key, writes `ai_actions` and `audit_logs`, and inserts a new event with status `draft` only.
 - Flutter renders proposal cards with source references and explicit Approve draft / Reject controls. After approval, the organiser event list refreshes when returning from AI. The app states the event is not published.
 - End-to-end provider tool-call and approval QA is pending Cloudflare token setup and a signed-in organiser test; Deno type-check/Flutter checks are run in CI.
+
+## AI provider configuration gate — 15 November 2026
+
+- GitHub PR #1 latest CI run `43626833317` completed successfully: Flutter analysis, tests, Android release APK build, Web release build, Deno Edge Function type-check and Windows bootstrap all passed.
+- Supabase AI Edge Functions are ACTIVE with JWT verification: `komnivo-ai` v13, `komnivo-ai-process-document` v4, `komnivo-ai-proposal-action` v3.
+- Cloudflare Workers AI token and account ID are still an owner-side setup step. After the owner creates the least-privilege Workers AI Read token, they must add `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_MODEL=@cf/qwen/qwen3.8-27b`, `AI_PROVIDER=cloudflare`, and `AI_DAILY_REQUEST_LIMIT=25` to Supabase Edge Function Secrets.
+- Provider live smoke test, document upload/OCR end-to-end QA and event-draft tool-call/approval QA remain blocked on the secrets and signed-in test accounts. PR #1 remains open; do not call the AI feature production-complete.
