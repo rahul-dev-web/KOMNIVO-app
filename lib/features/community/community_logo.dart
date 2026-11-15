@@ -55,9 +55,8 @@ class _CommunityLogoState extends State<CommunityLogo> {
   }
 
   Widget _fallback() {
-    final initial = widget.name.trim().isEmpty
-        ? 'K'
-        : widget.name.trim().characters.first.toUpperCase();
+    final trimmedName = widget.name.trim();
+    final initial = trimmedName.isEmpty ? 'K' : trimmedName.substring(0, 1).toUpperCase();
     return Container(
       width: widget.size,
       height: widget.size,
