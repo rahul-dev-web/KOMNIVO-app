@@ -20,17 +20,18 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   // Community is the first destination shown at app launch; Home is intentionally removed.
-  int _index = 1;
+  int _index = 0;
   bool _showLiveOps = false;
   bool _showProfile = false;
 
   @override
   Widget build(BuildContext context) {
+    final compactToolbar = MediaQuery.sizeOf(context).width < 480;
     final pages = <Widget>[
-      TeamsScreen(preview: widget.preview),
       CommunityScreen(preview: widget.preview),
-      InboxScreen(preview: widget.preview),
       CompeteScreen(preview: widget.preview),
+      TeamsScreen(preview: widget.preview),
+      InboxScreen(preview: widget.preview),
     ];
 
     final Widget body = _showLiveOps
@@ -47,33 +48,67 @@ class _AppShellState extends State<AppShell> {
 
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 20,
+        titleSpacing: compactToolbar ? 12 : 20,
         title: Row(children: [
-          const KomnivoLogo(size: 31, borderRadius: 9),
+          KomnivoLogo(size: compactToolbar ? 28 : 31, borderRadius: 9),
           const SizedBox(width: 10),
-          const Text(
+          Text(
             'KOMNIVO',
-            style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.4),
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: compactToolbar ? 16 : 18,
+              letterSpacing: compactToolbar ? .9 : 1.4,
+            ),
           ),
         ]),
         actions: [
-          IconButton(
-            tooltip: 'Ask KOMNIVO AI',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const AiAssistantScreen(mode: 'player'),
+          if (compactToolbar)
+            PopupMenuButton<String>(
+              tooltip: 'More tools',
+              onSelected: (value) {
+                if (value == 'ai') {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AiAssistantScreen(mode: 'player'),
+                    ),
+                  );
+                } else {
+                  setState(() {
+                    _showLiveOps = true;
+                    _showProfile = false;
+                  });
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem<String>(
+                  value: 'ai',
+                  child: Text('Ask KOMNIVO AI'),
+                ),
+                PopupMenuItem<String>(
+                  value: 'liveops',
+                  child: Text('LiveOps Assistant'),
+                ),
+              ],
+            )
+          else ...[
+            IconButton(
+              tooltip: 'Ask KOMNIVO AI',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const AiAssistantScreen(mode: 'player'),
+                ),
               ),
+              icon: const Icon(Icons.auto_awesome_outlined),
             ),
-            icon: const Icon(Icons.auto_awesome_outlined),
-          ),
-          IconButton(
-            tooltip: 'LiveOps Assistant',
-            onPressed: () => setState(() {
-              _showLiveOps = true;
-              _showProfile = false;
-            }),
-            icon: const Icon(Icons.radar_outlined),
-          ),
+            IconButton(
+              tooltip: 'LiveOps Assistant',
+              onPressed: () => setState(() {
+                _showLiveOps = true;
+                _showProfile = false;
+              }),
+              icon: const Icon(Icons.radar_outlined),
+            ),
+          ],
           IconButton(
             tooltip: 'Notifications',
             onPressed: () => Navigator.of(context, rootNavigator: true).push(
@@ -107,24 +142,24 @@ class _AppShellState extends State<AppShell> {
               onDestinationSelected: (value) => setState(() => _index = value),
               destinations: const [
                 NavigationDestination(
-                  icon: Icon(Icons.shield_outlined),
-                  selectedIcon: Icon(Icons.shield),
-                  label: 'Team',
-                ),
-                NavigationDestination(
                   icon: Icon(Icons.groups_outlined),
                   selectedIcon: Icon(Icons.groups),
                   label: 'Community',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.chat_bubble_outline),
-                  selectedIcon: Icon(Icons.chat_bubble),
-                  label: 'DM',
-                ),
-                NavigationDestination(
                   icon: Icon(Icons.emoji_events_outlined),
                   selectedIcon: Icon(Icons.emoji_events),
                   label: 'Compete',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.shield_outlined),
+                  selectedIcon: Icon(Icons.shield),
+                  label: 'Team',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.chat_bubble_outline),
+                  selectedIcon: Icon(Icons.chat_bubble),
+                  label: 'DM',
                 ),
               ],
             ),

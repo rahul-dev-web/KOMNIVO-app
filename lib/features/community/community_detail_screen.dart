@@ -28,6 +28,7 @@ class CommunityDetailScreen extends StatefulWidget {
 class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   late Map<String, dynamic> _community;
   late Future<List<Map<String, dynamic>>> _channelsFuture;
+  String _channelQuery = '';
 
   String get _communityId => _community['id'] as String;
   bool get _canManage =>
@@ -162,61 +163,163 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
 
   Widget _channelTile(Map<String, dynamic> channel) {
     final kind = channel['kind']?.toString() ?? 'text';
+    final name = channel['name']?.toString() ?? 'channel';
     final isVoice = kind == 'voice';
+    final isAnnouncement = kind == 'announcement' || name == 'announcements';
     final icon = isVoice
         ? Icons.volume_up_outlined
-        : kind == 'announcement'
+        : isAnnouncement
             ? Icons.campaign_outlined
             : Icons.tag;
+    final tint = isVoice ? KomnivoTheme.cyan : KomnivoTheme.muted;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 7),
+      margin: const EdgeInsets.only(bottom: 5),
       decoration: BoxDecoration(
         color: KomnivoTheme.surface,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: KomnivoTheme.line),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: KomnivoTheme.line.withValues(alpha: .75)),
       ),
-      child: ListTile(
-        onTap: () => _openChannel(channel),
-        leading: Icon(icon, color: isVoice ? KomnivoTheme.cyan : KomnivoTheme.muted),
-        title: Text(
-          channel['name']?.toString() ?? 'channel',
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-        ),
-        subtitle: (channel['description'] ?? '').toString().isNotEmpty
-            ? Text(
-                channel['description'].toString(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11),
-              )
-            : null,
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_canManage)
-              IconButton(
-                tooltip: 'Edit channel',
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _editChannel(channel),
-                icon: const Icon(Icons.edit_outlined, size: 17, color: KomnivoTheme.muted),
-              ),
-            Icon(
-              isVoice ? Icons.headset_mic_outlined : Icons.chevron_right_rounded,
-              color: KomnivoTheme.muted,
-              size: 20,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () => _openChannel(channel),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: KomnivoTheme.surfaceRaised,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: tint, size: 18),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if ((channel['description'] ?? '').toString().isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          channel['description'].toString(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: KomnivoTheme.muted,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (channel['is_private'] == true)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 4),
+                    child: Icon(
+                      Icons.lock_outline,
+                      color: KomnivoTheme.muted,
+                      size: 14,
+                    ),
+                  ),
+                if (_canManage)
+                  IconButton(
+                    tooltip: 'Edit channel',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _editChannel(channel),
+                    icon: const Icon(
+                      Icons.edit_outlined,
+                      size: 16,
+                      color: KomnivoTheme.muted,
+                    ),
+                  ),
+                Icon(
+                  isVoice
+                      ? Icons.headset_mic_outlined
+                      : Icons.chevron_right_rounded,
+                  color: KomnivoTheme.muted,
+                  size: 19,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _channelGroup(
+    String title,
+    List<Map<String, dynamic>> channels,
+  ) {
+    if (channels.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionTitle(title),
+        ...channels.map(_channelTile),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final title = _community['name']?.toString() ?? 'Community';
+    final description =
+        _community['description']?.toString().trim() ?? '';
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        title: Row(
+          children: [
+            CommunityLogo(
+              name: title,
+              imagePath: _community['icon_url']?.toString(),
+              size: 34,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const Text(
+                    'COMMUNITY SERVER',
+                    style: TextStyle(
+                      color: KomnivoTheme.muted,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
         actions: [
           if (_canManage)
             IconButton(
@@ -236,86 +339,165 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
         future: _channelsFuture,
         builder: (context, snapshot) {
           final channels = snapshot.data ?? const <Map<String, dynamic>>[];
-          final textChannels = channels
-              .where((channel) => channel['kind'] == 'text' || channel['kind'] == 'announcement')
+          final query = _channelQuery.trim().toLowerCase();
+          final filteredChannels = channels.where((channel) {
+            final name = channel['name']?.toString().toLowerCase() ?? '';
+            final detail =
+                channel['description']?.toString().toLowerCase() ?? '';
+            return query.isEmpty ||
+                name.contains(query) ||
+                detail.contains(query);
+          }).toList();
+
+          final voiceChannels = filteredChannels
+              .where((channel) => channel['kind'] == 'voice')
               .toList();
-          final voiceChannels = channels.where((channel) => channel['kind'] == 'voice').toList();
+          final textChannels = filteredChannels
+              .where((channel) => channel['kind'] != 'voice')
+              .toList();
+          final announcements = textChannels.where((channel) {
+            final name = channel['name']?.toString().toLowerCase() ?? '';
+            return channel['kind'] == 'announcement' ||
+                name == 'announcements';
+          }).toList();
+          const competitiveTerms = [
+            'looking-for-team',
+            'team',
+            'scrim',
+            'tournament',
+            'strategy',
+            'tryout',
+            'lfg',
+            'match',
+          ];
+          final competitive = textChannels.where((channel) {
+            final name = channel['name']?.toString().toLowerCase() ?? '';
+            return !announcements.contains(channel) &&
+                competitiveTerms.any(name.contains);
+          }).toList();
+          final communityChannels = textChannels.where((channel) {
+            return !announcements.contains(channel) &&
+                !competitive.contains(channel);
+          }).toList();
 
           return ListView(
-            padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
             children: [
               Container(
-                padding: const EdgeInsets.all(19),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(21),
+                  borderRadius: BorderRadius.circular(18),
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
                       KomnivoTheme.surfaceRaised,
                       KomnivoTheme.surface,
-                      KomnivoTheme.background,
                     ],
                   ),
-                  border: Border.all(color: KomnivoTheme.accent.withValues(alpha: .32)),
+                  border: Border.all(
+                    color: KomnivoTheme.accent.withValues(alpha: .28),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        CommunityLogo(
-                          name: title,
-                          imagePath: _community['icon_url']?.toString(),
-                          size: 50,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
-                        ),
-                        if (_canManage)
-                          const Icon(Icons.verified_user_outlined, color: KomnivoTheme.cyan, size: 19),
-                      ],
+                    Text(
+                      description.isNotEmpty
+                          ? description
+                          : 'Welcome to the community. Pick a channel and start connecting.',
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        height: 1.45,
+                      ),
                     ),
                     const SizedBox(height: 13),
-                    Text(
-                      (_community['description']?.toString().isNotEmpty == true)
-                          ? _community['description'].toString()
-                          : 'Welcome to the community. Pick a channel and start connecting.',
-                      style: const TextStyle(color: Colors.white70, height: 1.45),
-                    ),
-                    const SizedBox(height: 15),
                     Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                      spacing: 7,
+                      runSpacing: 7,
                       children: [
                         _InfoPill(
                           icon: Icons.people_outline,
-                          label: (_community['member_count']?.toString() ?? '1') + ' members',
+                          label:
+                              '${_community['member_count'] ?? 1} members',
                         ),
                         _InfoPill(
-                          icon: _community['visibility'] == 'private' ? Icons.lock_outline : Icons.public,
-                          label: (_community['visibility'] ?? 'public').toString().toUpperCase(),
+                          icon: _community['visibility'] == 'private'
+                              ? Icons.lock_outline
+                              : Icons.public,
+                          label: _community['visibility'] == 'private'
+                              ? 'INVITE ONLY'
+                              : 'PUBLIC',
                         ),
                         if (_canManage)
-                          const _InfoPill(icon: Icons.shield_outlined, label: 'OWNER / ADMIN'),
+                          const _InfoPill(
+                            icon: Icons.shield_outlined,
+                            label: 'OWNER / ADMIN',
+                          ),
                       ],
                     ),
+                    if (_canManage) ...[
+                      const SizedBox(height: 13),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          onPressed: _editCommunity,
+                          icon: const Icon(Icons.tune, size: 16),
+                          label: const Text('Manage server'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 38),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              if (_canManage)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: OutlinedButton.icon(
-                    onPressed: _editCommunity,
-                    icon: const Icon(Icons.tune),
-                    label: const Text('Manage community'),
-                  ),
+              const SizedBox(height: 15),
+              TextField(
+                onChanged: (value) => setState(() => _channelQuery = value),
+                decoration: const InputDecoration(
+                  hintText: 'Search channels',
+                  prefixIcon: Icon(Icons.search, size: 19),
+                  isDense: true,
                 ),
+              ),
+              const SizedBox(height: 13),
+              _sectionTitle(
+                'Channels',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${filteredChannels.length}',
+                      style: const TextStyle(
+                        color: KomnivoTheme.muted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (_canManage) ...[
+                      const SizedBox(width: 8),
+                      TextButton.icon(
+                        onPressed: _addChannel,
+                        icon: const Icon(Icons.add, size: 15),
+                        label: const Text('Add'),
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(0, 32),
+                          padding: const EdgeInsets.symmetric(horizontal: 7),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
               if (snapshot.connectionState == ConnectionState.waiting)
                 const Padding(
-                  padding: EdgeInsets.all(36),
+                  padding: EdgeInsets.all(32),
                   child: Center(child: CircularProgressIndicator()),
                 )
               else if (snapshot.hasError)
@@ -324,43 +506,34 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                   message: snapshot.error.toString(),
                   icon: Icons.error_outline,
                 )
+              else if (filteredChannels.isEmpty)
+                EmptyState(
+                  title: query.isEmpty
+                      ? 'No channels yet'
+                      : 'No matching channels',
+                  message: query.isEmpty
+                      ? 'Create a channel to start your community.'
+                      : 'Try a different channel name.',
+                  icon: Icons.tag,
+                )
               else ...[
-                _sectionTitle(
-                  'Text channels',
-                  trailing: _canManage
-                      ? TextButton.icon(
-                          onPressed: _addChannel,
-                          icon: const Icon(Icons.add, size: 16),
-                          label: const Text('Add'),
-                        )
-                      : null,
-                ),
-                if (textChannels.isEmpty)
-                  const _EmptyChannelHint(label: 'No text channels yet.')
-                else
-                  ...textChannels.map(_channelTile),
-                _sectionTitle(
-                  'Voice channels',
-                  trailing: _canManage
-                      ? TextButton.icon(
-                          onPressed: _addChannel,
-                          icon: const Icon(Icons.add, size: 16),
-                          label: const Text('Add'),
-                        )
-                      : null,
-                ),
-                if (voiceChannels.isEmpty)
-                  const _EmptyChannelHint(label: 'No voice channels yet.')
-                else
-                  ...voiceChannels.map(_channelTile),
+                // Grouping is a presentation rule; no channel records or roles are changed.
+                _channelGroup('ANNOUNCEMENTS', announcements),
+                _channelGroup('COMMUNITY', communityChannels),
+                _channelGroup('COMPETITIVE', competitive),
+                _channelGroup('VOICE CHANNELS', voiceChannels),
               ],
               if (!_canManage)
                 const Padding(
-                  padding: EdgeInsets.only(top: 14),
+                  padding: EdgeInsets.only(top: 12),
                   child: Text(
-                    'Tap a text channel to open chat, or a voice channel to join the room.',
+                    'Open a text channel to chat or join a voice channel to talk with your squad.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: KomnivoTheme.muted, fontSize: 11),
+                    style: TextStyle(
+                      color: KomnivoTheme.muted,
+                      fontSize: 10,
+                      height: 1.4,
+                    ),
                   ),
                 ),
             ],
@@ -730,21 +903,5 @@ class _InfoPill extends StatelessWidget {
             Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w800)),
           ],
         ),
-      );
-}
-
-class _EmptyChannelHint extends StatelessWidget {
-  const _EmptyChannelHint({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: KomnivoTheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: KomnivoTheme.line),
-        ),
-        child: Text(label, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 12)),
       );
 }
