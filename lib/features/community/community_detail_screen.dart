@@ -16,10 +16,12 @@ class CommunityDetailScreen extends StatefulWidget {
     super.key,
     required this.community,
     required this.canManage,
+    this.embedded = false,
   });
 
   final Map<String, dynamic> community;
   final bool canManage;
+  final bool embedded;
 
   @override
   State<CommunityDetailScreen> createState() => _CommunityDetailScreenState();
@@ -284,6 +286,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
         _community['description']?.toString().trim() ?? '';
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: !widget.embedded,
         title: Row(
           children: [
             CommunityLogo(
