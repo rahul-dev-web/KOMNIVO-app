@@ -280,6 +280,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
     required List<Map<String, dynamic>> communities,
     required Map<String, Map<String, dynamic>> memberships,
     required bool desktop,
+    required String? selectedId,
   }) {
     return RefreshIndicator(
       onRefresh: () async {
@@ -303,7 +304,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
             row: row,
             membership: membership,
             joining: _joining.contains(id),
-            selected: desktop && id == _selectedCommunityId,
+            selected: desktop && id == selectedId,
             desktop: desktop,
             onJoin: () => _join(row),
             onOpen: () => _open(row, membership),
@@ -440,6 +441,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
             communities: directoryRows,
             memberships: memberships,
             desktop: isDesktop,
+            selectedId: selectedCommunity?['id']?.toString(),
           );
         }
 
