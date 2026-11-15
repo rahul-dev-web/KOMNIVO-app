@@ -56,7 +56,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
       if (!mounted) return;
 
       final logoFile = draft.logoFile;
-      if (logoFile?.bytes != null && logoFile!.extension != null) {
+      if (logoFile != null && logoFile.bytes != null && logoFile.extension != null) {
         try {
           final logoPath = await KomnivoRepository.instance.uploadCommunityLogo(
             communityId: community['id'].toString(),
@@ -333,10 +333,10 @@ class _CreateCommunityDialogState extends State<_CreateCommunityDialog> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      if (_logoFile?.bytes case final bytes?)
+                      if (_logoFile != null && _logoFile!.bytes != null)
                         ClipRRect(
                           borderRadius: BorderRadius.circular(13),
-                          child: Image.memory(bytes, width: 48, height: 48, fit: BoxFit.cover),
+                          child: Image.memory(_logoFile!.bytes!, width: 48, height: 48, fit: BoxFit.cover),
                         )
                       else
                         CommunityLogo(
