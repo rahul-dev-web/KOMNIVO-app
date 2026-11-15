@@ -188,7 +188,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Communities',
                   style: TextStyle(
@@ -1025,7 +1025,7 @@ class _CommunityPreviewPane extends StatelessWidget {
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: compact ? 11 : 15,
                           fontWeight: FontWeight.w900,
                         ),
