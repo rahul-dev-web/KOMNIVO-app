@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -5,6 +8,7 @@ import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
 import 'community_detail_screen.dart';
+import 'community_logo.dart';
 
 class CommunityScreen extends StatefulWidget {
   const CommunityScreen({super.key, required this.preview});
@@ -50,8 +54,30 @@ class _CommunityScreenState extends State<CommunityScreen> {
       );
       final raw = response['community'];
       if (raw is! Map) throw Exception('Community created, but its details could not be loaded.');
-      final community = Map<String, dynamic>.from(raw);
+      var community = Map<String, dynamic>.from(raw);
       if (!mounted) return;
+
+      final logoBytes = draft.logoBytes;
+      final logoExtension = draft.logoExtension;
+      if (logoBytes != null && logoExtension != null) {
+        try {
+          final logoPath = await KomnivoRepository.instance.uploadCommunityLogo(
+            communityId: community['id'].toString(),
+            bytes: logoBytes,
+            extension: logoExtension,
+            contentType: communityLogoMimeType(logoExtension),
+          );
+          community = await KomnivoRepository.instance.updateCommunity(
+            communityId: community['id'].toString(),
+            name: community['name']?.toString() ?? draft.name,
+            description: community['description']?.toString() ?? draft.description,
+            visibility: community['visibility']?.toString() ?? draft.visibility,
+            iconUrl: logoPath,
+          );
+        } catch (error) {
+          showMessage(context, 'Community created, but logo upload failed. You can add it from Manage community. $error');
+        }
+      }
 
       // DB trigger creates the owner membership and standard channels.
       await Navigator.of(context).push<void>(
@@ -193,10 +219,18 @@ class _DirectoryData {
 }
 
 class _CommunityDraft {
-  const _CommunityDraft(this.name, this.description, this.visibility);
+  const _CommunityDraft(
+    this.name,
+    this.description,
+    this.visibility, {
+    this.logoBytes,
+    this.logoExtension,
+  });
   final String name;
   final String description;
   final String visibility;
+  final Uint8List? logoBytes;
+  final String? logoExtension;
 }
 
 class _CreateCommunityDialog extends StatefulWidget {
@@ -211,6 +245,43 @@ class _CreateCommunityDialogState extends State<_CreateCommunityDialog> {
   final _name = TextEditingController();
   final _description = TextEditingController();
   String _visibility = 'public';
+  Uint8List? _logoBytes;
+  String? _logoExtension;
+  String? _logoName;
+
+  Future<void> _pickLogo() async {
+    final file = await FilePicker.pickFile(type: FileType.image);
+    if (!mounted || file == null) return;
+
+    final extension = file.extension?.toLowerCase() ?? '';
+    if (!const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)) {
+      showMessage(context, 'Choose a JPG, PNG or WebP image.');
+      return;
+    }
+
+    final length = await file.length();
+    if (!mounted) return;
+    if (length == null || length == 0) {
+      showMessage(context, 'Could not read the selected image. Please choose it again.');
+      return;
+    }
+    if (length > 2 * 1024 * 1024) {
+      showMessage(context, 'Community logos must be 2 MB or smaller.');
+      return;
+    }
+
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    if (bytes.isEmpty) {
+      showMessage(context, 'Could not read the selected image. Please choose it again.');
+      return;
+    }
+    setState(() {
+      _logoBytes = bytes;
+      _logoExtension = extension;
+      _logoName = file.name;
+    });
+  }
 
   @override
   void dispose() {
@@ -275,6 +346,41 @@ class _CreateCommunityDialogState extends State<_CreateCommunityDialog> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      if (_logoBytes != null)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(13),
+                          child: Image.memory(_logoBytes!, width: 48, height: 48, fit: BoxFit.cover),
+                        )
+                      else
+                        CommunityLogo(
+                          name: _name.text.isEmpty ? 'Community' : _name.text,
+                          size: 48,
+                        ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Community logo', style: TextStyle(fontWeight: FontWeight.w700)),
+                            Text(
+                              _logoName ?? 'Optional · JPG, PNG or WebP · max 2 MB',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: _pickLogo,
+                        icon: const Icon(Icons.image_outlined, size: 17),
+                        label: Text(_logoBytes == null ? 'Add' : 'Change'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: _visibility,
                     decoration: const InputDecoration(
@@ -336,7 +442,13 @@ class _CreateCommunityDialogState extends State<_CreateCommunityDialog> {
               if (!_formKey.currentState!.validate()) return;
               Navigator.pop(
                 context,
-                _CommunityDraft(_name.text.trim(), _description.text.trim(), _visibility),
+                _CommunityDraft(
+                  _name.text.trim(),
+                  _description.text.trim(),
+                  _visibility,
+                  logoBytes: _logoBytes,
+                  logoExtension: _logoExtension,
+                ),
               );
             },
             icon: const Icon(Icons.add),
@@ -376,30 +488,33 @@ class _PreviewCommunityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(17),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: KomnivoTheme.surface,
-          borderRadius: BorderRadius.circular(19),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: KomnivoTheme.line),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                const CircleAvatar(
-                  backgroundColor: KomnivoTheme.surfaceRaised,
-                  child: Icon(Icons.groups, color: KomnivoTheme.cyan),
-                ),
-                const SizedBox(width: 12),
-                Expanded(child: Text(name, style: const TextStyle(fontWeight: FontWeight.w800))),
-              ],
+            CommunityLogo(name: name, size: 48),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                  const SizedBox(height: 3),
+                  Text(description, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
+                  const SizedBox(height: 5),
+                  Text('$members members',
+                    style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            Text(description, style: const TextStyle(color: KomnivoTheme.muted)),
-            const SizedBox(height: 12),
-            Text(members + ' members', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 12)),
+            const Icon(Icons.chevron_right_rounded, color: KomnivoTheme.muted),
           ],
         ),
       );
@@ -430,103 +545,127 @@ class _CommunityDataCard extends StatelessWidget {
     final count = row['member_count']?.toString() ?? '1';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: KomnivoTheme.surface,
-        borderRadius: BorderRadius.circular(19),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: joined ? KomnivoTheme.accent.withValues(alpha: .38) : KomnivoTheme.line,
+          color: joined
+              ? KomnivoTheme.accent.withValues(alpha: .42)
+              : KomnivoTheme.line,
         ),
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(19),
+        borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: joined ? onOpen : null,
-          borderRadius: BorderRadius.circular(19),
+          borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.all(17),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: KomnivoTheme.surfaceRaised,
-                      child: Text(
-                        name.isEmpty ? 'K' : name.substring(0, 1).toUpperCase(),
-                        style: const TextStyle(color: KomnivoTheme.cyan, fontWeight: FontWeight.w900),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
-                      ),
-                    ),
-                    if (joined)
-                      _MembershipBadge(label: role == 'owner' ? 'OWNER' : role.toUpperCase())
-                    else
-                      Text(
-                        isPublic ? 'PUBLIC' : 'PRIVATE',
-                        style: const TextStyle(
-                          color: KomnivoTheme.cyan,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: .8,
-                        ),
-                      ),
-                  ],
+                CommunityLogo(
+                  name: name,
+                  imagePath: row['icon_url']?.toString(),
+                  size: 49,
                 ),
-                if (description.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    description,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: KomnivoTheme.muted, height: 1.4),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Icon(Icons.people_outline, size: 16, color: KomnivoTheme.muted),
-                    const SizedBox(width: 6),
-                    Text(count + ' members', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 12)),
-                    const Spacer(),
-                    if (joined) ...[
-                      const Text(
-                        'Open community',
-                        style: TextStyle(color: KomnivoTheme.cyan, fontSize: 12, fontWeight: FontWeight.w800),
-                      ),
-                      const SizedBox(width: 6),
-                      const Icon(Icons.arrow_forward_rounded, size: 16, color: KomnivoTheme.cyan),
-                    ],
-                  ],
-                ),
-                if (!joined && isPublic) ...[
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: joining ? null : onJoin,
-                      icon: joining
-                          ? const SizedBox(
-                              width: 15,
-                              height: 15,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          if (joined)
+                            _MembershipBadge(
+                              label: role == 'owner' ? 'OWNER' : role.toUpperCase(),
                             )
-                          : const Icon(Icons.person_add_alt_1),
-                      label: Text(joining ? 'Joining...' : 'Join'),
-                    ),
+                          else
+                            _MembershipBadge(label: isPublic ? 'PUBLIC' : 'PRIVATE'),
+                        ],
+                      ),
+                      if (description.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          description,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: KomnivoTheme.muted,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.people_outline,
+                            size: 13,
+                            color: KomnivoTheme.muted,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$count members',
+                            style: const TextStyle(
+                              color: KomnivoTheme.muted,
+                              fontSize: 10,
+                            ),
+                          ),
+                          if (!isPublic) ...[
+                            const SizedBox(width: 9),
+                            const Icon(Icons.lock_outline, size: 12, color: KomnivoTheme.muted),
+                            const SizedBox(width: 3),
+                            const Text(
+                              'Invite only',
+                              style: TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
                   ),
-                ] else if (!joined && !isPublic) ...[
-                  const SizedBox(height: 12),
-                  const Text('Invite only', style: TextStyle(color: KomnivoTheme.muted, fontSize: 12)),
-                ],
+                ),
+                const SizedBox(width: 7),
+                if (joined)
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: KomnivoTheme.cyan,
+                    size: 22,
+                  )
+                else if (isPublic)
+                  TextButton(
+                    onPressed: joining ? null : onJoin,
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(52, 34),
+                      padding: const EdgeInsets.symmetric(horizontal: 9),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: joining
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Join', style: TextStyle(fontWeight: FontWeight.w800)),
+                  )
+                else
+                  const Icon(Icons.lock_outline, color: KomnivoTheme.muted, size: 18),
               ],
             ),
           ),

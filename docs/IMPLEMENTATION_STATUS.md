@@ -1,6 +1,6 @@
 # KOMNIVO implementation status
 
-Last verified: 13 November 2026.
+Last verified: 14 November 2026.
 
 This file distinguishes work deployed to the connected Supabase project from owner-controlled external credentials and remaining product engineering.
 
@@ -14,12 +14,12 @@ Connected Supabase project:
 - Database: PostgreSQL 17.11
 
 Verified on the project:
-- 15 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy, profile-wide three-request counter/RPCs and challenge in-flight concurrency guard.
-- 44 application tables in `public`; all 44 have RLS enabled.
+- 24 migrations applied successfully, including the Bio challenge schema, explicit deny-all client RLS policy, profile-wide three-request counter/RPCs and challenge in-flight concurrency guard.
+- 53 application tables in `public`; all 53 have RLS enabled.
 - Least-privilege grants applied: anonymous users can read only the active `games` catalogue; authenticated access is granted per table and column under RLS. Future `public` tables, sequences and functions created by the postgres migration owner no longer receive broad anon/authenticated default privileges.
-- Two private Storage buckets: `community-media` and `match-evidence`, both limited to 10 MB and JPG/PNG/WebP/PDF.
+- Three private Storage buckets: `community-media` and `match-evidence` (10 MB, JPG/PNG/WebP/PDF), plus `ai-documents` (25 MB, document and image MIME allow-list).
 - `public.messages` is enabled in the `supabase_realtime` publication.
-- All 13 repository Edge Functions deployed and ACTIVE. User-facing functions have JWT verification enabled; `notification-push` uses its dedicated `x-webhook-secret` check.
+- All 15 repository Edge Functions deployed and ACTIVE. User-facing functions have JWT verification enabled; `notification-push` uses its dedicated `x-webhook-secret` check.
 
 ## Implemented in source
 
@@ -76,3 +76,93 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - Google sign-in authenticates a KOMNIVO platform account; UID lookup alone does not prove game-account ownership. Ownership becomes Verified only when the authenticated user places the one-time challenge as the complete in-game Bio/Signature and the server confirms an exact match in the provider's `socialInfo.signature` field. The checkbox is a UI acknowledgement, not proof by itself.
 - OCR and AI observations are provisional. Only authorised organiser review and deterministic server-side scoring can produce official results.
 - LiveOps capture begins only after explicit Android system consent. Raw frames are not uploaded by default; the host operates the game manually.
+
+
+## AI foundation — 14 November 2026
+
+- Added and applied migration `202611140001_organizer_ai_foundation`: eight AI tables with RLS, explicit owner/scope access, least-privilege grants and private helper functions.
+- Deployed authenticated Edge Function `komnivo-ai` v11. It supports Cloudflare Workers AI as primary and GroqCloud as an optional fallback/provider, persists conversation/run/usage records, retrieves scope-filtered source chunks and enforces a per-user daily request cap (default 25 model attempts).
+- Added Player AI entry points in the app bar and on public event cards, plus event-scoped Organizer AI entry points on organiser event cards. Recent scoped conversations restore on reopen; users can start a new chat.
+- The first approved write workflow is an event-draft proposal: Organizer AI may call a typed `propose_event_draft` tool, which stores a pending proposal. The organiser must explicitly approve it; the service-role-only resolver rechecks the actor's current owner/admin/organiser rights and creates an event with `status='draft'` only. It never publishes. Other write operations (channels/roles/permissions, registrations, recurring scrims, scoring/result publication and notifications) remain required work.
+- Provider credentials are not yet configured. The function will return `AI_PROVIDER_NOT_CONFIGURED` until the project owner adds `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` to Supabase Edge Function Secrets. Optional Groq secrets are `GROQ_API_KEY` and `GROQ_MODEL`.
+- Follow `docs/AI_SETUP.md` for exact external setup and smoke tests.
+
+
+## AI daily budget hardening — 14 November 2026
+
+- Migration `202611140003_atomic_ai_daily_budget` creates a private per-user/per-UTC-day counter and a service-role-only reservation RPC.
+- `komnivo-ai` now reserves one request atomically before model execution; concurrent requests cannot race past the configured daily limit. Failed attempts also count toward the daily cap.
+- Supabase `komnivo-ai` Edge Function v13 is ACTIVE with JWT verification; `komnivo-ai-process-document` v4 and `komnivo-ai-proposal-action` v3 are also ACTIVE with JWT verification.
+
+
+## Event-scoped AI context and session recovery — 14 November 2026
+
+- Organizer AI receives a limited live event snapshot: event rules/scoring configuration, registration status/team list, matches, standings and (where applicable) community channel metadata. It does not receive player contact details or room passwords.
+- Player AI receives only its own registration/team/match/check-in details for an event. Public event rules can be discussed before registration; private-event context still requires membership or registration.
+- Public/private event visibility is enforced in both the Edge Function and the database RLS scope helper.
+- AI chat restores the latest active conversation for the same mode/event/community after reopening. Users can start a new chat without deleting earlier conversations.
+- Player AI remains read-only. Organizer AI can propose an event draft and execute only the explicitly approved draft-creation operation; no AI membership, role, channel, registration or results write is enabled.
+
+- Public event access correction: signed-in players can ask about published events in public communities without joining the community; private communities/events remain member/participant-scoped. This is enforced by the AI Edge Function v13 and the database scope helper.
+
+- Tournament-scale guard: player participation is checked through direct captain/roster lookups (not the first 200 event registrations). Organizer registration summaries include an exact count and indicate if the displayed team list is truncated.
+
+
+## AI document ingestion — 14 November 2026
+
+- Applied migration `202611140006_ai_document_ingestion`; created private Storage bucket `ai-documents` with 25 MB cap, allowed MIME list and owner-folder upload/download/delete policies.
+- Added `public.ai_document_chunks` with RLS, source/page/sheet provenance and a GIN full-text search index. Added document visibility values: `organizer_only`, `participants`, `public`.
+- Deployed JWT-protected Edge Function `komnivo-ai-process-document` v2. It extracts text from PDF (up to 120 pages), DOCX, XLSX/XLS, CSV, TXT and Markdown; screenshots PNG/JPEG/WebP use Qwen 3.8 Vision through the same Cloudflare API token and consume the user's atomic daily AI request budget.
+- Organizer AI retrieves up to five relevant chunks from only the selected event/community, and the prompt requires source citations. Player AI only retrieves public documents or participant-visible documents when the player is an event participant/community member.
+- Flutter Organizer AI chat now supports uploading rulebooks, schedules, spreadsheets and screenshots, choosing document visibility, uploading to private storage and starting server-side extraction.
+- OCR requires the owner to configure Cloudflare token secrets. Document parsing and retrieval code is deployed but end-to-end file upload/extraction QA is pending the provider token and a signed-in organiser test account.
+
+- Latest verified function versions: `komnivo-ai` v13, `komnivo-ai-process-document` v4 and `komnivo-ai-proposal-action` v3, both ACTIVE with JWT verification.
+
+- Community-only AI sessions (without a specific event) now retrieve relevant chunks from the authorized community documents as well as event-scoped document retrieval.
+
+
+## Organizer AI approval-gated event draft — 14 November 2026
+
+- Applied migrations `202611140007_organizer_ai_approval_execution` and `202611140008_fix_ai_service_role_actor_check`.
+- `komnivo-ai` v13 exposes one typed Organizer tool: `propose_event_draft`. It validates name, game, format, capacity, timezone-aware future start and registration close, rules/scoring object sizes, and derives community scope from the authenticated conversation—not model arguments.
+- A tool call creates a pending `ai_proposals` row with a 30-minute expiry and source references. It does not create an event.
+- `komnivo-ai-proposal-action` v3 requires a valid JWT and owner-matching proposal. Approval/rejection is processed by a service-role-only SQL resolver that uses the verified actor ID to recheck current event/community organiser permissions, locks the proposal, validates again, uses an idempotency key, writes `ai_actions` and `audit_logs`, and inserts a new event with status `draft` only.
+- Flutter renders proposal cards with source references and explicit Approve draft / Reject controls. After approval, the organiser event list refreshes when returning from AI. The app states the event is not published.
+- End-to-end provider tool-call and approval QA is pending Cloudflare token setup and a signed-in organiser test; Deno type-check/Flutter checks are run in CI.
+
+## AI provider configuration gate — 15 November 2026
+
+- GitHub PR #1 latest CI run `43626833317` completed successfully: Flutter analysis, tests, Android release APK build, Web release build, Deno Edge Function type-check and Windows bootstrap all passed.
+- Supabase AI Edge Functions are ACTIVE with JWT verification: `komnivo-ai` v13, `komnivo-ai-process-document` v4, `komnivo-ai-proposal-action` v3.
+- Cloudflare Workers AI token and account ID are still an owner-side setup step. After the owner creates the least-privilege Workers AI Read token, they must add `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_MODEL=@cf/qwen/qwen3.8-27b`, `AI_PROVIDER=cloudflare`, and `AI_DAILY_REQUEST_LIMIT=25` to Supabase Edge Function Secrets.
+- Provider live smoke test, document upload/OCR end-to-end QA and event-draft tool-call/approval QA remain blocked on the secrets and signed-in test accounts. PR #1 remains open; do not call the AI feature production-complete.
+
+
+## Contextual AI architecture implementation — 15 November 2026
+
+- Product decision: one platform account and one contextual KOMNIVO AI assistant. Player capabilities are always available; organizer capabilities are resolved from the authenticated user and selected community/event permissions. A global `is_organizer` account flag is not used.
+- GitHub feature branch updated with `resolveAiCapabilities`, one contextual system prompt, scope-restricted document retrieval, combined player + organizer event context, legacy conversation mode compatibility and server-derived capabilities in the response.
+- Supabase Edge Function `komnivo-ai` deployed as version 15 with JWT verification enabled.
+- Applied migration `202611150001_contextual_ai_owner_notification`: verifies Owner membership bootstrap, then inserts one idempotent notification for the community creator. The existing push notification trigger handles delivery. Existing communities are not backfilled.
+- Flutter UI intentionally unchanged in this update; existing Player/Organizer entry points remain as legacy screens until the product owner selects a Canva design theme.
+- Canva folder for the four-theme design exploration: https://www.canva.com/folder/FAHa86K9Hr4
+- Latest CI run 43670839881: Edge Function type-check passed; Flutter analysis and tests passed; Windows bootstrap passed. At the time of this update, Android release build was still running and Web release build had not started. Do not describe CI as fully green until all jobs complete.
+- Notion product decision recorded in AI Blueprint Section 19.
+- Remaining: final CI result; unified Flutter UI/context selection; additional organizer tools (channels/categories/roles/permissions, registration, recurring scrims and standings/results); broad player workflows; end-to-end and cross-community authorization tests. AI is not production-complete.
+
+
+### Owner notification push-preference follow-up — 15 November 2026
+
+- Updated `notification-push` source and deployed version 11 (JWT remains disabled because this function is invoked by the existing database webhook with its configured shared secret).
+- The `community_owner_ai_ready` notification kind maps to `event_push`, respecting the user's existing Community events push preference.
+- The in-app notification uses the existing generic notification card/icon; no Flutter screen layout or navigation was modified.
+
+
+### Unified approval and RLS scope follow-up — 15 November 2026
+
+- Applied migration `202611150002_unified_ai_approval_scope`.
+- Verified by read-only SQL: player-scope RLS helper supports assigned organizer scope; proposal resolver no longer checks the legacy conversation mode; conversation RLS continues to re-check current scope.
+- Owner/community-manager conversations stored with the legacy `player` label can now restore their own proposals in their authorised scope. Assigned standalone/event organisers retain only their exact event scope; public/participant Player access remains as before.
+- Proposal approval is still service-role-only, with current permission, proposal expiry, scope, and DRAFT-only creation checks; only the obsolete mode-label gate was removed.
+- Latest GitHub CI run 43671546965: Edge Function Deno check passed; Flutter/Android/Web and Windows jobs were still running at last poll.

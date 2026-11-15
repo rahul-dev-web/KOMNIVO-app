@@ -1,9 +1,13 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
+import 'community_logo.dart';
 import '../inbox/chat_screen.dart';
 import '../inbox/voice_room_screen.dart';
 
@@ -50,12 +54,33 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     );
     if (draft == null || !mounted) return;
     try {
-      final updated = await KomnivoRepository.instance.updateCommunity(
+      var updated = await KomnivoRepository.instance.updateCommunity(
         communityId: _communityId,
         name: draft.name,
         description: draft.description,
         visibility: draft.visibility,
       );
+      final logoBytes = draft.logoBytes;
+      final logoExtension = draft.logoExtension;
+      if (logoBytes != null && logoExtension != null) {
+        try {
+          final logoPath = await KomnivoRepository.instance.uploadCommunityLogo(
+            communityId: _communityId,
+            bytes: logoBytes,
+            extension: logoExtension,
+            contentType: communityLogoMimeType(logoExtension),
+          );
+          updated = await KomnivoRepository.instance.updateCommunity(
+            communityId: _communityId,
+            name: draft.name,
+            description: draft.description,
+            visibility: draft.visibility,
+            iconUrl: logoPath,
+          );
+        } catch (error) {
+          showMessage(context, 'Community details were saved, but logo upload failed: $error');
+        }
+      }
       if (!mounted) return;
       setState(() => _community = updated);
       showMessage(context, 'Community details updated.');
@@ -226,26 +251,23 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFF30255D), Color(0xFF172A43), Color(0xFF101827)],
+                    colors: [
+                      KomnivoTheme.surfaceRaised,
+                      KomnivoTheme.surface,
+                      KomnivoTheme.background,
+                    ],
                   ),
-                  border: Border.all(color: KomnivoTheme.accent.withValues(alpha: .35)),
+                  border: Border.all(color: KomnivoTheme.accent.withValues(alpha: .32)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        CircleAvatar(
-                          radius: 25,
-                          backgroundColor: Colors.white.withValues(alpha: .1),
-                          child: Text(
-                            title.isEmpty ? 'K' : title.substring(0, 1).toUpperCase(),
-                            style: const TextStyle(
-                              color: KomnivoTheme.cyan,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
+                        CommunityLogo(
+                          name: title,
+                          imagePath: _community['icon_url']?.toString(),
+                          size: 50,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -350,10 +372,18 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
 }
 
 class _CommunityDraft {
-  const _CommunityDraft(this.name, this.description, this.visibility);
+  const _CommunityDraft(
+    this.name,
+    this.description,
+    this.visibility, {
+    this.logoBytes,
+    this.logoExtension,
+  });
   final String name;
   final String description;
   final String visibility;
+  final Uint8List? logoBytes;
+  final String? logoExtension;
 }
 
 class _EditCommunityDialog extends StatefulWidget {
@@ -369,6 +399,43 @@ class _EditCommunityDialogState extends State<_EditCommunityDialog> {
   late final TextEditingController _name;
   late final TextEditingController _description;
   late String _visibility;
+  Uint8List? _logoBytes;
+  String? _logoExtension;
+  String? _logoName;
+
+  Future<void> _pickLogo() async {
+    final file = await FilePicker.pickFile(type: FileType.image);
+    if (!mounted || file == null) return;
+
+    final extension = file.extension?.toLowerCase() ?? '';
+    if (!const {'jpg', 'jpeg', 'png', 'webp'}.contains(extension)) {
+      showMessage(context, 'Choose a JPG, PNG or WebP image.');
+      return;
+    }
+
+    final length = await file.length();
+    if (!mounted) return;
+    if (length == null || length == 0) {
+      showMessage(context, 'Could not read the selected image. Please choose it again.');
+      return;
+    }
+    if (length > 2 * 1024 * 1024) {
+      showMessage(context, 'Community logos must be 2 MB or smaller.');
+      return;
+    }
+
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    if (bytes.isEmpty) {
+      showMessage(context, 'Could not read the selected image. Please choose it again.');
+      return;
+    }
+    setState(() {
+      _logoBytes = bytes;
+      _logoExtension = extension;
+      _logoName = file.name;
+    });
+  }
 
   @override
   void initState() {
@@ -412,6 +479,42 @@ class _EditCommunityDialogState extends State<_EditCommunityDialog> {
                   decoration: const InputDecoration(labelText: 'Description'),
                 ),
                 const SizedBox(height: 12),
+                Row(
+                  children: [
+                    if (_logoBytes != null)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.memory(_logoBytes!, width: 46, height: 46, fit: BoxFit.cover),
+                      )
+                    else
+                      CommunityLogo(
+                        name: _name.text.isEmpty ? 'Community' : _name.text,
+                        imagePath: widget.community['icon_url']?.toString(),
+                        size: 46,
+                      ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Community logo', style: TextStyle(fontWeight: FontWeight.w700)),
+                          Text(
+                            _logoName ?? 'Optional · JPG, PNG or WebP · max 2 MB',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _pickLogo,
+                      icon: const Icon(Icons.image_outlined, size: 17),
+                      label: Text(_logoBytes == null ? 'Change' : 'Replace'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: _visibility,
                   decoration: const InputDecoration(labelText: 'Community access'),
@@ -432,7 +535,16 @@ class _EditCommunityDialogState extends State<_EditCommunityDialog> {
           FilledButton(
             onPressed: () {
               if (!_formKey.currentState!.validate()) return;
-              Navigator.pop(context, _CommunityDraft(_name.text.trim(), _description.text.trim(), _visibility));
+              Navigator.pop(
+                context,
+                _CommunityDraft(
+                  _name.text.trim(),
+                  _description.text.trim(),
+                  _visibility,
+                  logoBytes: _logoBytes,
+                  logoExtension: _logoExtension,
+                ),
+              );
             },
             child: const Text('Save changes'),
           ),

@@ -131,7 +131,7 @@ class _InboxScreenState extends State<InboxScreen> {
   Widget build(BuildContext context) {
     if (widget.preview) return ListView(padding: const EdgeInsets.all(20), children: const [
       PreviewBanner(),
-      SectionTitle('Inbox', subtitle: 'Direct messages and group conversations'),
+      SectionTitle('DM', subtitle: 'Direct messages and group conversations'),
       SizedBox(height: 14),
       _InboxTile(name: 'IGL Squad Room', detail: 'Captain: match check-in is open', unread: 3),
       _InboxTile(name: 'Night Owls Gaming', detail: 'Scrim schedule shared', unread: 1),
@@ -143,14 +143,14 @@ class _InboxScreenState extends State<InboxScreen> {
       builder: (context, snapshot) {
         final rows = snapshot.data ?? [];
         return ListView(padding: const EdgeInsets.all(20), children: [
-          SectionTitle('Inbox', subtitle: 'Your channels and conversations', trailing: FilledButton.icon(
+          SectionTitle('DM', subtitle: 'Your direct and group conversations', trailing: FilledButton.icon(
             onPressed: _startConversation,
             icon: const Icon(Icons.edit_outlined),
             label: const Text('New message'),
           )),
           const SizedBox(height: 14),
           if (snapshot.connectionState == ConnectionState.waiting) const Center(child: CircularProgressIndicator())
-          else if (rows.isEmpty) const EmptyState(title: 'Nothing in your inbox', message: 'Join a community or start a conversation with a player.', icon: Icons.mark_chat_unread_outlined)
+          else if (rows.isEmpty) const EmptyState(title: 'No messages yet', message: 'Join a community or start a conversation with a player.', icon: Icons.forum_outlined)
           else ...rows.map((row) => Container(
             margin: const EdgeInsets.only(bottom: 8),
             decoration: BoxDecoration(color: KomnivoTheme.surface, borderRadius: BorderRadius.circular(15), border: Border.all(color: KomnivoTheme.line)),

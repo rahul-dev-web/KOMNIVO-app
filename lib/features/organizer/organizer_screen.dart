@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/komnivo_repository.dart';
+import '../ai/ai_assistant_screen.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
 import '../teams/teams_screen.dart';
@@ -121,6 +122,21 @@ class _OrganizerScreenState extends State<OrganizerScreen> {
                   const SizedBox(height: 4),
                   Text('${event['status']} · ${event['capacity']} slots · ${event['starts_at']}', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
                 ])),
+                IconButton(
+                  tooltip: 'Ask Organizer AI',
+                  onPressed: widget.preview ? null : () async {
+                    await Navigator.push<void>(
+                      context,
+                      MaterialPageRoute(builder: (_) => AiAssistantScreen(
+                        mode: 'organizer',
+                        eventId: event['id']?.toString(),
+                        communityId: event['community_id']?.toString(),
+                      )),
+                    );
+                    if (mounted) _reloadEvents();
+                  },
+                  icon: const Icon(Icons.auto_awesome, color: KomnivoTheme.accent),
+                ),
                 IconButton(
                   tooltip: 'Open event operations',
                   onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EventOperationsScreen(event: event))),

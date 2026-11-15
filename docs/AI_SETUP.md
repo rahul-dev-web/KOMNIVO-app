@@ -1,0 +1,216 @@
+# KOMNIVO AI — External Provider Setup and Testing
+
+Last updated: 15 November 2026
+
+This guide configures the free-first AI foundation already added to the KOMNIVO repository and connected Supabase project.
+
+## Selected provider configuration
+
+| Purpose | Provider | Model | When used |
+| --- | --- | --- | --- |
+| Primary | Cloudflare Workers AI | `@cf/qwen/qwen3.8-27b` | Initial development/testing and first production candidate |
+| Alternative/fallback | GroqCloud | `qwen/qwen3.8-27b` | Fallback when the primary returns a retryable quota/server error, or selectable as primary |
+| Provider routing | Supabase Edge Function | `komnivo-ai` | Keeps provider keys out of Flutter/Web clients |
+
+Cloudflare Workers Free includes 10,000 Neurons/day. Neurons measure GPU compute, not a fixed token count; actual requests per day depend on prompt/output size and model usage. The allowance resets at 00:00 UTC. Once the Free allocation is exhausted, requests fail until the reset. Workers Paid is required to go beyond that allowance; usage above the free 10,000/day is priced at $0.011 per 1,000 Neurons. Do not enable paid billing for initial tests. The selected Qwen model's published list price is $0.45 per million input tokens and $3.20 per million output tokens.
+
+## 1. Cloudflare Workers AI — primary provider
+
+1. Sign in to the Cloudflare account already hosting the KOMNIVO Pages project.
+2. Open **Workers & Pages → AI → Workers AI** (the dashboard menu label may vary).
+3. Open the Workers AI Playground and select **Qwen 3.8 27B**. The model ID must be exactly:
+   `@cf/qwen/qwen3.8-27b`
+4. Send a harmless test prompt in the Playground. This is only a model smoke test; it does not connect KOMNIVO.
+5. Open the Cloudflare account overview for the same account that owns the `komnivo-app` Pages project and copy its **Account ID**. Do not use the Pages project name or a Zone ID.
+6. In **My Profile → API Tokens → Create Token → Create Custom Token**, name it `KOMNIVO Workers AI Read`.
+7. Under Permissions choose **Account → Workers AI → Read** (the permission name is `Workers AI Read` in Cloudflare's token permission list). Under Account Resources choose **Include → Specific account → Jarahul989@gmail.com's Account** only. Do not grant Zone, DNS, Workers deployment or account administration permissions.
+8. Create the token and copy it immediately. Cloudflare may not show the secret again.
+9. Keep both values private:
+   - Account ID → `CLOUDFLARE_ACCOUNT_ID`
+   - API token → `CLOUDFLARE_API_TOKEN`
+
+The deployed Edge Function calls Cloudflare's OpenAI-compatible Chat Completions endpoint:
+`https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/v1/chat/completions`
+
+The code's default model is `@cf/qwen/qwen3.8-27b`. KOMNIVO uses text chat, document retrieval and a typed Organizer `propose_event_draft` tool. The proposal is not executed until a separate approval action; that action creates a DRAFT event only.
+
+Official docs:
+- https://developers.cloudflare.com/workers-ai/models/qwen3.8-27b/
+- https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/
+- https://developers.cloudflare.com/workers-ai/platform/pricing/
+
+## 2. GroqCloud — alternative provider
+
+This is optional. Configure it only if you want a second provider ready for fallback testing.
+
+1. Open https://console.groq.com/ and sign in.
+2. Open **API Keys** and create a key for KOMNIVO development.
+3. Copy it once and store it securely as `GROQ_API_KEY`.
+4. The default model ID is `qwen/qwen3.8-27b`; keep `GROQ_MODEL` set to that value unless the Groq console/docs show it has been retired.
+5. Leave `AI_PROVIDER=cloudflare` to keep Cloudflare primary and Groq as fallback. Set `AI_PROVIDER=groq` only when deliberately testing Groq as primary.
+
+Groq free-plan rate limits vary by model and organisation. Check the live **Rate Limits** panel in the Groq console; do not assume a permanent requests-per-day number. If only one provider is configured, the gateway uses it even if the other is selected as primary. With both configured, the code falls back only on retryable HTTP 429/5xx failures, not on invalid credentials or malformed requests.
+
+Official docs:
+- https://console.groq.com/docs/vision
+- https://console.groq.com/docs/tool-use/overview
+- https://console.groq.com/docs/openai
+- https://console.groq.com/docs/your-data
+
+## Provider smoke test — pending owner token
+
+The model identifier and OpenAI-compatible endpoint are confirmed in Cloudflare's current documentation. The dedicated least-privilege API token has not yet been created, so a live request from KOMNIVO's Supabase Edge Function has not been verified. Complete the token step above, store it in Supabase, then run the app smoke test below. Do not treat the provider as connected before that test passes.
+
+## 3. Add secrets to Supabase — required before chat can respond
+
+Project:
+- Name: `KOMNIVO-app`
+- Ref: `krqysdkbyhshwpfmimfw`
+- Dashboard: https://supabase.com/dashboard/project/krqysdkbyhshwpfmimfw
+
+### Dashboard method
+
+1. Open **Edge Functions → Secrets**.
+2. Add these entries (use the actual values from Cloudflare; never paste them into GitHub or this document):
+
+| Secret | Value |
+| --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Account ID shown on the account overview |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare token with Workers AI: Read |
+| `CLOUDFLARE_MODEL` | `@cf/qwen/qwen3.8-27b` |
+| `AI_PROVIDER` | `cloudflare` |
+| `AI_DAILY_REQUEST_LIMIT` | `25` |
+
+3. If also configuring Groq, add:
+   - `GROQ_API_KEY` = your Groq API key
+   - `GROQ_MODEL` = `qwen/qwen3.8-27b`
+4. Save. Supabase Edge Function secrets become available to deployed functions without a redeploy.
+5. Never create a custom secret beginning with `SUPABASE_`; Supabase reserves that prefix.
+
+### Windows PowerShell / Supabase CLI alternative
+
+From the repository root, create a local secrets file:
+
+```powershell
+@'
+CLOUDFLARE_ACCOUNT_ID=PASTE_ACCOUNT_ID_FROM_CLOUDFLARE_DASHBOARD
+CLOUDFLARE_API_TOKEN=PASTE_TOKEN_HERE
+CLOUDFLARE_MODEL=@cf/qwen/qwen3.8-27b
+AI_PROVIDER=cloudflare
+AI_DAILY_REQUEST_LIMIT=25
+'@ | Set-Content -Encoding ascii .env.ai.tmp
+```
+
+Push it to the correct project:
+
+```powershell
+supabase secrets set --project-ref krqysdkbyhshwpfmimfw --env-file .env.ai.tmp
+Remove-Item .env.ai.tmp
+```
+
+If the CLI asks you to log in or link the project, follow the Supabase CLI prompts. Do not commit the temporary file. The repository ignores `.env*`; still delete the temporary file after upload.
+
+For Groq, add its values using the Dashboard, or create a temporary ignored file with `GROQ_API_KEY` and `GROQ_MODEL` and push it the same way.
+
+## 4. What is already deployed
+
+- Supabase migrations `202611140001_organizer_ai_foundation`, `202611140002_ai_fk_indexes` and `202611140006_ai_document_ingestion` create:
+  - `ai_conversations`, `ai_messages`
+  - `ai_documents`, `ai_document_chunks`
+  - `ai_proposals`, `ai_runs`, `ai_actions`
+  - `ai_usage_ledger`, `ai_policy`
+- RLS is enabled on every AI table. The live database check confirms all eight AI tables have RLS enabled and scoped policies.
+- Migrations `202611140003_atomic_ai_daily_budget`, `202611140004_player_ai_public_event_scope` and `202611140005_fix_player_ai_scope_helper` add an atomic private UTC-day request counter and enforce public/private event visibility for Player AI.
+- Edge Function `komnivo-ai` v13 is ACTIVE with JWT verification. It includes scoped event context, source-grounded document retrieval, safe chat history and a typed event-draft proposal tool.
+- Organizer scope is limited to the event organiser or community owner/admin/organiser. Moderators are not granted Organizer AI access by default.
+- Player event context is limited to a player's own registration/roster; community context requires membership.
+- Edge Function `komnivo-ai-process-document` v4 and `komnivo-ai-proposal-action` v3 are ACTIVE with JWT verification. All three AI Edge Functions require JWT verification.
+- Flutter has event-scoped Organizer AI and Player AI entry points on their respective event cards, plus a Player AI app-bar entry point. Recent conversations restore by scope; starting a new chat preserves earlier conversations.
+- Organizer AI receives an event-scoped snapshot of rules, scoring, registration summaries, matches and standings. Player AI receives only the signed-in player's own registration/team/match/check-in details. Published events in public communities can be discussed before registration and before community join; private events remain member/participant scoped.
+- The Flutter chat restores the latest active conversation for the same scope and supports starting a new chat.
+- Organizer AI supports only one write path at present: a typed event-draft proposal. The organiser must explicitly approve; the resolver creates `draft` status only. No automatic publication.
+- Player AI remains read-only; community/channel/role/permission/registration/scrim/scoring/result/notification tools remain unimplemented.
+- Per-user daily request caps are reserved atomically in a private database counter through a service-role-only RPC. Parallel requests cannot bypass the default 25-attempt UTC-day cap.
+
+## 5. Smoke test
+
+After setting Cloudflare secrets:
+
+1. Sign in to KOMNIVO with an account that is the organiser of an existing event.
+2. Open **Organiser workspace → Your events → AI sparkle icon**.
+3. Ask: `Mere tournament ke liye 48 teams aur 4 groups ka setup plan batao. Missing details bhi identify karo.`
+4. Confirm the response is in Hindi/Hinglish and that it does not claim to have created or changed the event.
+5. Ask a normal player question through the Player AI icon.
+6. Check Supabase tables `ai_conversations`, `ai_messages`, `ai_runs` and `ai_usage_ledger`. Verify the rows belong to the signed-in user and the correct event scope.
+7. Test with a non-organiser account against an event-scoped Organizer AI session; it must receive HTTP 403.
+8. Test without provider secrets; the function should return `AI_PROVIDER_NOT_CONFIGURED` / HTTP 503, not expose secrets.
+9. Test the daily cap; default is 25 model attempts per user per UTC day. Set `AI_DAILY_REQUEST_LIMIT` to a lower number for a controlled test.
+
+## 6. Current implementation boundary — important
+
+This deployment is the secure AI foundation and initial chat surface, not the complete Organizer AI operating system yet.
+
+Not implemented in this first code slice:
+- PDF/DOCX/XLSX/CSV/PNG/JPEG/WebP/TXT/Markdown upload and source-linked extraction is implemented for the supported file types. Remaining: user-facing reprocessing/version comparison, richer spreadsheet row/column citations and OCR evaluation for complex images.
+- Document chunking, full-text retrieval and source references are implemented. Remaining: document reprocessing/version comparison, richer spreadsheet row/column citations and OCR evaluation for complex images.
+- Typed tool/function calling and a human approval flow are implemented for `propose_event_draft` only. Additional channel/category/role/permission/registration/scrim/score/result operations are still required.
+- Approval UI and server-side execution are implemented for event draft creation only; the resolver creates a DRAFT event and does not publish it.
+- Deterministic points-table ingestion, validation and standings publication.
+- Recurring scrim scheduling and notification automation.
+- Additional player-context workflows outside an explicitly opened event scope (for example, cross-event upcoming schedule and notifications).
+- Provider benchmark/evaluation harness and token/Neuron telemetry beyond provider-reported token counts.
+
+These remain required product scope. Do not mark the AI system complete until those workflows are implemented and tested. The first chat endpoint deliberately refuses to claim that it can execute those operations.
+
+## 7. Security rules
+
+- Never put Cloudflare/Groq keys in Flutter, Web build variables, GitHub Actions, source files, screenshots, Notion or chat.
+- Keep provider secrets only in Supabase Edge Function Secrets.
+- Use synthetic data while testing prompts and uploaded rulebooks.
+- Do not paste passwords, personal phone numbers or private roster exports into the AI chat.
+- The LLM is not the source of truth for permissions, scores, qualification or event state.
+- Every additional write tool must re-check the signed-in actor's authority on the server, validate JSON schema and business rules, require approval where configured, use an idempotency key and write an audit record. The event-draft approval resolver already follows this boundary.
+
+## 8. Cost controls
+
+- Start with `AI_DAILY_REQUEST_LIMIT=25` per user. The counter is atomic per user and UTC day; Cloudflare's 10,000 Neurons/day is a separate account quota.
+- Do not enable Cloudflare Workers Paid or preload credits during initial testing.
+- Review Cloudflare Neuron usage and Groq rate-limit metrics after test sessions.
+- Before production, set community/event budgets, alerts, max prompt/output sizes and a paid-provider fallback policy.
+- Re-check provider prices and data terms at the time paid billing is activated.
+
+
+## Latest backend hardening
+
+The Player AI participation check no longer scans only the first 200 registrations in an event. It checks the signed-in player's captain/roster rows directly. Organizer registration summaries include a database count and clearly indicate when the displayed team list has been truncated.
+
+
+## Event-draft proposal and approval — latest implementation
+
+- Organizer model requests can return the strict `propose_event_draft` function call. Server-side code validates values and creates only a pending proposal with source refs and 30-minute expiry.
+- Flutter renders proposal details (game, format, team capacity, start, optional registration close, document sources) and requires a deliberate Approve draft or Reject click.
+- JWT-protected Edge Function `komnivo-ai-proposal-action` v3 resolves the action through a service-role-only database RPC. The SQL function checks the actual signed-in actor ID's current organiser authority, revalidates event fields, writes an audit row and uses an idempotency key. Approval creates `events.status='draft'`; it does not publish or open registration.
+- Live Edge Function versions: `komnivo-ai` v13, `komnivo-ai-process-document` v4, `komnivo-ai-proposal-action` v3. Provider token still needs to be stored in Supabase, so end-to-end LLM function-calling and approval testing has not yet been performed.
+
+
+## Contextual AI update — 15 November 2026
+
+KOMNIVO now uses one contextual AI architecture. The signed-in platform account always retains player capabilities. Organizer capabilities are resolved by the Edge Function from the authenticated user and the selected community/event; community owner/admin/organiser membership or an authorised standalone event organiser enables organiser tools only in that scope. The request's legacy `mode` value is retained only for backward-compatible conversation history and is not trusted for authorization.
+
+The `komnivo-ai` Edge Function was deployed as version 15 with JWT verification enabled. Its response includes server-derived capability metadata for a future UI update. The existing Flutter Player AI and Organizer AI screens have intentionally not been changed yet, so older clients can continue sending their existing mode labels.
+
+Migration `202611150001_contextual_ai_owner_notification` is applied. After the existing community bootstrap trigger creates the creator's Owner membership, a second idempotent trigger inserts one `community_owner_ai_ready` notification for that creator. The notification says that Organizer AI help is available for that community and Player features remain available. Existing communities are not retroactively notified.
+
+Do not mark the AI system production-complete. Remaining engineering includes one unified Flutter assistant/context selector (to be designed only after the product owner chooses a Canva theme), broader allowlisted organizer tools for channels/categories/roles/permissions, registration workflows, recurring scrims, deterministic points-table ingestion/publication, player-wide discovery/support flows, and permission regression tests.
+
+
+### Owner onboarding notification — 15 November 2026
+
+A successful community creation now inserts one `community_owner_ai_ready` notification only after the existing database bootstrap has created the creator's `owner` membership. The notification uses the existing `notifications` table and push pipeline, is idempotent per user/community, and is not backfilled for older communities. `notification-push` v11 maps this notification kind to the existing `event_push` preference so users' community-event push preferences are respected. The in-app notifications screen renders the new kind using its generic notification icon; the current Flutter UI has not otherwise been changed.
+
+
+### Unified proposal approval and conversation RLS — 15 November 2026
+
+Migration `202611150002_unified_ai_approval_scope` updates the private AI scope helper so a Player-labelled (legacy compatibility) conversation can be read/restored by the authenticated owner of that conversation when they have organizer permission for the exact selected community/event. It also allows an explicitly assigned event organiser to access that event's private scope without broadening access to unrelated community channels or records. The event participant/public-event rules remain in place for ordinary players.
+
+The transactional proposal resolver no longer requires `ai_conversations.mode = 'organizer'`. Approval remains service-role-only and rechecks the actor's current database permissions, exact conversation/event scope, expiry and proposal state before creating a DRAFT event. A conversation mode label is not an authorization control.

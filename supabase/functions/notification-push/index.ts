@@ -133,6 +133,7 @@ Deno.serve(async (req: Request) => {
       message: "message_push",
       mention: "mention_push",
       event: "event_push",
+      community_owner_ai_ready: "event_push",
       tournament: "tournament_push",
       marketing: "marketing_push",
     };
