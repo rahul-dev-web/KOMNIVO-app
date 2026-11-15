@@ -157,3 +157,12 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - Updated `notification-push` source and deployed version 11 (JWT remains disabled because this function is invoked by the existing database webhook with its configured shared secret).
 - The `community_owner_ai_ready` notification kind maps to `event_push`, respecting the user's existing Community events push preference.
 - The in-app notification uses the existing generic notification card/icon; no Flutter screen layout or navigation was modified.
+
+
+### Unified approval and RLS scope follow-up — 15 November 2026
+
+- Applied migration `202611150002_unified_ai_approval_scope`.
+- Verified by read-only SQL: player-scope RLS helper supports assigned organizer scope; proposal resolver no longer checks the legacy conversation mode; conversation RLS continues to re-check current scope.
+- Owner/community-manager conversations stored with the legacy `player` label can now restore their own proposals in their authorised scope. Assigned standalone/event organisers retain only their exact event scope; public/participant Player access remains as before.
+- Proposal approval is still service-role-only, with current permission, proposal expiry, scope, and DRAFT-only creation checks; only the obsolete mode-label gate was removed.
+- Latest GitHub CI run 43671546965: Edge Function Deno check passed; Flutter/Android/Web and Windows jobs were still running at last poll.
