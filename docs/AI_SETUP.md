@@ -191,3 +191,14 @@ The Player AI participation check no longer scans only the first 200 registratio
 - Flutter renders proposal details (game, format, team capacity, start, optional registration close, document sources) and requires a deliberate Approve draft or Reject click.
 - JWT-protected Edge Function `komnivo-ai-proposal-action` v3 resolves the action through a service-role-only database RPC. The SQL function checks the actual signed-in actor ID's current organiser authority, revalidates event fields, writes an audit row and uses an idempotency key. Approval creates `events.status='draft'`; it does not publish or open registration.
 - Live Edge Function versions: `komnivo-ai` v13, `komnivo-ai-process-document` v4, `komnivo-ai-proposal-action` v3. Provider token still needs to be stored in Supabase, so end-to-end LLM function-calling and approval testing has not yet been performed.
+
+
+## Contextual AI update — 15 November 2026
+
+KOMNIVO now uses one contextual AI architecture. The signed-in platform account always retains player capabilities. Organizer capabilities are resolved by the Edge Function from the authenticated user and the selected community/event; community owner/admin/organiser membership or an authorised standalone event organiser enables organiser tools only in that scope. The request's legacy `mode` value is retained only for backward-compatible conversation history and is not trusted for authorization.
+
+The `komnivo-ai` Edge Function was deployed as version 15 with JWT verification enabled. Its response includes server-derived capability metadata for a future UI update. The existing Flutter Player AI and Organizer AI screens have intentionally not been changed yet, so older clients can continue sending their existing mode labels.
+
+Migration `202611150001_contextual_ai_owner_notification` is applied. After the existing community bootstrap trigger creates the creator's Owner membership, a second idempotent trigger inserts one `community_owner_ai_ready` notification for that creator. The notification says that Organizer AI help is available for that community and Player features remain available. Existing communities are not retroactively notified.
+
+Do not mark the AI system production-complete. Remaining engineering includes one unified Flutter assistant/context selector (to be designed only after the product owner chooses a Canva theme), broader allowlisted organizer tools for channels/categories/roles/permissions, registration workflows, recurring scrims, deterministic points-table ingestion/publication, player-wide discovery/support flows, and permission regression tests.
