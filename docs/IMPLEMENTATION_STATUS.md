@@ -137,3 +137,16 @@ The legacy GitHub Pages deploy job remains skipped because Cloudflare Pages is t
 - Supabase AI Edge Functions are ACTIVE with JWT verification: `komnivo-ai` v13, `komnivo-ai-process-document` v4, `komnivo-ai-proposal-action` v3.
 - Cloudflare Workers AI token and account ID are still an owner-side setup step. After the owner creates the least-privilege Workers AI Read token, they must add `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_MODEL=@cf/qwen/qwen3.8-27b`, `AI_PROVIDER=cloudflare`, and `AI_DAILY_REQUEST_LIMIT=25` to Supabase Edge Function Secrets.
 - Provider live smoke test, document upload/OCR end-to-end QA and event-draft tool-call/approval QA remain blocked on the secrets and signed-in test accounts. PR #1 remains open; do not call the AI feature production-complete.
+
+
+## Contextual AI architecture implementation — 15 November 2026
+
+- Product decision: one platform account and one contextual KOMNIVO AI assistant. Player capabilities are always available; organizer capabilities are resolved from the authenticated user and selected community/event permissions. A global `is_organizer` account flag is not used.
+- GitHub feature branch updated with `resolveAiCapabilities`, one contextual system prompt, scope-restricted document retrieval, combined player + organizer event context, legacy conversation mode compatibility and server-derived capabilities in the response.
+- Supabase Edge Function `komnivo-ai` deployed as version 15 with JWT verification enabled.
+- Applied migration `202611150001_contextual_ai_owner_notification`: verifies Owner membership bootstrap, then inserts one idempotent notification for the community creator. The existing push notification trigger handles delivery. Existing communities are not backfilled.
+- Flutter UI intentionally unchanged in this update; existing Player/Organizer entry points remain as legacy screens until the product owner selects a Canva design theme.
+- Canva folder for the four-theme design exploration: https://www.canva.com/folder/FAHa86K9Hr4
+- Latest CI run 43670839881: Edge Function type-check passed; Flutter analysis and tests passed; Windows bootstrap passed. At the time of this update, Android release build was still running and Web release build had not started. Do not describe CI as fully green until all jobs complete.
+- Notion product decision recorded in AI Blueprint Section 19.
+- Remaining: final CI result; unified Flutter UI/context selection; additional organizer tools (channels/categories/roles/permissions, registration, recurring scrims and standings/results); broad player workflows; end-to-end and cross-community authorization tests. AI is not production-complete.
