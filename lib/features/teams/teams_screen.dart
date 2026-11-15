@@ -536,7 +536,7 @@ class _TeamClubhouseScreenState extends State<_TeamClubhouseScreen> {
           if (data == null) return _ClubhouseError(
             message: 'Team details could not be loaded.', onRetry: _reload);
 
-          final stats = _ClubhouseStats.fromRows(data.standings);
+          final stats = _ClubhouseMetrics.fromRows(data.standings);
           final starters = data.roster.where((m) => m['role'] != 'substitute').toList();
           final subs = data.roster.where((m) => m['role'] == 'substitute').toList();
 
@@ -639,13 +639,13 @@ class _ClubhouseData {
   final bool isMember;
 }
 
-class _ClubhouseStats {
-  const _ClubhouseStats({required this.points, required this.matches,
+class _ClubhouseMetrics {
+  const _ClubhouseMetrics({required this.points, required this.matches,
     required this.kills, required this.firstPlaces});
-  factory _ClubhouseStats.fromRows(List<Map<String, dynamic>> rows) {
+  factory _ClubhouseMetrics.fromRows(List<Map<String, dynamic>> rows) {
     int sum(String key) => rows.fold<int>(0,
       (n, row) => n + ((row[key] as num?)?.toInt() ?? 0));
-    return _ClubhouseStats(points: sum('points'), matches: sum('matches_played'),
+    return _ClubhouseMetrics(points: sum('points'), matches: sum('matches_played'),
       kills: sum('kills'), firstPlaces: sum('first_places'));
   }
   final int points, matches, kills, firstPlaces;
@@ -796,7 +796,7 @@ class _ClubhouseHeading extends StatelessWidget {
 
 class _ClubhouseStats extends StatelessWidget {
   const _ClubhouseStats({required this.stats, required this.compact});
-  final _ClubhouseStats stats; final bool compact;
+  final _ClubhouseMetrics stats; final bool compact;
   @override
   Widget build(BuildContext context) {
     final items = [
