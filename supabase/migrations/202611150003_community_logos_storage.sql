@@ -14,6 +14,7 @@ using (
     select 1
     from public.communities c
     where c.id::text = (storage.foldername(name))[2]
+      and c.icon_url = name
       and (
         c.visibility = 'public'
         or c.owner_user_id = (select auth.uid())
