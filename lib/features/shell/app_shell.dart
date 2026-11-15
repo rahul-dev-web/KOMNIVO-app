@@ -20,17 +20,17 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   // Community is the first destination shown at app launch; Home is intentionally removed.
-  int _index = 1;
+  int _index = 0;
   bool _showLiveOps = false;
   bool _showProfile = false;
 
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
-      TeamsScreen(preview: widget.preview),
       CommunityScreen(preview: widget.preview),
-      InboxScreen(preview: widget.preview),
       CompeteScreen(preview: widget.preview),
+      TeamsScreen(preview: widget.preview),
+      InboxScreen(preview: widget.preview),
     ];
 
     final Widget body = _showLiveOps
@@ -107,24 +107,24 @@ class _AppShellState extends State<AppShell> {
               onDestinationSelected: (value) => setState(() => _index = value),
               destinations: const [
                 NavigationDestination(
-                  icon: Icon(Icons.shield_outlined),
-                  selectedIcon: Icon(Icons.shield),
-                  label: 'Team',
-                ),
-                NavigationDestination(
                   icon: Icon(Icons.groups_outlined),
                   selectedIcon: Icon(Icons.groups),
                   label: 'Community',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.chat_bubble_outline),
-                  selectedIcon: Icon(Icons.chat_bubble),
-                  label: 'DM',
-                ),
-                NavigationDestination(
                   icon: Icon(Icons.emoji_events_outlined),
                   selectedIcon: Icon(Icons.emoji_events),
                   label: 'Compete',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.shield_outlined),
+                  selectedIcon: Icon(Icons.shield),
+                  label: 'Team',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.chat_bubble_outline),
+                  selectedIcon: Icon(Icons.chat_bubble),
+                  label: 'DM',
                 ),
               ],
             ),

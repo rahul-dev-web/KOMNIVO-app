@@ -21,6 +21,8 @@ class CommunityScreen extends StatefulWidget {
 class _CommunityScreenState extends State<CommunityScreen> {
   Future<_DirectoryData>? _future;
   final Set<String> _joining = <String>{};
+  final TextEditingController _searchController = TextEditingController();
+  String _scope = 'all';
 
   @override
   void initState() {
@@ -38,6 +40,12 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   void _refresh() => setState(() => _future = _load());
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   Future<void> _create() async {
     final draft = await showDialog<_CommunityDraft>(
@@ -136,10 +144,13 @@ class _CommunityScreenState extends State<CommunityScreen> {
   Widget build(BuildContext context) {
     if (widget.preview) {
       return ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
         children: const [
           PreviewBanner(),
-          SectionTitle('Communities', subtitle: 'Discover your next squad space'),
+          SectionTitle(
+            'Community',
+            subtitle: 'Your servers. Your squads. Your space.',
+          ),
           SizedBox(height: 14),
           _PreviewCommunityCard(
             name: 'KOMNIVO India Esports',
@@ -165,46 +176,220 @@ class _CommunityScreenState extends State<CommunityScreen> {
       builder: (context, snapshot) {
         final data = snapshot.data;
         final rows = data?.communities ?? const <Map<String, dynamic>>[];
-        final memberships = data?.memberships ?? const <String, Map<String, dynamic>>{};
-        return ListView(
-          padding: const EdgeInsets.all(20),
+        final memberships = data?.memberships ??
+            const <String, Map<String, dynamic>>{};
+        final query = _searchController.text.trim().toLowerCase();
+        final filteredRows = rows.where((row) {
+          final name = row['name']?.toString().toLowerCase() ?? '';
+          final description =
+              row['description']?.toString().toLowerCase() ?? '';
+          return query.isEmpty ||
+              name.contains(query) ||
+              description.contains(query);
+        }).where((row) {
+          final id = row['id']?.toString() ?? '';
+          final joined = memberships.containsKey(id);
+          if (_scope == 'joined') return joined;
+          if (_scope == 'discover') return !joined;
+          return true;
+        }).toList();
+
+        final joinedRows = filteredRows.where((row) {
+          return memberships.containsKey(row['id']?.toString() ?? '');
+        }).toList();
+        final discoverRows = filteredRows.where((row) {
+          return !memberships.containsKey(row['id']?.toString() ?? '');
+        }).toList();
+
+        return Column(
           children: [
-            SectionTitle(
-              'Communities',
-              subtitle: 'Your gaming spaces, organised like servers',
-              trailing: FilledButton.icon(
-                onPressed: snapshot.connectionState == ConnectionState.waiting && data == null ? null : _create,
-                icon: const Icon(Icons.add),
-                label: const Text('Create'),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+              decoration: BoxDecoration(
+                color: KomnivoTheme.surface,
+                border: Border(
+                  bottom: BorderSide(color: KomnivoTheme.line.withValues(alpha: .8)),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'COMMUNITY HUB',
+                              style: TextStyle(
+                                color: KomnivoTheme.cyan,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            const Text(
+                              'Find your people.',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -.5,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '${rows.length} spaces to explore',
+                              style: const TextStyle(
+                                color: KomnivoTheme.muted,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      FilledButton.icon(
+                        onPressed: _create,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Create'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 42),
+                          padding: const EdgeInsets.symmetric(horizontal: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _searchController,
+                    onChanged: (_) => setState(() {}),
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: 'Search communities',
+                      prefixIcon: const Icon(Icons.search, size: 19),
+                      suffixIcon: _searchController.text.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Clear search',
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {});
+                              },
+                              icon: const Icon(Icons.close, size: 18),
+                            ),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 11),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: Text('All ${rows.length}'),
+                        selected: _scope == 'all',
+                        onSelected: (_) => setState(() => _scope = 'all'),
+                      ),
+                      ChoiceChip(
+                        label: Text('Joined ${memberships.length}'),
+                        selected: _scope == 'joined',
+                        onSelected: (_) => setState(() => _scope = 'joined'),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Discover'),
+                        selected: _scope == 'discover',
+                        onSelected: (_) => setState(() => _scope = 'discover'),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            if (snapshot.connectionState == ConnectionState.waiting && data == null)
-              const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()))
-            else if (snapshot.hasError)
-              EmptyState(
-                title: 'Could not load communities',
-                message: snapshot.error.toString(),
-                icon: Icons.error_outline,
-              )
-            else if (rows.isEmpty)
-              const EmptyState(
-                title: 'No communities yet',
-                message: 'Create your own space or join a public community to get started.',
-                icon: Icons.groups_outlined,
-              )
-            else
-              ...rows.map((row) {
-                final id = row['id']?.toString() ?? '';
-                final membership = memberships[id];
-                return _CommunityDataCard(
-                  row: row,
-                  membership: membership,
-                  joining: _joining.contains(id),
-                  onJoin: () => _join(row),
-                  onOpen: () => _open(row, membership),
-                );
-              }),
+            Expanded(
+              child: snapshot.connectionState == ConnectionState.waiting &&
+                      data == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : snapshot.hasError
+                      ? EmptyState(
+                          title: 'Could not load communities',
+                          message: snapshot.error.toString(),
+                          icon: Icons.error_outline,
+                        )
+                      : RefreshIndicator(
+                          onRefresh: () async {
+                            final next = _load();
+                            setState(() => _future = next);
+                            try {
+                              await next;
+                            } catch (_) {
+                              // The FutureBuilder renders the refreshed error.
+                            }
+                          },
+                          child: ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+                            children: [
+                              if (filteredRows.isEmpty)
+                                EmptyState(
+                                  title: query.isNotEmpty
+                                      ? 'No matching communities'
+                                      : 'Nothing here yet',
+                                  message: query.isNotEmpty
+                                      ? 'Try another community name.'
+                                      : _scope == 'joined'
+                                          ? 'Join a public community to see it here.'
+                                          : 'Create a community or explore spaces to join.',
+                                  icon: Icons.groups_outlined,
+                                )
+                              else ...[
+                                if (_scope != 'discover') ...[
+                                  SectionTitle(
+                                    'Your communities',
+                                    subtitle: 'Servers you have joined',
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...joinedRows.map((row) {
+                                    final id = row['id']?.toString() ?? '';
+                                    final membership = memberships[id];
+                                    return _CommunityDataCard(
+                                      row: row,
+                                      membership: membership,
+                                      joining: _joining.contains(id),
+                                      onJoin: () => _join(row),
+                                      onOpen: () => _open(row, membership),
+                                    );
+                                  }),
+                                ],
+                                if (_scope == 'all' &&
+                                    joinedRows.isNotEmpty &&
+                                    discoverRows.isNotEmpty)
+                                  const SizedBox(height: 12),
+                                if (_scope != 'joined') ...[
+                                  SectionTitle(
+                                    'Discover communities',
+                                    subtitle: 'Find a space that fits your game',
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...discoverRows.map((row) {
+                                    final id = row['id']?.toString() ?? '';
+                                    final membership = memberships[id];
+                                    return _CommunityDataCard(
+                                      row: row,
+                                      membership: membership,
+                                      joining: _joining.contains(id),
+                                      onJoin: () => _join(row),
+                                      onOpen: () => _open(row, membership),
+                                    );
+                                  }),
+                                ],
+                              ],
+                            ],
+                          ),
+                        ),
+            ),
           ],
         );
       },
@@ -545,30 +730,30 @@ class _CommunityDataCard extends StatelessWidget {
     final count = row['member_count']?.toString() ?? '1';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 7),
       decoration: BoxDecoration(
         color: KomnivoTheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: joined
-              ? KomnivoTheme.accent.withValues(alpha: .42)
+              ? KomnivoTheme.accent.withValues(alpha: .38)
               : KomnivoTheme.line,
         ),
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         child: InkWell(
           onTap: joined ? onOpen : null,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
             child: Row(
               children: [
                 CommunityLogo(
                   name: name,
                   imagePath: row['icon_url']?.toString(),
-                  size: 49,
+                  size: 46,
                 ),
                 const SizedBox(width: 11),
                 Expanded(
@@ -584,18 +769,17 @@ class _CommunityDataCard extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13,
                               ),
                             ),
                           ),
                           const SizedBox(width: 6),
-                          if (joined)
-                            _MembershipBadge(
-                              label: role == 'owner' ? 'OWNER' : role.toUpperCase(),
-                            )
-                          else
-                            _MembershipBadge(label: isPublic ? 'PUBLIC' : 'PRIVATE'),
+                          _MembershipBadge(
+                            label: joined
+                                ? (role == 'owner' ? 'OWNER' : role.toUpperCase())
+                                : (isPublic ? 'PUBLIC' : 'PRIVATE'),
+                          ),
                         ],
                       ),
                       if (description.isNotEmpty) ...[
@@ -606,11 +790,11 @@ class _CommunityDataCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: KomnivoTheme.muted,
-                            fontSize: 11,
+                            fontSize: 10,
                           ),
                         ),
                       ],
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 5),
                       Row(
                         children: [
                           const Icon(
@@ -628,11 +812,18 @@ class _CommunityDataCard extends StatelessWidget {
                           ),
                           if (!isPublic) ...[
                             const SizedBox(width: 9),
-                            const Icon(Icons.lock_outline, size: 12, color: KomnivoTheme.muted),
+                            const Icon(
+                              Icons.lock_outline,
+                              size: 12,
+                              color: KomnivoTheme.muted,
+                            ),
                             const SizedBox(width: 3),
                             const Text(
                               'Invite only',
-                              style: TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+                              style: TextStyle(
+                                color: KomnivoTheme.muted,
+                                fontSize: 10,
+                              ),
                             ),
                           ],
                         ],
@@ -640,7 +831,7 @@ class _CommunityDataCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 7),
+                const SizedBox(width: 6),
                 if (joined)
                   const Icon(
                     Icons.chevron_right_rounded,
@@ -651,8 +842,8 @@ class _CommunityDataCard extends StatelessWidget {
                   TextButton(
                     onPressed: joining ? null : onJoin,
                     style: TextButton.styleFrom(
-                      minimumSize: const Size(52, 34),
-                      padding: const EdgeInsets.symmetric(horizontal: 9),
+                      minimumSize: const Size(48, 34),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.compact,
                     ),
@@ -662,10 +853,17 @@ class _CommunityDataCard extends StatelessWidget {
                             height: 14,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Join', style: TextStyle(fontWeight: FontWeight.w800)),
+                        : const Text(
+                            'Join',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
                   )
                 else
-                  const Icon(Icons.lock_outline, color: KomnivoTheme.muted, size: 18),
+                  const Icon(
+                    Icons.lock_outline,
+                    color: KomnivoTheme.muted,
+                    size: 18,
+                  ),
               ],
             ),
           ),
