@@ -94,9 +94,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
         _selectedCommunityId = createdId;
       }
 
-      // On desktop, keep the user in the two-pane server layout. On smaller
-      // screens, retain the dedicated detail route.
-      if (MediaQuery.sizeOf(context).width >= 900) {
+      // Keep the server list and selected community side by side on phones,
+      // tablets and desktop. Only very narrow viewports use the detail route.
+      if (MediaQuery.sizeOf(context).width >= 360) {
         _refresh();
       } else {
         await Navigator.of(context).push<void>(
@@ -142,7 +142,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
     Map<String, dynamic>? membership,
   ) {
     final id = community['id']?.toString() ?? '';
-    if (MediaQuery.sizeOf(context).width >= 900) {
+    if (MediaQuery.sizeOf(context).width >= 360) {
       setState(() => _selectedCommunityId = id);
       return;
     }
@@ -168,9 +168,15 @@ class _CommunityScreenState extends State<CommunityScreen> {
     required int total,
     required int joined,
   }) {
+    final compact = MediaQuery.sizeOf(context).width < 600;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(13, 12, 13, 11),
+      padding: EdgeInsets.fromLTRB(
+        compact ? 8 : 13,
+        compact ? 9 : 12,
+        compact ? 8 : 13,
+        compact ? 8 : 11,
+      ),
       decoration: BoxDecoration(
         color: KomnivoTheme.surface,
         border: Border(
@@ -186,7 +192,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 child: Text(
                   'Communities',
                   style: TextStyle(
-                    fontSize: 17,
+                    fontSize: compact ? 13 : 17,
                     fontWeight: FontWeight.w900,
                     letterSpacing: -.25,
                   ),
@@ -198,8 +204,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 onPressed: _create,
                 icon: const Icon(Icons.add_rounded, size: 19),
                 style: IconButton.styleFrom(
-                  minimumSize: const Size(36, 36),
-                  maximumSize: const Size(36, 36),
+                  minimumSize: Size.square(compact ? 32 : 36),
+                  maximumSize: Size.square(compact ? 32 : 36),
                   padding: EdgeInsets.zero,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(11),
@@ -208,17 +214,17 @@ class _CommunityScreenState extends State<CommunityScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 9),
+          SizedBox(height: compact ? 6 : 9),
           SizedBox(
-            height: 39,
+            height: compact ? 35 : 39,
             child: TextField(
               controller: _searchController,
               onChanged: (_) => setState(() {}),
               textInputAction: TextInputAction.search,
-              style: const TextStyle(fontSize: 12),
+              style: TextStyle(fontSize: compact ? 10 : 12),
               decoration: InputDecoration(
-                hintText: 'Search communities',
-                prefixIcon: const Icon(Icons.search, size: 18),
+                hintText: compact ? 'Search' : 'Search communities',
+                prefixIcon: Icon(Icons.search, size: compact ? 16 : 18),
                 suffixIcon: _searchController.text.isEmpty
                     ? null
                     : IconButton(
@@ -238,14 +244,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: compact ? 6 : 8),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _scopeChip('All $total', 'all'),
-                const SizedBox(width: 5),
-                _scopeChip('Joined $joined', 'joined'),
+                _scopeChip(compact ? 'All' : 'All $total', 'all'),
+                const SizedBox(width: 4),
+                _scopeChip(compact ? 'Joined' : 'Joined $joined', 'joined'),
                 const SizedBox(width: 5),
                 _scopeChip('Discover', 'discover'),
               ],
@@ -280,6 +286,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
     required List<Map<String, dynamic>> communities,
     required Map<String, Map<String, dynamic>> memberships,
     required bool desktop,
+    required bool compact,
     required String? selectedId,
   }) {
     return RefreshIndicator(
@@ -306,6 +313,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
             joining: _joining.contains(id),
             selected: desktop && id == selectedId,
             desktop: desktop,
+            compact: compact,
             onJoin: () => _join(row),
             onOpen: () => _open(row, membership),
           );
@@ -415,7 +423,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
             ? joinedRows.first
             : (directoryRows.isNotEmpty ? directoryRows.first : null);
 
-        final isDesktop = MediaQuery.sizeOf(context).width >= 900;
+        final screenWidth = MediaQuery.sizeOf(context).width;
+        final isDesktop = screenWidth >= 360;
+        final isCompactSplitView = screenWidth < 600;
 
         Widget listContent;
         if (snapshot.connectionState == ConnectionState.waiting && data == null) {
@@ -441,6 +451,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
             communities: directoryRows,
             memberships: memberships,
             desktop: isDesktop,
+            compact: isCompactSplitView,
             selectedId: selectedCommunity?['id']?.toString(),
           );
         }
@@ -478,9 +489,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
                     onJoin: () => _join(selectedCommunity!),
                   );
 
-        final sidebarWidth = (MediaQuery.sizeOf(context).width * .29)
-            .clamp(280.0, 350.0)
-            .toDouble();
+        final sidebarWidth = isCompactSplitView
+            ? (screenWidth * .38).clamp(132.0, 220.0).toDouble()
+            : (screenWidth * .29).clamp(220.0, 350.0).toDouble();
 
         return Row(
           children: [
@@ -812,6 +823,7 @@ class _CommunitySidebarTile extends StatelessWidget {
     required this.joining,
     required this.selected,
     required this.desktop,
+    required this.compact,
     required this.onJoin,
     required this.onOpen,
   });
@@ -821,6 +833,7 @@ class _CommunitySidebarTile extends StatelessWidget {
   final bool joining;
   final bool selected;
   final bool desktop;
+  final bool compact;
   final VoidCallback onJoin;
   final VoidCallback onOpen;
 
@@ -852,15 +865,18 @@ class _CommunitySidebarTile extends StatelessWidget {
           onTap: (desktop || joined) ? onOpen : null,
           borderRadius: BorderRadius.circular(11),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 6 : 8,
+              vertical: compact ? 5 : 6,
+            ),
             child: Row(
               children: [
                 CommunityLogo(
                   name: name,
                   imagePath: row['icon_url']?.toString(),
-                  size: 38,
+                  size: compact ? 30 : 38,
                 ),
-                const SizedBox(width: 9),
+                SizedBox(width: compact ? 6 : 9),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -871,54 +887,56 @@ class _CommunitySidebarTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: compact ? 10 : 12,
                           fontWeight: FontWeight.w800,
                           color: selected ? Colors.white : null,
                         ),
                       ),
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.people_outline,
-                            size: 11,
-                            color: KomnivoTheme.muted,
-                          ),
-                          const SizedBox(width: 3),
-                          Expanded(
-                            child: Text(
-                              '$count members',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: KomnivoTheme.muted,
-                                fontSize: 9,
-                              ),
-                            ),
-                          ),
-                          if (joined)
-                            Text(
-                              role == 'owner' ? 'OWNER' : 'JOINED',
-                              style: const TextStyle(
-                                color: KomnivoTheme.cyan,
-                                fontSize: 8,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: .4,
-                              ),
-                            )
-                          else if (!isPublic)
+                      if (!compact) ...[
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
                             const Icon(
-                              Icons.lock_outline,
-                              size: 12,
+                              Icons.people_outline,
+                              size: 11,
                               color: KomnivoTheme.muted,
                             ),
-                        ],
-                      ),
+                            const SizedBox(width: 3),
+                            Expanded(
+                              child: Text(
+                                '$count members',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: KomnivoTheme.muted,
+                                  fontSize: 9,
+                                ),
+                              ),
+                            ),
+                            if (joined)
+                              Text(
+                                role == 'owner' ? 'OWNER' : 'JOINED',
+                                style: const TextStyle(
+                                  color: KomnivoTheme.cyan,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: .4,
+                                ),
+                              )
+                            else if (!isPublic)
+                              const Icon(
+                                Icons.lock_outline,
+                                size: 12,
+                                color: KomnivoTheme.muted,
+                              ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
                 const SizedBox(width: 5),
-                if (!joined && isPublic)
+                if (!compact && !joined && isPublic)
                   TextButton(
                     onPressed: joining ? null : onJoin,
                     style: TextButton.styleFrom(
@@ -944,7 +962,7 @@ class _CommunitySidebarTile extends StatelessWidget {
                     color: KomnivoTheme.cyan,
                     size: 19,
                   )
-                else
+                else if (!compact)
                   const SizedBox(width: 19),
               ],
             ),
@@ -972,13 +990,19 @@ class _CommunityPreviewPane extends StatelessWidget {
     final name = community['name']?.toString() ?? 'Community';
     final description = community['description']?.toString().trim() ?? '';
     final isPublic = (community['visibility']?.toString() ?? 'public') == 'public';
+    final compact = MediaQuery.sizeOf(context).width < 600;
 
     return Container(
       color: KomnivoTheme.background,
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(20, 15, 20, 15),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 9 : 20,
+              compact ? 10 : 15,
+              compact ? 9 : 20,
+              compact ? 10 : 15,
+            ),
             decoration: BoxDecoration(
               color: KomnivoTheme.surface,
               border: Border(
@@ -990,9 +1014,9 @@ class _CommunityPreviewPane extends StatelessWidget {
                 CommunityLogo(
                   name: name,
                   imagePath: community['icon_url']?.toString(),
-                  size: 40,
+                  size: compact ? 28 : 40,
                 ),
-                const SizedBox(width: 11),
+                SizedBox(width: compact ? 6 : 11),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1002,7 +1026,7 @@ class _CommunityPreviewPane extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 15,
+                          fontSize: compact ? 11 : 15,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
@@ -1030,8 +1054,9 @@ class _CommunityPreviewPane extends StatelessWidget {
                         : const Icon(Icons.add, size: 17),
                     label: const Text('Join'),
                     style: FilledButton.styleFrom(
-                      minimumSize: const Size(0, 38),
-                      padding: const EdgeInsets.symmetric(horizontal: 13),
+                      minimumSize: Size(0, compact ? 32 : 38),
+                      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 13),
+                      textStyle: TextStyle(fontSize: compact ? 10 : 14),
                     ),
                   )
                 else
@@ -1045,10 +1070,10 @@ class _CommunityPreviewPane extends StatelessWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.all(22),
+              padding: EdgeInsets.all(compact ? 10 : 22),
               children: [
                 Container(
-                  padding: const EdgeInsets.all(22),
+                  padding: EdgeInsets.all(compact ? 13 : 22),
                   decoration: BoxDecoration(
                     color: KomnivoTheme.surface,
                     borderRadius: BorderRadius.circular(18),
