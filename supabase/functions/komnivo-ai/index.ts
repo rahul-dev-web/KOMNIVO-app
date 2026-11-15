@@ -746,7 +746,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const communityId = capabilities.communityId;
-  const hasCloudflare = Boolean(Deno.env.get("CLOUDFLARE_ACCOUNT_ID") && Deno.env.get("CLOUDFLARE_API_TOKEN"));  const hasCloudflare = Boolean(Deno.env.get("CLOUDFLARE_ACCOUNT_ID") && Deno.env.get("CLOUDFLARE_API_TOKEN"));
+  const hasCloudflare = Boolean(Deno.env.get("CLOUDFLARE_ACCOUNT_ID") && Deno.env.get("CLOUDFLARE_API_TOKEN"));
   const hasGroq = Boolean(Deno.env.get("GROQ_API_KEY"));
   if (!hasCloudflare && !hasGroq) {
     return json({
