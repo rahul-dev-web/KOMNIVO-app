@@ -905,19 +905,3 @@ class _InfoPill extends StatelessWidget {
         ),
       );
 }
-
-class _EmptyChannelHint extends StatelessWidget {
-  const _EmptyChannelHint({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: KomnivoTheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: KomnivoTheme.line),
-        ),
-        child: Text(label, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 12)),
-      );
-}
