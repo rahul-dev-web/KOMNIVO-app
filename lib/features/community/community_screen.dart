@@ -23,6 +23,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final Set<String> _joining = <String>{};
   final TextEditingController _searchController = TextEditingController();
   String _scope = 'all';
+  String? _selectedCommunityId;
 
   @override
   void initState() {
@@ -87,14 +88,29 @@ class _CommunityScreenState extends State<CommunityScreen> {
         }
       }
 
-      // DB trigger creates the owner membership and standard channels.
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => CommunityDetailScreen(community: community, canManage: true),
-        ),
-      );
+      // The database trigger creates the owner membership and standard channels.
+      final createdId = community['id']?.toString();
+      if (createdId != null && createdId.isNotEmpty) {
+        _selectedCommunityId = createdId;
+      }
+
+      // On desktop, keep the user in the two-pane server layout. On smaller
+      // screens, retain the dedicated detail route.
+      if (MediaQuery.sizeOf(context).width >= 900) {
+        _refresh();
+      } else {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => CommunityDetailScreen(
+              community: community,
+              canManage: true,
+            ),
+          ),
+        );
+        if (!mounted) return;
+        _refresh();
+      }
       if (!mounted) return;
-      _refresh();
       showMessage(context, 'Community created successfully.');
     } catch (error) {
       if (mounted) showMessage(context, error.toString());
@@ -110,6 +126,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
       if (!mounted) return;
       setState(() {
         _joining.remove(id);
+        _selectedCommunityId = id;
         _future = _load();
       });
       showMessage(context, 'Joined ' + (community['name']?.toString() ?? 'community') + '.');
@@ -124,7 +141,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
     Map<String, dynamic> community,
     Map<String, dynamic>? membership,
   ) {
-    final role = membership?['role']?.toString() ?? 'member';
+    final id = community['id']?.toString() ?? '';
+    if (MediaQuery.sizeOf(context).width >= 900) {
+      setState(() => _selectedCommunityId = id);
+      return;
+    }
+    if (membership == null) return;
+
+    final role = membership['role']?.toString() ?? 'member';
     final currentUser = Supabase.instance.client.auth.currentUser?.id;
     final canManage = community['owner_user_id'] == currentUser ||
         const {'owner', 'admin', 'moderator', 'organiser'}.contains(role);
@@ -138,6 +162,180 @@ class _CommunityScreenState extends State<CommunityScreen> {
     ).then((_) {
       if (mounted) _refresh();
     });
+  }
+
+  Widget _directoryHeader({
+    required int total,
+    required int joined,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(13, 12, 13, 11),
+      decoration: BoxDecoration(
+        color: KomnivoTheme.surface,
+        border: Border(
+          bottom: BorderSide(color: KomnivoTheme.line.withValues(alpha: .8)),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Communities',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -.25,
+                  ),
+                ),
+              ),
+              IconButton.filledTonal(
+                tooltip: 'Create community',
+                visualDensity: VisualDensity.compact,
+                onPressed: _create,
+                icon: const Icon(Icons.add_rounded, size: 19),
+                style: IconButton.styleFrom(
+                  minimumSize: const Size(36, 36),
+                  maximumSize: const Size(36, 36),
+                  padding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          SizedBox(
+            height: 39,
+            child: TextField(
+              controller: _searchController,
+              onChanged: (_) => setState(() {}),
+              textInputAction: TextInputAction.search,
+              style: const TextStyle(fontSize: 12),
+              decoration: InputDecoration(
+                hintText: 'Search communities',
+                prefixIcon: const Icon(Icons.search, size: 18),
+                suffixIcon: _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {});
+                        },
+                        icon: const Icon(Icons.close, size: 16),
+                      ),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(11),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _scopeChip('All $total', 'all'),
+                const SizedBox(width: 5),
+                _scopeChip('Joined $joined', 'joined'),
+                const SizedBox(width: 5),
+                _scopeChip('Discover', 'discover'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _scopeChip(String label, String value) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: _scope == value,
+      onSelected: (_) => setState(() => _scope = value),
+      showCheckmark: false,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 0),
+      side: BorderSide(
+        color: _scope == value
+            ? KomnivoTheme.accent.withValues(alpha: .55)
+            : KomnivoTheme.line,
+      ),
+      backgroundColor: KomnivoTheme.surfaceRaised.withValues(alpha: .55),
+      selectedColor: KomnivoTheme.accent.withValues(alpha: .18),
+    );
+  }
+
+  Widget _directoryList({
+    required List<Map<String, dynamic>> communities,
+    required Map<String, Map<String, dynamic>> memberships,
+    required bool desktop,
+  }) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        final next = _load();
+        setState(() => _future = next);
+        try {
+          await next;
+        } catch (_) {
+          // FutureBuilder displays the refreshed error.
+        }
+      },
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+        itemCount: communities.length,
+        itemBuilder: (context, index) {
+          final row = communities[index];
+          final id = row['id']?.toString() ?? '';
+          final membership = memberships[id];
+          return _CommunitySidebarTile(
+            row: row,
+            membership: membership,
+            joining: _joining.contains(id),
+            selected: desktop && id == _selectedCommunityId,
+            desktop: desktop,
+            onJoin: () => _join(row),
+            onOpen: () => _open(row, membership),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _emptyDirectory({
+    required String title,
+    required String message,
+    required IconData icon,
+  }) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        final next = _load();
+        setState(() => _future = next);
+        try {
+          await next;
+        } catch (_) {
+          // FutureBuilder displays the refreshed error.
+        }
+      },
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          const SizedBox(height: 70),
+          EmptyState(title: title, message: message, icon: icon),
+        ],
+      ),
+    );
   }
 
   @override
@@ -179,14 +377,15 @@ class _CommunityScreenState extends State<CommunityScreen> {
         final memberships = data?.memberships ??
             const <String, Map<String, dynamic>>{};
         final query = _searchController.text.trim().toLowerCase();
+
         final filteredRows = rows.where((row) {
           final name = row['name']?.toString().toLowerCase() ?? '';
-          final description =
-              row['description']?.toString().toLowerCase() ?? '';
-          return query.isEmpty ||
+          final description = row['description']?.toString().toLowerCase() ?? '';
+          final matchesQuery = query.isEmpty ||
               name.contains(query) ||
               description.contains(query);
-        }).where((row) {
+          if (!matchesQuery) return false;
+
           final id = row['id']?.toString() ?? '';
           final joined = memberships.containsKey(id);
           if (_scope == 'joined') return joined;
@@ -200,203 +399,101 @@ class _CommunityScreenState extends State<CommunityScreen> {
         final discoverRows = filteredRows.where((row) {
           return !memberships.containsKey(row['id']?.toString() ?? '');
         }).toList();
+        final directoryRows = [...joinedRows, ...discoverRows];
 
-        return Column(
+        Map<String, dynamic>? selectedCommunity;
+        if (_selectedCommunityId != null) {
+          for (final row in directoryRows) {
+            if (row['id']?.toString() == _selectedCommunityId) {
+              selectedCommunity = row;
+              break;
+            }
+          }
+        }
+        selectedCommunity ??= joinedRows.isNotEmpty
+            ? joinedRows.first
+            : (directoryRows.isNotEmpty ? directoryRows.first : null);
+
+        final isDesktop = MediaQuery.sizeOf(context).width >= 900;
+
+        Widget listContent;
+        if (snapshot.connectionState == ConnectionState.waiting && data == null) {
+          listContent = const Center(child: CircularProgressIndicator());
+        } else if (snapshot.hasError) {
+          listContent = EmptyState(
+            title: 'Could not load communities',
+            message: snapshot.error.toString(),
+            icon: Icons.error_outline,
+          );
+        } else if (directoryRows.isEmpty) {
+          listContent = _emptyDirectory(
+            title: query.isNotEmpty ? 'No matching communities' : 'Nothing here yet',
+            message: query.isNotEmpty
+                ? 'Try another community name.'
+                : _scope == 'joined'
+                    ? 'Join a public community to see it here.'
+                    : 'Create a community or explore spaces to join.',
+            icon: Icons.groups_outlined,
+          );
+        } else {
+          listContent = _directoryList(
+            communities: directoryRows,
+            memberships: memberships,
+            desktop: isDesktop,
+          );
+        }
+
+        final directoryPane = Column(
           children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-              decoration: BoxDecoration(
-                color: KomnivoTheme.surface,
-                border: Border(
-                  bottom: BorderSide(color: KomnivoTheme.line.withValues(alpha: .8)),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'COMMUNITY HUB',
-                              style: TextStyle(
-                                color: KomnivoTheme.cyan,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            const Text(
-                              'Find your people.',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -.5,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              '${rows.length} spaces to explore',
-                              style: const TextStyle(
-                                color: KomnivoTheme.muted,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      FilledButton.icon(
-                        onPressed: _create,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Create'),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(0, 42),
-                          padding: const EdgeInsets.symmetric(horizontal: 13),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: _searchController,
-                    onChanged: (_) => setState(() {}),
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText: 'Search communities',
-                      prefixIcon: const Icon(Icons.search, size: 19),
-                      suffixIcon: _searchController.text.isEmpty
-                          ? null
-                          : IconButton(
-                              tooltip: 'Clear search',
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() {});
-                              },
-                              icon: const Icon(Icons.close, size: 18),
-                            ),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            _directoryHeader(total: rows.length, joined: memberships.length),
+            Expanded(child: listContent),
+          ],
+        );
+
+        if (!isDesktop) return directoryPane;
+
+        final selectedMembership = selectedCommunity == null
+            ? null
+            : memberships[selectedCommunity['id']?.toString() ?? ''];
+        final rightPane = selectedCommunity == null
+            ? const _CommunityWelcomePane()
+            : selectedMembership != null
+                ? CommunityDetailScreen(
+                    key: ValueKey(selectedCommunity['id']),
+                    community: selectedCommunity,
+                    canManage: selectedCommunity['owner_user_id'] ==
+                            Supabase.instance.client.auth.currentUser?.id ||
+                        const {'owner', 'admin', 'moderator', 'organiser'}
+                            .contains(selectedMembership['role']?.toString()),
+                    embedded: true,
+                  )
+                : _CommunityPreviewPane(
+                    key: ValueKey(selectedCommunity['id']),
+                    community: selectedCommunity,
+                    joining: _joining.contains(
+                      selectedCommunity['id']?.toString() ?? '',
                     ),
-                  ),
-                  const SizedBox(height: 11),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      ChoiceChip(
-                        label: Text('All ${rows.length}'),
-                        selected: _scope == 'all',
-                        onSelected: (_) => setState(() => _scope = 'all'),
-                      ),
-                      ChoiceChip(
-                        label: Text('Joined ${memberships.length}'),
-                        selected: _scope == 'joined',
-                        onSelected: (_) => setState(() => _scope = 'joined'),
-                      ),
-                      ChoiceChip(
-                        label: const Text('Discover'),
-                        selected: _scope == 'discover',
-                        onSelected: (_) => setState(() => _scope = 'discover'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                    onJoin: () => _join(selectedCommunity!),
+                  );
+
+        final sidebarWidth = (MediaQuery.sizeOf(context).width * .29)
+            .clamp(280.0, 350.0);
+
+        return Row(
+          children: [
+            SizedBox(width: sidebarWidth, child: directoryPane),
+            VerticalDivider(
+              width: 1,
+              thickness: 1,
+              color: KomnivoTheme.line.withValues(alpha: .8),
             ),
-            Expanded(
-              child: snapshot.connectionState == ConnectionState.waiting &&
-                      data == null
-                  ? const Center(child: CircularProgressIndicator())
-                  : snapshot.hasError
-                      ? EmptyState(
-                          title: 'Could not load communities',
-                          message: snapshot.error.toString(),
-                          icon: Icons.error_outline,
-                        )
-                      : RefreshIndicator(
-                          onRefresh: () async {
-                            final next = _load();
-                            setState(() => _future = next);
-                            try {
-                              await next;
-                            } catch (_) {
-                              // The FutureBuilder renders the refreshed error.
-                            }
-                          },
-                          child: ListView(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-                            children: [
-                              if (filteredRows.isEmpty)
-                                EmptyState(
-                                  title: query.isNotEmpty
-                                      ? 'No matching communities'
-                                      : 'Nothing here yet',
-                                  message: query.isNotEmpty
-                                      ? 'Try another community name.'
-                                      : _scope == 'joined'
-                                          ? 'Join a public community to see it here.'
-                                          : 'Create a community or explore spaces to join.',
-                                  icon: Icons.groups_outlined,
-                                )
-                              else ...[
-                                if (_scope != 'discover') ...[
-                                  SectionTitle(
-                                    'Your communities',
-                                    subtitle: 'Servers you have joined',
-                                  ),
-                                  const SizedBox(height: 8),
-                                  ...joinedRows.map((row) {
-                                    final id = row['id']?.toString() ?? '';
-                                    final membership = memberships[id];
-                                    return _CommunityDataCard(
-                                      row: row,
-                                      membership: membership,
-                                      joining: _joining.contains(id),
-                                      onJoin: () => _join(row),
-                                      onOpen: () => _open(row, membership),
-                                    );
-                                  }),
-                                ],
-                                if (_scope == 'all' &&
-                                    joinedRows.isNotEmpty &&
-                                    discoverRows.isNotEmpty)
-                                  const SizedBox(height: 12),
-                                if (_scope != 'joined') ...[
-                                  SectionTitle(
-                                    'Discover communities',
-                                    subtitle: 'Find a space that fits your game',
-                                  ),
-                                  const SizedBox(height: 8),
-                                  ...discoverRows.map((row) {
-                                    final id = row['id']?.toString() ?? '';
-                                    final membership = memberships[id];
-                                    return _CommunityDataCard(
-                                      row: row,
-                                      membership: membership,
-                                      joining: _joining.contains(id),
-                                      onJoin: () => _join(row),
-                                      onOpen: () => _open(row, membership),
-                                    );
-                                  }),
-                                ],
-                              ],
-                            ],
-                          ),
-                        ),
-            ),
+            Expanded(child: rightPane),
           ],
         );
       },
     );
   }
 }
-
 class _DirectoryData {
   const _DirectoryData(this.communities, this.memberships);
   final List<Map<String, dynamic>> communities;
@@ -705,11 +802,13 @@ class _PreviewCommunityCard extends StatelessWidget {
       );
 }
 
-class _CommunityDataCard extends StatelessWidget {
-  const _CommunityDataCard({
+class _CommunitySidebarTile extends StatelessWidget {
+  const _CommunitySidebarTile({
     required this.row,
     required this.membership,
     required this.joining,
+    required this.selected,
+    required this.desktop,
     required this.onJoin,
     required this.onOpen,
   });
@@ -717,6 +816,8 @@ class _CommunityDataCard extends StatelessWidget {
   final Map<String, dynamic> row;
   final Map<String, dynamic>? membership;
   final bool joining;
+  final bool selected;
+  final bool desktop;
   final VoidCallback onJoin;
   final VoidCallback onOpen;
 
@@ -724,146 +825,124 @@ class _CommunityDataCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final joined = membership != null;
     final isPublic = (row['visibility']?.toString() ?? 'public') == 'public';
-    final role = membership?['role']?.toString() ?? 'member';
     final name = row['name']?.toString() ?? 'Community';
-    final description = row['description']?.toString() ?? '';
     final count = row['member_count']?.toString() ?? '1';
+    final role = membership?['role']?.toString() ?? 'member';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 7),
+      margin: const EdgeInsets.only(bottom: 4),
       decoration: BoxDecoration(
-        color: KomnivoTheme.surface,
-        borderRadius: BorderRadius.circular(14),
+        color: selected
+            ? KomnivoTheme.accent.withValues(alpha: .11)
+            : KomnivoTheme.surface,
+        borderRadius: BorderRadius.circular(11),
         border: Border.all(
-          color: joined
-              ? KomnivoTheme.accent.withValues(alpha: .38)
-              : KomnivoTheme.line,
+          color: selected
+              ? KomnivoTheme.accent.withValues(alpha: .62)
+              : KomnivoTheme.line.withValues(alpha: .7),
         ),
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(11),
         child: InkWell(
-          onTap: joined ? onOpen : null,
-          borderRadius: BorderRadius.circular(14),
+          onTap: (desktop || joined) ? onOpen : null,
+          borderRadius: BorderRadius.circular(11),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             child: Row(
               children: [
                 CommunityLogo(
                   name: name,
                   imagePath: row['icon_url']?.toString(),
-                  size: 46,
+                  size: 38,
                 ),
-                const SizedBox(width: 11),
+                const SizedBox(width: 9),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          _MembershipBadge(
-                            label: joined
-                                ? (role == 'owner' ? 'OWNER' : role.toUpperCase())
-                                : (isPublic ? 'PUBLIC' : 'PRIVATE'),
-                          ),
-                        ],
-                      ),
-                      if (description.isNotEmpty) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          description,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: KomnivoTheme.muted,
-                            fontSize: 10,
-                          ),
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: selected ? Colors.white : null,
                         ),
-                      ],
-                      const SizedBox(height: 5),
+                      ),
+                      const SizedBox(height: 3),
                       Row(
                         children: [
                           const Icon(
                             Icons.people_outline,
-                            size: 13,
+                            size: 11,
                             color: KomnivoTheme.muted,
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '$count members',
-                            style: const TextStyle(
-                              color: KomnivoTheme.muted,
-                              fontSize: 10,
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              '$count members',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: KomnivoTheme.muted,
+                                fontSize: 9,
+                              ),
                             ),
                           ),
-                          if (!isPublic) ...[
-                            const SizedBox(width: 9),
+                          if (joined)
+                            Text(
+                              role == 'owner' ? 'OWNER' : 'JOINED',
+                              style: const TextStyle(
+                                color: KomnivoTheme.cyan,
+                                fontSize: 8,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: .4,
+                              ),
+                            )
+                          else if (!isPublic)
                             const Icon(
                               Icons.lock_outline,
                               size: 12,
                               color: KomnivoTheme.muted,
                             ),
-                            const SizedBox(width: 3),
-                            const Text(
-                              'Invite only',
-                              style: TextStyle(
-                                color: KomnivoTheme.muted,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ],
                         ],
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 6),
-                if (joined)
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: KomnivoTheme.cyan,
-                    size: 22,
-                  )
-                else if (isPublic)
+                const SizedBox(width: 5),
+                if (!joined && isPublic)
                   TextButton(
                     onPressed: joining ? null : onJoin,
                     style: TextButton.styleFrom(
-                      minimumSize: const Size(48, 34),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(42, 28),
+                      padding: const EdgeInsets.symmetric(horizontal: 7),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.compact,
                     ),
                     child: joining
                         ? const SizedBox(
-                            width: 14,
-                            height: 14,
+                            width: 13,
+                            height: 13,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Text(
                             'Join',
-                            style: TextStyle(fontWeight: FontWeight.w800),
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
                           ),
                   )
-                else
+                else if (joined)
                   const Icon(
-                    Icons.lock_outline,
-                    color: KomnivoTheme.muted,
-                    size: 18,
-                  ),
+                    Icons.chevron_right_rounded,
+                    color: KomnivoTheme.cyan,
+                    size: 19,
+                  )
+                else
+                  const SizedBox(width: 19),
               ],
             ),
           ),
@@ -873,20 +952,209 @@ class _CommunityDataCard extends StatelessWidget {
   }
 }
 
-class _MembershipBadge extends StatelessWidget {
-  const _MembershipBadge({required this.label});
-  final String label;
+class _CommunityPreviewPane extends StatelessWidget {
+  const _CommunityPreviewPane({
+    super.key,
+    required this.community,
+    required this.joining,
+    required this.onJoin,
+  });
+
+  final Map<String, dynamic> community;
+  final bool joining;
+  final VoidCallback onJoin;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = community['name']?.toString() ?? 'Community';
+    final description = community['description']?.toString().trim() ?? '';
+    final isPublic = (community['visibility']?.toString() ?? 'public') == 'public';
+
+    return Container(
+      color: KomnivoTheme.background,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 15, 20, 15),
+            decoration: BoxDecoration(
+              color: KomnivoTheme.surface,
+              border: Border(
+                bottom: BorderSide(color: KomnivoTheme.line.withValues(alpha: .8)),
+              ),
+            ),
+            child: Row(
+              children: [
+                CommunityLogo(
+                  name: name,
+                  imagePath: community['icon_url']?.toString(),
+                  size: 40,
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const Text(
+                        'COMMUNITY SERVER',
+                        style: TextStyle(
+                          color: KomnivoTheme.muted,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isPublic)
+                  FilledButton.icon(
+                    onPressed: joining ? null : onJoin,
+                    icon: joining
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.add, size: 17),
+                    label: const Text('Join'),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 38),
+                      padding: const EdgeInsets.symmetric(horizontal: 13),
+                    ),
+                  )
+                else
+                  const Chip(
+                    avatar: Icon(Icons.lock_outline, size: 14),
+                    label: Text('Invite only'),
+                    visualDensity: VisualDensity.compact,
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(22),
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: KomnivoTheme.surface,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: KomnivoTheme.line),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'ABOUT THIS COMMUNITY',
+                        style: TextStyle(
+                          color: KomnivoTheme.cyan,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        description.isEmpty
+                            ? 'No description has been added yet.'
+                            : description,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          height: 1.55,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Wrap(
+                        spacing: 9,
+                        runSpacing: 9,
+                        children: [
+                          _InfoPill(
+                            icon: Icons.people_outline,
+                            label: '${community['member_count'] ?? 1} members',
+                          ),
+                          _InfoPill(
+                            icon: isPublic ? Icons.public : Icons.lock_outline,
+                            label: isPublic ? 'PUBLIC' : 'INVITE ONLY',
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  isPublic
+                      ? 'Join this community to see its channels, meet players and take part in its activities.'
+                      : 'This community is invite-only. You will need an invitation from its owner or an admin.',
+                  style: const TextStyle(
+                    color: KomnivoTheme.muted,
+                    fontSize: 11,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CommunityWelcomePane extends StatelessWidget {
+  const _CommunityWelcomePane();
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-        decoration: BoxDecoration(
-          color: KomnivoTheme.accent.withValues(alpha: .13),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 9, fontWeight: FontWeight.w900),
+        color: KomnivoTheme.background,
+        alignment: Alignment.center,
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 76,
+                height: 76,
+                decoration: BoxDecoration(
+                  color: KomnivoTheme.surfaceRaised,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: KomnivoTheme.line),
+                ),
+                child: const Icon(
+                  Icons.groups_rounded,
+                  color: KomnivoTheme.cyan,
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Your community space',
+                style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 7),
+              const Text(
+                'Choose a server from the left to view its channels and details.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: KomnivoTheme.muted,
+                  fontSize: 12,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
         ),
       );
 }
