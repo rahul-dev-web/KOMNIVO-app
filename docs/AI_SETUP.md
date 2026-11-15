@@ -1,6 +1,6 @@
 # KOMNIVO AI — External Provider Setup and Testing
 
-Last updated: 14 November 2026
+Last updated: 15 November 2026
 
 This guide configures the free-first AI foundation already added to the KOMNIVO repository and connected Supabase project.
 
@@ -25,7 +25,7 @@ Cloudflare Workers Free includes 10,000 Neurons/day. Neurons measure GPU compute
 6. In **My Profile → API Tokens → Create Token → Create Custom Token**, name it `KOMNIVO Workers AI Read`.
 7. Under Permissions choose **Account → Workers AI → Read** (the permission name is `Workers AI Read` in Cloudflare's token permission list). Under Account Resources choose **Include → Specific account → Jarahul989@gmail.com's Account** only. Do not grant Zone, DNS, Workers deployment or account administration permissions.
 8. Create the token and copy it immediately. Cloudflare may not show the secret again.
-8. Keep both values private:
+9. Keep both values private:
    - Account ID → `CLOUDFLARE_ACCOUNT_ID`
    - API token → `CLOUDFLARE_API_TOKEN`
 
@@ -152,9 +152,9 @@ This deployment is the secure AI foundation and initial chat surface, not the co
 
 Not implemented in this first code slice:
 - PDF/DOCX/XLSX/CSV/PNG/JPEG/WebP/TXT/Markdown upload and source-linked extraction is implemented for the supported file types. Remaining: user-facing reprocessing/version comparison, richer spreadsheet row/column citations and OCR evaluation for complex images.
-- Document chunking, retrieval and version comparison.
-- Tool/function calling with typed action schemas.
-- Approval UI and execution of additional channel/role/permission/registration/scrim/score/result operations. Only the event-draft create action is implemented so far.
+- Document chunking, full-text retrieval and source references are implemented. Remaining: document reprocessing/version comparison, richer spreadsheet row/column citations and OCR evaluation for complex images.
+- Typed tool/function calling and a human approval flow are implemented for `propose_event_draft` only. Additional channel/category/role/permission/registration/scrim/score/result operations are still required.
+- Approval UI and server-side execution are implemented for event draft creation only; the resolver creates a DRAFT event and does not publish it.
 - Deterministic points-table ingestion, validation and standings publication.
 - Recurring scrim scheduling and notification automation.
 - Additional player-context workflows outside an explicitly opened event scope (for example, cross-event upcoming schedule and notifications).
