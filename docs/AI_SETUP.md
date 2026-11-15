@@ -207,3 +207,10 @@ Do not mark the AI system production-complete. Remaining engineering includes on
 ### Owner onboarding notification — 15 November 2026
 
 A successful community creation now inserts one `community_owner_ai_ready` notification only after the existing database bootstrap has created the creator's `owner` membership. The notification uses the existing `notifications` table and push pipeline, is idempotent per user/community, and is not backfilled for older communities. `notification-push` v11 maps this notification kind to the existing `event_push` preference so users' community-event push preferences are respected. The in-app notifications screen renders the new kind using its generic notification icon; the current Flutter UI has not otherwise been changed.
+
+
+### Unified proposal approval and conversation RLS — 15 November 2026
+
+Migration `202611150002_unified_ai_approval_scope` updates the private AI scope helper so a Player-labelled (legacy compatibility) conversation can be read/restored by the authenticated owner of that conversation when they have organizer permission for the exact selected community/event. It also allows an explicitly assigned event organiser to access that event's private scope without broadening access to unrelated community channels or records. The event participant/public-event rules remain in place for ordinary players.
+
+The transactional proposal resolver no longer requires `ai_conversations.mode = 'organizer'`. Approval remains service-role-only and rechecks the actor's current database permissions, exact conversation/event scope, expiry and proposal state before creating a DRAFT event. A conversation mode label is not an authorization control.
