@@ -96,7 +96,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
       // Keep the server list and selected community side by side on phones,
       // tablets and desktop. Only very narrow viewports use the detail route.
-      if (MediaQuery.sizeOf(context).width >= 360) {
+      if (MediaQuery.sizeOf(context).width >= 320) {
         _refresh();
       } else {
         await Navigator.of(context).push<void>(
@@ -142,7 +142,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
     Map<String, dynamic>? membership,
   ) {
     final id = community['id']?.toString() ?? '';
-    if (MediaQuery.sizeOf(context).width >= 360) {
+    if (MediaQuery.sizeOf(context).width >= 320) {
       setState(() => _selectedCommunityId = id);
       return;
     }
@@ -164,19 +164,62 @@ class _CommunityScreenState extends State<CommunityScreen> {
     });
   }
 
-  Widget _directoryHeader({
+  Future<void> _showCommunitySearch() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Find a community'),
+        content: SizedBox(
+          width: 420,
+          child: TextField(
+            controller: _searchController,
+            autofocus: true,
+            onChanged: (_) {
+              if (mounted) setState(() {});
+            },
+            onSubmitted: (_) => Navigator.of(dialogContext).pop(),
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Search by community name or description',
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      onPressed: () {
+                        _searchController.clear();
+                        if (mounted) setState(() {});
+                      },
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _searchController.clear();
+              if (mounted) setState(() {});
+              Navigator.of(dialogContext).pop();
+            },
+            child: const Text('Clear'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _railHeader({
     required int total,
     required int joined,
   }) {
-    final compact = MediaQuery.sizeOf(context).width < 600;
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(
-        compact ? 8 : 13,
-        compact ? 9 : 12,
-        compact ? 8 : 13,
-        compact ? 8 : 11,
-      ),
+      padding: const EdgeInsets.fromLTRB(7, 10, 7, 9),
       decoration: BoxDecoration(
         color: KomnivoTheme.surface,
         border: Border(
@@ -184,77 +227,72 @@ class _CommunityScreenState extends State<CommunityScreen> {
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Communities',
-                  style: TextStyle(
-                    fontSize: compact ? 13 : 17,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -.25,
-                  ),
-                ),
-              ),
-              IconButton.filledTonal(
-                tooltip: 'Create community',
-                visualDensity: VisualDensity.compact,
-                onPressed: _create,
-                icon: const Icon(Icons.add_rounded, size: 19),
-                style: IconButton.styleFrom(
-                  minimumSize: Size.square(compact ? 32 : 36),
-                  maximumSize: Size.square(compact ? 32 : 36),
-                  padding: EdgeInsets.zero,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: compact ? 6 : 9),
-          SizedBox(
-            height: compact ? 35 : 39,
-            child: TextField(
-              controller: _searchController,
-              onChanged: (_) => setState(() {}),
-              textInputAction: TextInputAction.search,
-              style: TextStyle(fontSize: compact ? 10 : 12),
-              decoration: InputDecoration(
-                hintText: compact ? 'Search' : 'Search communities',
-                prefixIcon: Icon(Icons.search, size: compact ? 16 : 18),
-                suffixIcon: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'Clear search',
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {});
-                        },
-                        icon: const Icon(Icons.close, size: 16),
-                      ),
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(11),
-                ),
+          IconButton.filledTonal(
+            tooltip: 'Search communities',
+            onPressed: _showCommunitySearch,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.search_rounded, size: 19),
+            style: IconButton.styleFrom(
+              minimumSize: const Size.square(42),
+              maximumSize: const Size.square(42),
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
               ),
             ),
           ),
-          SizedBox(height: compact ? 6 : 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _scopeChip(compact ? 'All' : 'All $total', 'all'),
-                const SizedBox(width: 4),
-                _scopeChip(compact ? 'Joined' : 'Joined $joined', 'joined'),
-                const SizedBox(width: 5),
-                _scopeChip('Discover', 'discover'),
-              ],
+          const SizedBox(height: 7),
+          PopupMenuButton<String>(
+            tooltip: 'Filter communities',
+            initialValue: _scope,
+            onSelected: (value) => setState(() => _scope = value),
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'all',
+                child: Text('All communities ($total)'),
+              ),
+              PopupMenuItem(
+                value: 'joined',
+                child: Text('Joined ($joined)'),
+              ),
+              const PopupMenuItem(
+                value: 'discover',
+                child: Text('Discover'),
+              ),
+            ],
+            child: Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: KomnivoTheme.surfaceRaised,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: _scope == 'all'
+                      ? KomnivoTheme.line
+                      : KomnivoTheme.accent.withValues(alpha: .65),
+                ),
+              ),
+              child: Icon(
+                Icons.filter_list_rounded,
+                size: 19,
+                color: _scope == 'all' ? KomnivoTheme.muted : KomnivoTheme.cyan,
+              ),
+            ),
+          ),
+          const SizedBox(height: 7),
+          IconButton.filledTonal(
+            tooltip: 'Create community',
+            onPressed: _create,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.add_rounded, size: 20),
+            style: IconButton.styleFrom(
+              minimumSize: const Size.square(42),
+              maximumSize: const Size.square(42),
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
           ),
         ],
@@ -262,31 +300,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
-  Widget _scopeChip(String label, String value) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: _scope == value,
-      onSelected: (_) => setState(() => _scope = value),
-      showCheckmark: false,
-      visualDensity: VisualDensity.compact,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 0),
-      side: BorderSide(
-        color: _scope == value
-            ? KomnivoTheme.accent.withValues(alpha: .55)
-            : KomnivoTheme.line,
-      ),
-      backgroundColor: KomnivoTheme.surfaceRaised.withValues(alpha: .55),
-      selectedColor: KomnivoTheme.accent.withValues(alpha: .18),
-    );
-  }
-
-  Widget _directoryList({
+  Widget _communityRail({
     required List<Map<String, dynamic>> communities,
     required Map<String, Map<String, dynamic>> memberships,
-    required bool desktop,
-    required bool compact,
     required String? selectedId,
   }) {
     return RefreshIndicator(
@@ -301,48 +317,34 @@ class _CommunityScreenState extends State<CommunityScreen> {
       },
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
-        itemCount: communities.length,
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        itemCount: communities.isEmpty ? 1 : communities.length,
         itemBuilder: (context, index) {
+          if (communities.isEmpty) {
+            return SizedBox(
+              height: 76,
+              child: Tooltip(
+                message: _searchController.text.trim().isNotEmpty
+                    ? 'No matching communities'
+                    : 'No communities in this filter',
+                child: const Icon(
+                  Icons.groups_outlined,
+                  color: KomnivoTheme.muted,
+                  size: 22,
+                ),
+              ),
+            );
+          }
+
           final row = communities[index];
           final id = row['id']?.toString() ?? '';
-          final membership = memberships[id];
-          return _CommunitySidebarTile(
+          return _CommunityRailTile(
             row: row,
-            membership: membership,
-            joining: _joining.contains(id),
-            selected: desktop && id == selectedId,
-            desktop: desktop,
-            compact: compact,
-            onJoin: () => _join(row),
-            onOpen: () => _open(row, membership),
+            joined: memberships.containsKey(id),
+            selected: id == selectedId,
+            onOpen: () => _open(row, memberships[id]),
           );
         },
-      ),
-    );
-  }
-
-  Widget _emptyDirectory({
-    required String title,
-    required String message,
-    required IconData icon,
-  }) {
-    return RefreshIndicator(
-      onRefresh: () async {
-        final next = _load();
-        setState(() => _future = next);
-        try {
-          await next;
-        } catch (_) {
-          // FutureBuilder displays the refreshed error.
-        }
-      },
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          const SizedBox(height: 70),
-          EmptyState(title: title, message: message, icon: icon),
-        ],
       ),
     );
   }
@@ -424,46 +426,31 @@ class _CommunityScreenState extends State<CommunityScreen> {
             : (directoryRows.isNotEmpty ? directoryRows.first : null);
 
         final screenWidth = MediaQuery.sizeOf(context).width;
-        final isDesktop = screenWidth >= 360;
-        final isCompactSplitView = screenWidth < 600;
+        final railWidth = screenWidth < 400 ? 66.0 : (screenWidth < 600 ? 74.0 : 82.0);
 
-        Widget listContent;
+        Widget railContent;
         if (snapshot.connectionState == ConnectionState.waiting && data == null) {
-          listContent = const Center(child: CircularProgressIndicator());
-        } else if (snapshot.hasError) {
-          listContent = EmptyState(
-            title: 'Could not load communities',
-            message: snapshot.error.toString(),
-            icon: Icons.error_outline,
+          railContent = const Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
           );
-        } else if (directoryRows.isEmpty) {
-          listContent = _emptyDirectory(
-            title: query.isNotEmpty ? 'No matching communities' : 'Nothing here yet',
-            message: query.isNotEmpty
-                ? 'Try another community name.'
-                : _scope == 'joined'
-                    ? 'Join a public community to see it here.'
-                    : 'Create a community or explore spaces to join.',
-            icon: Icons.groups_outlined,
+        } else if (snapshot.hasError) {
+          railContent = const Center(
+            child: Tooltip(
+              message: 'Could not load communities',
+              child: Icon(Icons.error_outline, color: KomnivoTheme.muted),
+            ),
           );
         } else {
-          listContent = _directoryList(
+          railContent = _communityRail(
             communities: directoryRows,
             memberships: memberships,
-            desktop: isDesktop,
-            compact: isCompactSplitView,
             selectedId: selectedCommunity?['id']?.toString(),
           );
         }
-
-        final directoryPane = Column(
-          children: [
-            _directoryHeader(total: rows.length, joined: memberships.length),
-            Expanded(child: listContent),
-          ],
-        );
-
-        if (!isDesktop) return directoryPane;
 
         final selectedMembership = selectedCommunity == null
             ? null
@@ -489,13 +476,20 @@ class _CommunityScreenState extends State<CommunityScreen> {
                     onJoin: () => _join(selectedCommunity!),
                   );
 
-        final sidebarWidth = isCompactSplitView
-            ? (screenWidth * .38).clamp(132.0, 220.0).toDouble()
-            : (screenWidth * .29).clamp(220.0, 350.0).toDouble();
-
         return Row(
           children: [
-            SizedBox(width: sidebarWidth, child: directoryPane),
+            SizedBox(
+              width: railWidth,
+              child: Container(
+                color: KomnivoTheme.surface,
+                child: Column(
+                  children: [
+                    _railHeader(total: rows.length, joined: memberships.length),
+                    Expanded(child: railContent),
+                  ],
+                ),
+              ),
+            ),
             VerticalDivider(
               width: 1,
               thickness: 1,
@@ -816,156 +810,84 @@ class _PreviewCommunityCard extends StatelessWidget {
       );
 }
 
-class _CommunitySidebarTile extends StatelessWidget {
-  const _CommunitySidebarTile({
+class _CommunityRailTile extends StatelessWidget {
+  const _CommunityRailTile({
     required this.row,
-    required this.membership,
-    required this.joining,
+    required this.joined,
     required this.selected,
-    required this.desktop,
-    required this.compact,
-    required this.onJoin,
     required this.onOpen,
   });
 
   final Map<String, dynamic> row;
-  final Map<String, dynamic>? membership;
-  final bool joining;
+  final bool joined;
   final bool selected;
-  final bool desktop;
-  final bool compact;
-  final VoidCallback onJoin;
   final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
-    final joined = membership != null;
-    final isPublic = (row['visibility']?.toString() ?? 'public') == 'public';
     final name = row['name']?.toString() ?? 'Community';
-    final count = row['member_count']?.toString() ?? '1';
-    final role = membership?['role']?.toString() ?? 'member';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 4),
-      decoration: BoxDecoration(
-        color: selected
-            ? KomnivoTheme.accent.withValues(alpha: .11)
-            : KomnivoTheme.surface,
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(
-          color: selected
-              ? KomnivoTheme.accent.withValues(alpha: .62)
-              : KomnivoTheme.line.withValues(alpha: .7),
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(11),
-        child: InkWell(
-          onTap: (desktop || joined) ? onOpen : null,
-          borderRadius: BorderRadius.circular(11),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: compact ? 6 : 8,
-              vertical: compact ? 5 : 6,
-            ),
-            child: Row(
-              children: [
-                CommunityLogo(
-                  name: name,
-                  imagePath: row['icon_url']?.toString(),
-                  size: compact ? 30 : 38,
-                ),
-                SizedBox(width: compact ? 6 : 9),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: compact ? 10 : 12,
-                          fontWeight: FontWeight.w800,
-                          color: selected ? Colors.white : null,
-                        ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      child: Tooltip(
+        message: name,
+        waitDuration: const Duration(milliseconds: 350),
+        child: SizedBox(
+          width: 52,
+          height: 54,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                child: Material(
+                  color: selected
+                      ? KomnivoTheme.accent.withValues(alpha: .18)
+                      : KomnivoTheme.surfaceRaised.withValues(alpha: .55),
+                  borderRadius: BorderRadius.circular(16),
+                  child: InkWell(
+                    onTap: onOpen,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(3),
+                      child: CommunityLogo(
+                        name: name,
+                        imagePath: row['icon_url']?.toString(),
+                        size: 46,
                       ),
-                      if (!compact) ...[
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.people_outline,
-                              size: 11,
-                              color: KomnivoTheme.muted,
-                            ),
-                            const SizedBox(width: 3),
-                            Expanded(
-                              child: Text(
-                                '$count members',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: KomnivoTheme.muted,
-                                  fontSize: 9,
-                                ),
-                              ),
-                            ),
-                            if (joined)
-                              Text(
-                                role == 'owner' ? 'OWNER' : 'JOINED',
-                                style: const TextStyle(
-                                  color: KomnivoTheme.cyan,
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: .4,
-                                ),
-                              )
-                            else if (!isPublic)
-                              const Icon(
-                                Icons.lock_outline,
-                                size: 12,
-                                color: KomnivoTheme.muted,
-                              ),
-                          ],
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 5),
-                if (!compact && !joined && isPublic)
-                  TextButton(
-                    onPressed: joining ? null : onJoin,
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(42, 28),
-                      padding: const EdgeInsets.symmetric(horizontal: 7),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
+              ),
+              if (selected)
+                Positioned(
+                  left: -7,
+                  top: 11,
+                  bottom: 11,
+                  child: Container(
+                    width: 3,
+                    decoration: BoxDecoration(
+                      color: KomnivoTheme.cyan,
+                      borderRadius: BorderRadius.circular(3),
                     ),
-                    child: joining
-                        ? const SizedBox(
-                            width: 13,
-                            height: 13,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text(
-                            'Join',
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
-                          ),
-                  )
-                else if (joined)
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: KomnivoTheme.cyan,
-                    size: 19,
-                  )
-                else if (!compact)
-                  const SizedBox(width: 19),
-              ],
-            ),
+                  ),
+                ),
+              if (joined)
+                Positioned(
+                  right: -1,
+                  bottom: -1,
+                  child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: KomnivoTheme.cyan,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: KomnivoTheme.surface,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
