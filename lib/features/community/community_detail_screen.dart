@@ -147,7 +147,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   Widget _sectionTitle(String title, {Widget? trailing}) {
     final compact = widget.embedded && MediaQuery.sizeOf(context).width < 600;
     return Padding(
-        padding: EdgeInsets.fromLTRB(2, compact ? 12 : 18, 2, compact ? 6 : 9),
+        padding: EdgeInsets.fromLTRB(2, compact ? 8 : 15, 2, compact ? 4 : 7),
         child: Row(
           children: [
             Text(
@@ -180,7 +180,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     final tint = isVoice ? KomnivoTheme.cyan : KomnivoTheme.muted;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 5),
+      margin: const EdgeInsets.only(bottom: 3),
       decoration: BoxDecoration(
         color: KomnivoTheme.surface,
         borderRadius: BorderRadius.circular(12),
@@ -195,13 +195,13 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
           child: Padding(
             padding: EdgeInsets.symmetric(
               horizontal: compact ? 7 : 10,
-              vertical: compact ? 6 : 8,
+              vertical: compact ? 5 : 7,
             ),
             child: Row(
               children: [
                 Container(
-                  width: compact ? 27 : 34,
-                  height: compact ? 27 : 34,
+                  width: compact ? 28 : 34,
+                  height: compact ? 28 : 34,
                   decoration: BoxDecoration(
                     color: KomnivoTheme.surfaceRaised,
                     borderRadius: BorderRadius.circular(10),
@@ -218,7 +218,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: compact ? 10 : 12,
+                          fontSize: compact ? 12 : 13,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -318,7 +318,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: compact ? 11 : 14,
+                      fontSize: compact ? 13 : 15,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -495,7 +495,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                   isDense: true,
                 ),
               ),
-              SizedBox(height: compact ? 7 : 13),
+              SizedBox(height: compact ? 5 : 10),
               _sectionTitle(
                 'Channels',
                 trailing: Row(
