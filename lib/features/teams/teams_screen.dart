@@ -15,19 +15,12 @@ class TeamsScreen extends StatefulWidget {
 }
 
 class _TeamsScreenState extends State<TeamsScreen> {
-  final TextEditingController _searchController = TextEditingController();
   Future<_TeamHomeData>? _homeFuture;
   String? _selectedMyTeamId;
   @override
   void initState() {
     super.initState();
     if (!widget.preview) _reload();
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   void _reload() {
