@@ -16,8 +16,8 @@ class TeamsScreen extends StatefulWidget {
 
 class _TeamsScreenState extends State<TeamsScreen> {
   final TextEditingController _searchController = TextEditingController();
-  Future<List<Map<String, dynamic>>>? _future;
-  Future<List<Map<String, dynamic>>>? _invitesFuture;
+  Future<_TeamHomeData>? _homeFuture;
+  String? _selectedMyTeamId;
   @override
   void initState() {
     super.initState();
@@ -31,15 +31,40 @@ class _TeamsScreenState extends State<TeamsScreen> {
   }
 
   void _reload() {
-    setState(() {
-      _future = KomnivoRepository.instance.teams();
-      final client = Supabase.instance.client;
-      _invitesFuture = client.from('team_invites')
-        .select('*, teams(name,tag)')
-        .eq('invited_user_id', client.auth.currentUser!.id)
+    setState(() => _homeFuture = _loadHome());
+  }
+
+  Future<_TeamHomeData> _loadHome() async {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) throw Exception('Sign in to view your team clubhouse.');
+
+    final memberRows = await client
+        .from('team_members')
+        .select('role,joined_at,teams(*,games(name),team_members(count))')
+        .eq('user_id', userId)
+        .order('joined_at', ascending: true);
+
+    final teams = <Map<String, dynamic>>[];
+    for (final row in List<Map<String, dynamic>>.from(memberRows)) {
+      if (row['teams'] is Map) {
+        final team = Map<String, dynamic>.from(row['teams'] as Map);
+        team['current_user_role'] = row['role']?.toString() ?? 'member';
+        teams.add(team);
+      }
+    }
+
+    final inviteRows = await client
+        .from('team_invites')
+        .select('id,status,created_at,teams(id,name,tag,game_id,games(name),team_members(count))')
+        .eq('invited_user_id', userId)
         .eq('status', 'pending')
         .order('created_at', ascending: false);
-    });
+
+    return _TeamHomeData(
+      teams: teams,
+      invites: List<Map<String, dynamic>>.from(inviteRows),
+    );
   }
 
   Future<void> _createTeam() async {
@@ -56,7 +81,12 @@ class _TeamsScreenState extends State<TeamsScreen> {
     ));
     if (ok != true || name.text.trim().isEmpty || !mounted) return;
     try {
-      await KomnivoRepository.instance.createTeam(name: name.text.trim(), tag: tag.text.trim(), gameId: freeFireGameId);
+      final created = await KomnivoRepository.instance.createTeam(
+        name: name.text.trim(),
+        tag: tag.text.trim(),
+        gameId: freeFireGameId,
+      );
+      _selectedMyTeamId = created['id']?.toString();
       _reload();
       if (mounted) showMessage(context, 'Team created. You are its owner.');
     } catch (error) { if (mounted) showMessage(context, error.toString()); }
@@ -170,250 +200,310 @@ class _TeamsScreenState extends State<TeamsScreen> {
         team: team,
         preview: widget.preview,
         onInvite: _invitePlayer,
+        onSearch: _searchTeams,
+        showBackButton: true,
       ),
     ));
     if (mounted && !widget.preview) _reload();
   }
 
-  Widget _directory({
-    required List<Map<String, dynamic>> teams,
-    required List<Map<String, dynamic>> invites,
-    required bool preview,
-  }) {
-    final query = _searchController.text.trim().toLowerCase();
-    final filtered = teams.where((team) {
-      final name = (team['name']?.toString() ?? '').toLowerCase();
-      final tag = (team['tag']?.toString() ?? '').toLowerCase();
-      return query.isEmpty || name.contains(query) || tag.contains(query);
-    }).toList();
+  Future<void> _searchTeams() async {
+    if (widget.preview) {
+      showMessage(context, 'Team search is available after connecting your account.');
+      return;
+    }
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        if (preview) return;
-        final next = KomnivoRepository.instance.teams();
-        setState(() => _future = next);
-        try { await next; } catch (_) {}
-      },
-      child: LayoutBuilder(builder: (context, constraints) {
-        final compact = constraints.maxWidth < 480;
-        final desktop = constraints.maxWidth >= 900;
-        return ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(compact ? 16 : 28, 18, compact ? 16 : 28, 28),
-          children: [
-            if (preview) const PreviewBanner(),
-            Row(children: [
-              Container(
-                width: 46, height: 46,
-                decoration: BoxDecoration(
-                  gradient: KomnivoTheme.brandGradient,
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: const Icon(Icons.shield_moon_rounded, color: Colors.white, size: 25),
+    final search = TextEditingController();
+    List<Map<String, dynamic>> results = [];
+    bool searching = false;
+    String? errorText;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          Future<void> runSearch() async {
+            final query = search.text.trim();
+            if (query.length < 2) {
+              setDialogState(() {
+                errorText = 'Enter at least 2 characters.';
+                results = [];
+              });
+              return;
+            }
+
+            setDialogState(() {
+              searching = true;
+              errorText = null;
+              results = [];
+            });
+
+            try {
+              final rows = await Supabase.instance.client
+                  .from('teams')
+                  .select('*,games(name),team_members(count)')
+                  .eq('is_public', true)
+                  .ilike('name', '%$query%')
+                  .order('name')
+                  .limit(20);
+              setDialogState(() {
+                results = List<Map<String, dynamic>>.from(rows);
+              });
+            } catch (error) {
+              setDialogState(() => errorText = error.toString());
+            } finally {
+              setDialogState(() => searching = false);
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('Find a team'),
+            content: SizedBox(
+              width: 480,
+              height: MediaQuery.sizeOf(dialogContext).height * .58,
+              child: Column(
+                children: [
+                  TextField(
+                    controller: search,
+                    autofocus: true,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: 'Search by team name',
+                      prefixIcon: const Icon(Icons.search_rounded),
+                      suffixIcon: IconButton(
+                        onPressed: searching ? null : runSearch,
+                        icon: const Icon(Icons.arrow_forward_rounded),
+                      ),
+                    ),
+                    onSubmitted: (_) => runSearch(),
+                  ),
+                  const SizedBox(height: 12),
+                  if (searching) const LinearProgressIndicator(),
+                  if (errorText != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(
+                        errorText!,
+                        style: const TextStyle(
+                          color: KomnivoTheme.danger,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  if (results.isEmpty && !searching && errorText == null)
+                    const Expanded(
+                      child: Center(
+                        child: Text(
+                          'Search public teams by name. Team UID search can be added later.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: KomnivoTheme.muted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    )
+                  else if (results.isNotEmpty)
+                    Expanded(
+                      child: ListView.separated(
+                        itemCount: results.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final team = results[index];
+                          final game = team['games'] is Map
+                              ? (team['games'] as Map)['name']?.toString()
+                              : null;
+                          final members = team['team_members'] is List &&
+                                  (team['team_members'] as List).isNotEmpty
+                              ? (((team['team_members'] as List).first as Map)['count'] as num?)?.toInt() ?? 0
+                              : 0;
+                          final tag = team['tag']?.toString() ?? 'TEAM';
+
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(vertical: 3),
+                            leading: _TeamEmblem(tag: tag, size: 42),
+                            title: Text(
+                              team['name']?.toString() ?? 'Team',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            subtitle: Text(
+                              (game ?? 'Esports team') + ' · ' + members.toString() + ' members',
+                            ),
+                            trailing: const Icon(
+                              Icons.open_in_new_rounded,
+                              color: KomnivoTheme.accent,
+                            ),
+                            onTap: () {
+                              Navigator.pop(dialogContext);
+                              _openTeam(team);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(child: Column(
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    search.dispose();
+  }
+
+  Widget _noTeamHome(List<Map<String, dynamic>> invites) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.shield_moon_rounded, color: KomnivoTheme.accent, size: 28),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Team Clubhouse', style: TextStyle(
-                    fontSize: compact ? 20 : 24,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -.6,
-                  )),
-                  const SizedBox(height: 3),
-                  Text(filtered.length.toString() + ' squads in your arena',
-                    style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
+                  Text('Team Clubhouse', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                  SizedBox(height: 3),
+                  Text('Your squad space starts here',
+                    style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
                 ],
-              )),
-              FilledButton.icon(
-                onPressed: _createTeam,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: Text(compact ? 'Create' : 'Create team'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(0, 42),
-                  padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 15),
-                ),
               ),
-            ]),
-            const SizedBox(height: 15),
-            SizedBox(height: 44, child: TextField(
-              controller: _searchController,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                hintText: 'Search teams by name or tag',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _searchController.text.isEmpty ? null : IconButton(
-                  onPressed: () { _searchController.clear(); setState(() {}); },
-                  icon: const Icon(Icons.close_rounded),
-                ),
-                isDense: true,
-              ),
-            )),
-            if (invites.isNotEmpty) ...[
-              const SizedBox(height: 19),
-              _ClubhouseInvites(invites: invites, onAccept: _acceptInvite),
-            ],
-            const SizedBox(height: 24),
-            _DirectoryHeading(
-              title: 'Squad Spaces',
-              subtitle: 'Every team has its own identity and clubhouse',
-              count: filtered.length,
             ),
-            const SizedBox(height: 11),
-            if (filtered.isEmpty)
-              _ClubhouseEmpty(
-                title: query.isEmpty ? 'Your clubhouse starts here' : 'No teams match your search',
-                message: query.isEmpty
-                  ? 'Create a team or accept an invitation to build your squad.'
-                  : 'Try another team name or tag.',
-                icon: Icons.shield_moon_outlined,
-              )
-            else
-              _ClubhouseGrid(teams: filtered, desktop: desktop, onOpen: _openTeam),
+            IconButton(
+              onPressed: _searchTeams,
+              tooltip: 'Search other teams',
+              icon: const Icon(Icons.search_rounded),
+            ),
           ],
-        );
-      }),
+        ),
+        const SizedBox(height: 24),
+        if (invites.isNotEmpty) ...[
+          _ClubhouseInvites(invites: invites, onAccept: _acceptInvite),
+          const SizedBox(height: 20),
+        ],
+        const _ClubhouseEmpty(
+          title: 'You are not in a team yet',
+          message: 'Create your own squad or search for a public team and explore its clubhouse.',
+          icon: Icons.shield_moon_outlined,
+        ),
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          onPressed: _createTeam,
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Create your team'),
+        ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     if (widget.preview) {
-      return _directory(
+      final previewTeam = <String, dynamic>{
+        'id': 'preview-komnivo',
+        'name': 'Komnivo',
+        'tag': 'KMNV',
+        'description': 'From scrims to championships, we rise as one.',
+        'games': {'name': 'Free Fire MAX'},
+        'team_members': [{'count': 6}],
+        'owner_user_id': 'preview-owner',
+        'is_public': true,
+      };
+      return _TeamClubhouseScreen(
+        team: previewTeam,
         preview: true,
-        invites: const [],
-        teams: [
-          {
-            'id': 'preview-komnivo',
-            'name': 'Komnivo',
-            'tag': 'KMNV',
-            'description': 'From scrims to championships, we rise as one.',
-            'games': {'name': 'Free Fire MAX'},
-            'team_members': [{'count': 6}],
-            'owner_user_id': '',
-          },
-          {
-            'id': 'preview-iron',
-            'name': 'Iron Wolves',
-            'tag': 'IRNW',
-            'description': 'Built for the final circle.',
-            'games': {'name': 'Free Fire MAX'},
-            'team_members': [{'count': 5}],
-            'owner_user_id': 'other',
-          },
-        ],
+        onInvite: _invitePlayer,
+        onSearch: _searchTeams,
+        showBackButton: false,
       );
     }
 
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _future,
+    return FutureBuilder<_TeamHomeData>(
+      future: _homeFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return _ClubhouseError(message: snapshot.error.toString(), onRetry: _reload);
+          return _ClubhouseError(
+            message: snapshot.error.toString(),
+            onRetry: _reload,
+          );
         }
-        return FutureBuilder<List<Map<String, dynamic>>>(
-          future: _invitesFuture,
-          builder: (context, inviteSnapshot) => _directory(
-            preview: false,
-            teams: snapshot.data ?? const [],
-            invites: inviteSnapshot.data ?? const [],
-          ),
+        final data = snapshot.data;
+        if (data == null) {
+          return _ClubhouseError(
+            message: 'Your team details could not be loaded.',
+            onRetry: _reload,
+          );
+        }
+
+        if (data.teams.isEmpty) return _noTeamHome(data.invites);
+
+        Map<String, dynamic> selectedTeam = data.teams.first;
+        if (_selectedMyTeamId != null) {
+          for (final team in data.teams) {
+            if (team['id']?.toString() == _selectedMyTeamId) {
+              selectedTeam = team;
+              break;
+            }
+          }
+        }
+        final selectedId = selectedTeam['id']?.toString();
+
+        return _TeamClubhouseScreen(
+          key: ValueKey(selectedId),
+          team: selectedTeam,
+          preview: false,
+          onInvite: _invitePlayer,
+          onSearch: _searchTeams,
+          showBackButton: false,
+          myTeams: data.teams,
+          selectedTeamId: selectedId,
+          onSelectTeam: (teamId) {
+            setState(() => _selectedMyTeamId = teamId);
+          },
         );
       },
     );
   }
 }
 
-
-class _ClubhouseGrid extends StatelessWidget {
-  const _ClubhouseGrid({required this.teams, required this.desktop, required this.onOpen});
+class _TeamHomeData {
+  const _TeamHomeData({required this.teams, required this.invites});
   final List<Map<String, dynamic>> teams;
-  final bool desktop;
-  final ValueChanged<Map<String, dynamic>> onOpen;
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
-    final columns = box.maxWidth >= 900 ? 3 : box.maxWidth >= 560 ? 2 : 1;
-    const gap = 12.0;
-    final width = (box.maxWidth - gap * (columns - 1)) / columns;
-    return Wrap(
-      spacing: gap, runSpacing: gap,
-      children: teams.map((team) => SizedBox(
-        width: width,
-        child: _ClubhouseTeamCard(team: team, onTap: () => onOpen(team)),
-      )).toList(),
-    );
-  });
-}
-
-class _ClubhouseTeamCard extends StatelessWidget {
-  const _ClubhouseTeamCard({required this.team, required this.onTap});
-  final Map<String, dynamic> team;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) {
-    final game = team['games'] is Map ? (team['games'] as Map)['name']?.toString() : null;
-    final rawMembers = team['team_members'];
-    final members = rawMembers is List && rawMembers.isNotEmpty
-      ? ((rawMembers.first as Map)['count'] as num?)?.toInt() ?? 0 : 0;
-    final tag = team['tag']?.toString() ?? 'TEAM';
-    return Material(
-      color: KomnivoTheme.surface,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: KomnivoTheme.line),
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              _TeamEmblem(tag: tag, size: 54),
-              const Spacer(),
-              const _ClubhousePill(label: 'CLUBHOUSE', color: KomnivoTheme.accent),
-            ]),
-            const SizedBox(height: 14),
-            Text(team['name']?.toString() ?? 'Team',
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 5),
-            Text((game ?? 'Free Fire MAX') + '  ·  #' + tag,
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
-            if ((team['description']?.toString() ?? '').isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(team['description'].toString(), maxLines: 2, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4)),
-            ],
-            const SizedBox(height: 15),
-            Row(children: [
-              const Icon(Icons.groups_2_outlined, size: 16, color: KomnivoTheme.cyan),
-              const SizedBox(width: 6),
-              Text(members.toString() + ' members',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11)),
-              const Spacer(),
-              const Text('Open clubhouse',
-                style: TextStyle(color: KomnivoTheme.accent, fontSize: 11, fontWeight: FontWeight.w800)),
-              const SizedBox(width: 4),
-              const Icon(Icons.arrow_forward_rounded, size: 14, color: KomnivoTheme.accent),
-            ]),
-          ]),
-        ),
-      ),
-    );
-  }
+  final List<Map<String, dynamic>> invites;
 }
 
 class _TeamClubhouseScreen extends StatefulWidget {
-  const _TeamClubhouseScreen({required this.team, required this.preview, required this.onInvite});
+  const _TeamClubhouseScreen({
+    super.key,
+    required this.team,
+    required this.preview,
+    required this.onInvite,
+    required this.onSearch,
+    this.showBackButton = true,
+    this.myTeams = const [],
+    this.selectedTeamId,
+    this.onSelectTeam,
+  });
   final Map<String, dynamic> team;
   final bool preview;
   final Future<void> Function(Map<String, dynamic>) onInvite;
+  final VoidCallback onSearch;
+  final bool showBackButton;
+  final List<Map<String, dynamic>> myTeams;
+  final String? selectedTeamId;
+  final ValueChanged<String>? onSelectTeam;
   @override
   State<_TeamClubhouseScreen> createState() => _TeamClubhouseScreenState();
 }
@@ -547,14 +637,54 @@ class _TeamClubhouseScreenState extends State<_TeamClubhouseScreen> {
               padding: EdgeInsets.fromLTRB(compact ? 16 : 28, 8, compact ? 16 : 28, 28),
               children: [
                 Row(children: [
-                  IconButton(onPressed: () => Navigator.pop(context),
-                    tooltip: 'Back to teams', icon: const Icon(Icons.arrow_back_rounded)),
-                  const Icon(Icons.shield_moon_rounded, size: 17, color: KomnivoTheme.accent),
-                  const SizedBox(width: 7),
-                  Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
-                  IconButton(onPressed: _reload, tooltip: 'Refresh',
-                    icon: const Icon(Icons.refresh_rounded, size: 19)),
+                  if (widget.showBackButton)
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      tooltip: 'Back to my team',
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    )
+                  else
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 10),
+                      child: Icon(Icons.shield_moon_rounded, size: 19, color: KomnivoTheme.accent),
+                    ),
+                  if (widget.myTeams.length > 1 && widget.onSelectTeam != null)
+                    Expanded(
+                      child: PopupMenuButton<String>(
+                        tooltip: 'Switch your team',
+                        initialValue: widget.selectedTeamId,
+                        onSelected: widget.onSelectTeam,
+                        itemBuilder: (context) => widget.myTeams.map((item) {
+                          final id = item['id']?.toString() ?? '';
+                          return PopupMenuItem<String>(
+                            value: id,
+                            child: Text(item['name']?.toString() ?? 'Team'),
+                          );
+                        }).toList(),
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                            ),
+                            const Icon(Icons.expand_more_rounded, size: 18, color: KomnivoTheme.muted),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
+                  IconButton(
+                    onPressed: widget.onSearch,
+                    tooltip: 'Search other teams',
+                    icon: const Icon(Icons.search_rounded, size: 21),
+                  ),
+                  IconButton(
+                    onPressed: _reload,
+                    tooltip: 'Refresh',
+                    icon: const Icon(Icons.refresh_rounded, size: 19),
+                  ),
                 ]),
                 if (widget.preview) const PreviewBanner(),
                 const SizedBox(height: 10),
