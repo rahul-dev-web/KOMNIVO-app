@@ -774,20 +774,6 @@ class _ClubhouseMetrics {
   final int points, matches, kills, firstPlaces;
 }
 
-class _DirectoryHeading extends StatelessWidget {
-  const _DirectoryHeading({required this.title, required this.subtitle, required this.count});
-  final String title, subtitle; final int count;
-  @override
-  Widget build(BuildContext context) => Row(children: [
-    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-      const SizedBox(height: 3),
-      Text(subtitle, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
-    ])),
-    _ClubhousePill(label: count.toString(), color: KomnivoTheme.cyan),
-  ]);
-}
-
 class _ClubhouseHero extends StatelessWidget {
   const _ClubhouseHero({required this.team, required this.name, required this.tag,
     required this.game, required this.memberCount, required this.canInvite, required this.onInvite});
