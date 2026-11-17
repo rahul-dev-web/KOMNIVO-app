@@ -419,10 +419,12 @@ async function requestCloudflare(
   messages: Array<{role: string; content: string}>,
   allowOrganizerTools: boolean,
 ) {
-  const accountId = Deno.env.get("CLOUDFLARE_ACCOUNT_ID");
-  const token = Deno.env.get("CLOUDFLARE_API_TOKEN");
+  // Trim dashboard secrets to avoid invisible whitespace breaking the URL
+  // or Authorization header. Never log the token or the complete account ID.
+  const accountId = Deno.env.get("CLOUDFLARE_ACCOUNT_ID")?.trim();
+  const token = Deno.env.get("CLOUDFLARE_API_TOKEN")?.trim();
   if (!accountId || !token) throw new Error("CLOUDFLARE_NOT_CONFIGURED");
-  const model = Deno.env.get("CLOUDFLARE_MODEL") || "@cf/qwen/qwen3.8-27b";
+  const model = (Deno.env.get("CLOUDFLARE_MODEL") || "@cf/qwen/qwen3.8-27b").trim();
   const response = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`,
     {
@@ -437,8 +439,23 @@ async function requestCloudflare(
   );
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(`CLOUDFLARE_HTTP_${response.status}`);
-    (error as Error & {retryable?: boolean}).retryable = response.status === 429 || response.status >= 500;
+    const firstProviderError = Array.isArray(data?.errors) ? data.errors[0] : null;
+    const providerCode = firstProviderError?.code ?? data?.code ?? null;
+    const providerMessage = String(
+      firstProviderError?.message ?? data?.error?.message ?? data?.message ?? "",
+    ).replace(/\\s+/g, " ").trim().slice(0, 240);
+    console.error("[komnivo-ai] Cloudflare inference rejected", JSON.stringify({
+      status: response.status,
+      accountIdSuffix: accountId.slice(-6),
+      model,
+      providerCode,
+      providerMessage,
+    }));
+    const error = new Error(
+      `CLOUDFLARE_HTTP_${response.status}${providerCode == null ? "" : `_CF_${providerCode}`}`,
+    ) as Error & {retryable?: boolean; providerMessage?: string};
+    error.retryable = response.status === 429 || response.status >= 500;
+    error.providerMessage = providerMessage || undefined;
     throw error;
   }
   const message = data?.choices?.[0]?.message;
@@ -925,6 +942,9 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error) {
     const code = error instanceof Error ? error.message : "AI_PROVIDER_ERROR";
+    const providerMessage = error instanceof Error
+      ? (error as Error & {providerMessage?: string}).providerMessage
+      : undefined;
     await admin.from("ai_runs").update({
       status: code.includes("429") ? "rate_limited" : "failed",
       error_code: code.slice(0, 80),
@@ -932,8 +952,9 @@ Deno.serve(async (req: Request) => {
       completed_at: new Date().toISOString(),
     }).eq("id", runRow.id);
     return json({
-      error: "The AI provider request failed. Check provider credentials, model availability and free-tier quota.",
+      error: "The AI provider request failed. Check the provider response details before changing model or quota settings.",
       code,
+      ...(providerMessage ? {provider_error: providerMessage} : {}),
     }, code.includes("429") ? 429 : 502);
   }
 });
