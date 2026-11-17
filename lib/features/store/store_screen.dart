@@ -281,17 +281,19 @@ class _StoreScreenState extends State<StoreScreen> {
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(compact ? 13 : 24, 17, compact ? 13 : 24, 13),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Row(
                       children: [
-                        Text(
-                          'New in Store',
-                          style: TextStyle(fontSize: compact ? 20 : 25, fontWeight: FontWeight.w900, letterSpacing: -.5),
+                        const Flexible(
+                          child: Text(
+                            'New in Store',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: -.5),
+                          ),
                         ),
                         const SizedBox(width: 8),
                         const _NewBadge(),
@@ -302,13 +304,41 @@ class _StoreScreenState extends State<StoreScreen> {
                       'Fresh talent, creative assets and esports services.',
                       style: TextStyle(color: KomnivoTheme.muted, fontSize: 11),
                     ),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _addButton(compact: true),
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'New in Store',
+                                style: TextStyle(fontSize: 25, fontWeight: FontWeight.w900, letterSpacing: -.5),
+                              ),
+                              SizedBox(width: 8),
+                              _NewBadge(),
+                            ],
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Fresh talent, creative assets and esports services.',
+                            style: TextStyle(color: KomnivoTheme.muted, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _addButton(compact: false),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              _addButton(compact: compact),
-            ],
-          ),
         ),
         Padding(
           padding: EdgeInsets.symmetric(horizontal: compact ? 13 : 24),
@@ -348,42 +378,86 @@ class _StoreScreenState extends State<StoreScreen> {
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(compact ? 11 : 22, 13, compact ? 11 : 22, 12),
-          child: Row(
-            children: [
-              IconButton(
-                tooltip: 'Back to Store categories',
-                onPressed: _backToStoreHome,
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.arrow_back_rounded),
-                style: IconButton.styleFrom(
-                  backgroundColor: KomnivoTheme.surfaceRaised,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              _ListingAvatar(icon: category.icon, tint: category.tint, size: compact ? 38 : 44),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      category.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: compact ? 17 : 21, fontWeight: FontWeight.w900),
+                    Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Back to Store categories',
+                          onPressed: _backToStoreHome,
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.arrow_back_rounded),
+                          style: IconButton.styleFrom(
+                            backgroundColor: KomnivoTheme.surfaceRaised,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _ListingAvatar(icon: category.icon, tint: category.tint, size: 38),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                category.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                              ),
+                              Text(
+                                '${listings.length} available listings',
+                                style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    Text(
-                      '${listings.length} available listings',
-                      style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _addButton(compact: true),
                     ),
                   ],
+                )
+              : Row(
+                  children: [
+                    IconButton(
+                      tooltip: 'Back to Store categories',
+                      onPressed: _backToStoreHome,
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      style: IconButton.styleFrom(
+                        backgroundColor: KomnivoTheme.surfaceRaised,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _ListingAvatar(icon: category.icon, tint: category.tint, size: 44),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            category.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                          ),
+                          Text(
+                            '${listings.length} available listings',
+                            style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    _addButton(compact: false),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 6),
-              _addButton(compact: compact),
-            ],
-          ),
         ),
         Padding(
           padding: EdgeInsets.symmetric(horizontal: compact ? 13 : 22),
