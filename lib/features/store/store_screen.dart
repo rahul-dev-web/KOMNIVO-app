@@ -741,10 +741,14 @@ class _StoreHeroBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).width < 600;
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(compact ? 15 : 21),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // This banner lives in the right pane of a split Store layout, so
+        // its own available width—not the full device width—controls density.
+        final compact = constraints.maxWidth < 420;
+        return Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(compact ? 15 : 21),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(19),
         gradient: const LinearGradient(
@@ -803,7 +807,9 @@ class _StoreHeroBanner extends StatelessWidget {
           ] else
             const SizedBox(width: 4),
         ],
-      ),
+        ),
+        );
+      },
     );
   }
 }
