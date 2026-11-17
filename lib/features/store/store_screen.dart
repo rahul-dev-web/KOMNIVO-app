@@ -394,6 +394,11 @@ class _StoreScreenState extends State<StoreScreen> {
             padding: EdgeInsets.fromLTRB(compact ? 13 : 22, 17, compact ? 13 : 22, 24),
             children: [
               Text(category.subtitle, style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4)),
+              const SizedBox(height: 4),
+              Text(
+                category.description,
+                style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4),
+              ),
               const SizedBox(height: 13),
               Row(
                 children: [
@@ -1122,7 +1127,7 @@ class _AddStoreListingDialogState extends State<_AddStoreListingDialog> {
                 ),
                 const SizedBox(height: 15),
                 DropdownButtonFormField<_StoreCategory>(
-                  value: _category,
+                  initialValue: _category,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Store category', prefixIcon: Icon(Icons.category_outlined)),
                   items: _storeCategories.map((category) => DropdownMenuItem(
@@ -1172,7 +1177,7 @@ class _AddStoreListingDialogState extends State<_AddStoreListingDialog> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _pricingMode,
+                  initialValue: _pricingMode,
                   decoration: const InputDecoration(labelText: 'Pricing model', prefixIcon: Icon(Icons.payments_outlined)),
                   items: (_isAsset
                       ? const [
