@@ -443,7 +443,7 @@ async function requestCloudflare(
     const providerCode = firstProviderError?.code ?? data?.code ?? null;
     const providerMessage = String(
       firstProviderError?.message ?? data?.error?.message ?? data?.message ?? "",
-    ).replace(/\\s+/g, " ").trim().slice(0, 240);
+    ).replace(/\s+/g, " ").trim().slice(0, 240);
     console.error("[komnivo-ai] Cloudflare inference rejected", JSON.stringify({
       status: response.status,
       accountIdSuffix: accountId.slice(-6),
