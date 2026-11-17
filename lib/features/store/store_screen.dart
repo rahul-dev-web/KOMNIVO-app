@@ -54,16 +54,16 @@ class _StoreScreenState extends State<StoreScreen> {
     if (!mounted) return;
     setState(() { _isLoading = true; _loadError = null; });
     try {
-      final results = await Future.wait([
-        KomnivoRepository.instance.storeListings(),
-        KomnivoRepository.instance.storeCartItems(),
-      ]);
-      final live = (results[0] as List<Map<String, dynamic>>).map(_listingFromRow).toList();
+      final listingsFuture = KomnivoRepository.instance.storeListings();
+      final cartFuture = KomnivoRepository.instance.storeCartItems();
+      final liveRows = await listingsFuture;
+      final cartRows = await cartFuture;
+      final live = liveRows.map(_listingFromRow).toList();
       if (!mounted) return;
       setState(() {
         _listings.removeWhere((item) => !item.isSample);
         _listings.insertAll(0, live);
-        _cartItems = results[1] as List<Map<String, dynamic>>;
+        _cartItems = cartRows;
       });
     } catch (error) {
       if (mounted) setState(() => _loadError = error.toString());
@@ -118,21 +118,6 @@ class _StoreScreenState extends State<StoreScreen> {
       _activeCategory = null;
       _query = '';
     });
-  }
-
-  Future<void> _addToStore() async {
-    final listing = await showDialog<_StoreListing>(
-      context: context,
-      builder: (_) => _AddStoreListingDialog(initialCategory: _selectedCategory),
-    );
-    if (listing == null || !mounted) return;
-
-    setState(() {
-      _listings.insert(0, listing);
-      _activeCategory = listing.categoryKey;
-      _query = '';
-    });
-    showMessage(context, 'Listing added to this session. Backend publishing is not connected yet.');
   }
 
   void _showListingDetails(_StoreListing listing) {
