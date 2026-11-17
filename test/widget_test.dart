@@ -4,6 +4,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:komnivo/core/komnivo_theme.dart';
 import 'package:komnivo/features/shell/app_shell.dart';
 
+Future<void> _pumpKOMNIVO(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(430, 900);
+  tester.view.devicePixelRatio = 1;
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: KomnivoTheme.dark,
+      home: const AppShell(preview: true),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+void _resetTestView(WidgetTester tester) {
+  tester.view.resetPhysicalSize();
+  tester.view.resetDevicePixelRatio();
+}
+
 void main() {
   test('KOMNIVO theme uses a dark visual system', () {
     expect(KomnivoTheme.dark.brightness, Brightness.dark);
@@ -12,18 +29,8 @@ void main() {
 
   testWidgets('Five core destinations use the approved order and Community home',
       (tester) async {
-    tester.view.physicalSize = const Size(430, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: KomnivoTheme.dark,
-        home: const AppShell(preview: true),
-      ),
-    );
-    await tester.pumpAndSettle();
+    addTearDown(() => _resetTestView(tester));
+    await _pumpKOMNIVO(tester);
 
     final navigationBar = find.byType(NavigationBar);
     expect(navigationBar, findsOneWidget);
@@ -38,17 +45,48 @@ void main() {
 
     expect(labels, ['Community', 'Compete', 'Store', 'Team', 'DM']);
     expect(tester.widget<NavigationBar>(navigationBar).selectedIndex, 0);
+  });
+
+  testWidgets('Store landing shows New in Store and full category names',
+      (tester) async {
+    addTearDown(() => _resetTestView(tester));
+    await _pumpKOMNIVO(tester);
 
     await tester.tap(find.text('Store'));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: 'Store landing should fit a 430px mobile viewport.');
+
     expect(find.text('New in Store'), findsOneWidget);
-    expect(find.text('Assets'), findsOneWidget);
+    for (final category in [
+      'Assets',
+      'Artists',
+      'Players',
+      'Coaches',
+      'Orgs',
+      'Management Team',
+    ]) {
+      expect(find.text(category), findsOneWidget);
+    }
+    expect(find.byTooltip('Add to Store'), findsOneWidget);
+  });
+
+  testWidgets('Selecting a Store category hides the sidebar and opens listings',
+      (tester) async {
+    addTearDown(() => _resetTestView(tester));
+    await _pumpKOMNIVO(tester);
+
+    await tester.tap(find.text('Store'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: 'Store landing should render before category navigation.');
 
     await tester.tap(find.text('Players').first);
     await tester.pumpAndSettle();
-    expect(find.text('Back to Store categories'), findsNothing);
+    expect(tester.takeException(), isNull, reason: 'Player listings should fit the full-width Store detail view.');
+
     expect(find.byTooltip('Back to Store categories'), findsOneWidget);
-    expect(find.text('Players'), findsOneWidget);
     expect(find.text('Assets'), findsNothing);
+    expect(find.text('Players'), findsOneWidget);
+    expect(find.text('RAVEN'), findsOneWidget);
+    expect(find.text('KAI'), findsOneWidget);
   });
 }
