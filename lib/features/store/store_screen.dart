@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
 
@@ -16,6 +18,70 @@ class _StoreScreenState extends State<StoreScreen> {
   String? _activeCategory;
   String _query = '';
   late final List<_StoreListing> _listings = List<_StoreListing>.from(_sampleListings);
+  List<Map<String, dynamic>> _cartItems = [];
+  bool _isLoading = false;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.preview) _loadMarketplace();
+  }
+
+  _StoreListing _listingFromRow(Map<String, dynamic> row) {
+    final key = row['category_key']?.toString() ?? 'assets';
+    final seller = row['seller'] is Map
+        ? Map<String, dynamic>.from(row['seller'] as Map)
+        : <String, dynamic>{};
+    return _StoreListing(
+      id: row['id']?.toString() ?? '',
+      categoryKey: key,
+      title: row['title']?.toString() ?? 'Untitled listing',
+      role: row['role']?.toString() ?? '',
+      description: row['description']?.toString() ?? '',
+      priceValue: (row['price_amount'] as num?)?.toDouble() ?? 0,
+      pricingMode: row['pricing_model']?.toString() ?? 'fixed',
+      icon: _categoryFor(key).icon,
+      game: row['game']?.toString() ?? '',
+      region: row['region']?.toString() ?? 'Remote',
+      isSample: false,
+      sellerId: row['seller_id']?.toString() ?? '',
+      sellerName: seller['display_name']?.toString() ?? 'KOMNIVO seller',
+    );
+  }
+
+  Future<void> _loadMarketplace() async {
+    if (!mounted) return;
+    setState(() { _isLoading = true; _loadError = null; });
+    try {
+      final results = await Future.wait([
+        KomnivoRepository.instance.storeListings(),
+        KomnivoRepository.instance.storeCartItems(),
+      ]);
+      final live = (results[0] as List<Map<String, dynamic>>).map(_listingFromRow).toList();
+      if (!mounted) return;
+      setState(() {
+        _listings.removeWhere((item) => !item.isSample);
+        _listings.insertAll(0, live);
+        _cartItems = results[1] as List<Map<String, dynamic>>;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _loadError = error.toString());
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  int get _cartCount => _cartItems.fold<int>(
+      0, (sum, item) => sum + ((item['quantity'] as num?)?.toInt() ?? 1));
+
+  double get _cartTotal => _cartItems.fold<double>(0, (sum, item) {
+    final raw = item['store_listings'];
+    if (raw is! Map) return sum;
+    final listing = Map<String, dynamic>.from(raw);
+    return sum + ((listing['price_amount'] as num?)?.toDouble() ?? 0) *
+        ((item['quantity'] as num?)?.toInt() ?? 1);
+  });
 
   _StoreCategory? get _selectedCategory {
     for (final category in _storeCategories) {
@@ -157,6 +223,271 @@ class _StoreScreenState extends State<StoreScreen> {
       },
     );
   }
+
+  Future<void> _addToStore() async {
+    final draft = await showDialog<_StoreListing>(
+      context: context,
+      builder: (_) => _AddStoreListingDialog(initialCategory: _selectedCategory),
+    );
+    if (draft == null || !mounted) return;
+    try {
+      if (widget.preview) {
+        setState(() {
+          _listings.insert(0, draft);
+          _activeCategory = draft.categoryKey;
+          _query = '';
+        });
+        showMessage(context, 'Preview listing added for this session only.');
+        return;
+      }
+      final row = await KomnivoRepository.instance.createStoreListing(
+        categoryKey: draft.categoryKey,
+        title: draft.title,
+        role: draft.role,
+        description: draft.description,
+        game: draft.game,
+        region: draft.region,
+        priceAmount: draft.priceValue,
+        pricingModel: draft.pricingMode,
+      );
+      if (!mounted) return;
+      setState(() {
+        _listings.insert(0, _listingFromRow(row));
+        _activeCategory = draft.categoryKey;
+        _query = '';
+      });
+      showMessage(context, 'Your listing is now published in Store.');
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not publish listing: $error');
+    }
+  }
+
+  Future<void> _refreshCart() async {
+    if (widget.preview) return;
+    final rows = await KomnivoRepository.instance.storeCartItems();
+    if (mounted) setState(() => _cartItems = rows);
+  }
+
+  Future<void> _addListingToCart(_StoreListing listing) async {
+    if (listing.isSample || widget.preview) {
+      showMessage(context, 'Demo listing: checkout is disabled for samples.');
+      return;
+    }
+    try {
+      await KomnivoRepository.instance.addStoreCartItem(listing.id);
+      await _refreshCart();
+      if (mounted) showMessage(context, 'Added to your cart.');
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not add to cart: $error');
+    }
+  }
+
+  Future<void> _openStoreWhatsApp(String message) async {
+    final uri = Uri.https('wa.me', '/919981977828', {'text': message});
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      showMessage(context, 'WhatsApp could not be opened. Number: +91 9981977828');
+    }
+  }
+
+  Future<void> _buyNow(_StoreListing listing) async {
+    if (listing.isSample || widget.preview) {
+      showMessage(context, 'Demo listing: real orders are disabled for samples.');
+      return;
+    }
+    try {
+      final order = await KomnivoRepository.instance.createStoreOrder([
+        {'listing_id': listing.id, 'quantity': 1},
+      ]);
+      final code = order['order_code']?.toString() ?? 'KOMNIVO order';
+      final total = (order['subtotal'] as num?)?.toDouble() ?? listing.priceValue;
+      await _openStoreWhatsApp(
+        'Hello KOMNIVO Store, I want to place this order.\n'
+        'Order: ${code}\nItem: ${listing.title}\n'
+        'Amount: ₹${total.toStringAsFixed(2)}\n'
+        'No payment has been made in the app. Please share the next steps.',
+      );
+      await _refreshCart();
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not create order: $error');
+    }
+  }
+
+  Future<void> _requestService(_StoreListing listing) async {
+    if (listing.isSample || widget.preview) {
+      showMessage(context, 'Demo listing: service requests are disabled for samples.');
+      return;
+    }
+    try {
+      final inquiry = await KomnivoRepository.instance.createStoreInquiry(
+        listingId: listing.id,
+        sellerId: listing.sellerId,
+        message: 'Interested in ${listing.title}. Please share availability and terms.',
+      );
+      await _openStoreWhatsApp(
+        'Hello KOMNIVO Store, I want to enquire about a service listing.\n'
+        'Listing: ${listing.title}\n'
+        'Category: ${_categoryFor(listing.categoryKey).title}\n'
+        'Pricing: ${listing.priceLabel}\n'
+        'Inquiry ID: ${inquiry['id']}\nPlease share the next steps.',
+      );
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not create inquiry: $error');
+    }
+  }
+
+  Future<void> _checkoutCart() async {
+    if (widget.preview || _cartItems.isEmpty) return;
+    final orderItems = _cartItems.map((item) {
+      final listing = Map<String, dynamic>.from(item['store_listings'] as Map);
+      return {'listing_id': listing['id'], 'quantity': (item['quantity'] as num?)?.toInt() ?? 1};
+    }).toList();
+    final summary = _cartItems.map((item) {
+      final listing = Map<String, dynamic>.from(item['store_listings'] as Map);
+      final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+      return '${listing['title']} × ${quantity}';
+    }).join('\n');
+    try {
+      final order = await KomnivoRepository.instance.createStoreOrder(orderItems);
+      final code = order['order_code']?.toString() ?? 'KOMNIVO order';
+      final total = (order['subtotal'] as num?)?.toDouble() ?? _cartTotal;
+      await _openStoreWhatsApp(
+        'Hello KOMNIVO Store, please process my order.\n'
+        'Order: ${code}\n${summary}\n'
+        'Total: ₹${total.toStringAsFixed(2)}\n'
+        'No payment has been made in the app. Please share the next steps.',
+      );
+      await _refreshCart();
+      if (mounted) showMessage(context, 'Order request created. Complete the conversation on WhatsApp.');
+    } catch (error) {
+      if (mounted) showMessage(context, 'Checkout failed: $error');
+    }
+  }
+
+  void _showCart() {
+    if (widget.preview) {
+      showMessage(context, 'Cart is available after signing in.');
+      return;
+    }
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refreshDialog) => AlertDialog(
+          title: Row(
+            children: [
+              const Expanded(child: Text('Your cart')),
+              Text('${_cartCount} items', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
+            ],
+          ),
+          content: SizedBox(
+            width: 520,
+            child: _cartItems.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 28),
+                    child: EmptyState(
+                      title: 'Your cart is empty',
+                      message: 'Add a one-time asset or license listing to continue.',
+                      icon: Icons.shopping_cart_outlined,
+                    ),
+                  )
+                : ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 420),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: _cartItems.length,
+                      separatorBuilder: (_, __) => const Divider(color: KomnivoTheme.line),
+                      itemBuilder: (context, index) {
+                        final item = _cartItems[index];
+                        final listing = Map<String, dynamic>.from(item['store_listings'] as Map);
+                        final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+                        final price = (listing['price_amount'] as num?)?.toDouble() ?? 0;
+                        return Row(
+                          children: [
+                            Expanded(child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(listing['title']?.toString() ?? 'Listing', style: const TextStyle(fontWeight: FontWeight.w800)),
+                                Text('₹${price.toStringAsFixed(2)} each', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
+                              ],
+                            )),
+                            IconButton(
+                              tooltip: 'Decrease quantity',
+                              onPressed: quantity <= 1 ? null : () async {
+                                await KomnivoRepository.instance.updateStoreCartQuantity(item['id'].toString(), quantity - 1);
+                                await _refreshCart();
+                                refreshDialog(() {});
+                              },
+                              icon: const Icon(Icons.remove_circle_outline),
+                            ),
+                            Text('${quantity}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                            IconButton(
+                              tooltip: 'Increase quantity',
+                              onPressed: quantity >= 20 ? null : () async {
+                                await KomnivoRepository.instance.updateStoreCartQuantity(item['id'].toString(), quantity + 1);
+                                await _refreshCart();
+                                refreshDialog(() {});
+                              },
+                              icon: const Icon(Icons.add_circle_outline),
+                            ),
+                            IconButton(
+                              tooltip: 'Remove item',
+                              onPressed: () async {
+                                await KomnivoRepository.instance.removeStoreCartItem(item['id'].toString());
+                                await _refreshCart();
+                                refreshDialog(() {});
+                              },
+                              icon: const Icon(Icons.delete_outline, color: KomnivoTheme.muted),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Continue shopping')),
+            if (_cartItems.isNotEmpty)
+              FilledButton.icon(
+                onPressed: () async {
+                  Navigator.pop(dialogContext);
+                  await _checkoutCart();
+                },
+                icon: const Icon(Icons.chat_bubble_outline, size: 17),
+                label: Text('Continue · ₹${_cartTotal.toStringAsFixed(0)}'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _storeActions({required bool compact}) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Stack(
+        clipBehavior: Clip.none,
+        children: [
+          IconButton.filledTonal(
+            tooltip: 'Open cart',
+            onPressed: _showCart,
+            icon: const Icon(Icons.shopping_cart_outlined),
+          ),
+          if (_cartCount > 0)
+            Positioned(
+              right: 0,
+              top: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(color: KomnivoTheme.accent, borderRadius: BorderRadius.circular(20)),
+                child: Text('${_cartCount}', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900)),
+              ),
+            ),
+        ],
+      ),
+      const SizedBox(width: 7),
+      _addButton(compact: compact),
+    ],
+  );
 
   Widget _addButton({required bool compact}) {
     if (compact) {
