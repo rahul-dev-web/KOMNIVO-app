@@ -366,6 +366,135 @@ class KomnivoRepository {
     return data;
   }
 
+  Future<List<Map<String, dynamic>>> storeListings() async {
+    final rows = await client.from('store_listings')
+        .select('*, seller:profiles!store_listings_seller_id_fkey(display_name, username, avatar_url)')
+        .eq('status', 'published')
+        .order('created_at', ascending: false)
+        .limit(100);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<List<Map<String, dynamic>>> myStoreListings() async {
+    final rows = await client.from('store_listings')
+        .select()
+        .eq('seller_id', userId)
+        .order('created_at', ascending: false)
+        .limit(100);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<Map<String, dynamic>> createStoreListing({
+    required String categoryKey,
+    required String title,
+    required String role,
+    required String description,
+    required String game,
+    required String region,
+    required double priceAmount,
+    required String pricingModel,
+  }) async {
+    final row = await client.from('store_listings').insert({
+      'seller_id': userId,
+      'category_key': categoryKey,
+      'title': title.trim(),
+      'role': role.trim(),
+      'description': description.trim(),
+      'game': game.trim(),
+      'region': region.trim().isEmpty ? 'Remote' : region.trim(),
+      'price_amount': priceAmount,
+      'pricing_model': pricingModel,
+      'currency': 'INR',
+      'status': 'published',
+    }).select().single();
+    return Map<String, dynamic>.from(row);
+  }
+
+  Future<void> updateStoreListingStatus(String listingId, String status) async {
+    if (!const {'published', 'paused', 'archived'}.contains(status)) {
+      throw ArgumentError.value(status, 'status');
+    }
+    await client.from('store_listings')
+        .update({'status': status})
+        .eq('id', listingId)
+        .eq('seller_id', userId);
+  }
+
+  Future<List<Map<String, dynamic>>> storeCartItems() async {
+    final rows = await client.from('store_cart_items')
+        .select('id,listing_id,quantity,store_listings!inner(id,seller_id,category_key,title,role,description,game,region,price_amount,pricing_model,status)')
+        .eq('buyer_id', userId)
+        .order('created_at', ascending: false);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> addStoreCartItem(String listingId) async {
+    final existing = await client.from('store_cart_items')
+        .select('id,quantity')
+        .eq('buyer_id', userId)
+        .eq('listing_id', listingId)
+        .maybeSingle();
+    if (existing == null) {
+      await client.from('store_cart_items').insert({
+        'buyer_id': userId,
+        'listing_id': listingId,
+        'quantity': 1,
+      });
+      return;
+    }
+    final nextQuantity = (existing['quantity'] as int? ?? 1) + 1;
+    if (nextQuantity > 20) throw Exception('Maximum quantity for one listing is 20.');
+    await client.from('store_cart_items')
+        .update({'quantity': nextQuantity})
+        .eq('id', existing['id']);
+  }
+
+  Future<void> updateStoreCartQuantity(String cartItemId, int quantity) async {
+    if (quantity < 1 || quantity > 20) throw ArgumentError.value(quantity, 'quantity');
+    await client.from('store_cart_items')
+        .update({'quantity': quantity})
+        .eq('id', cartItemId)
+        .eq('buyer_id', userId);
+  }
+
+  Future<void> removeStoreCartItem(String cartItemId) async {
+    await client.from('store_cart_items')
+        .delete()
+        .eq('id', cartItemId)
+        .eq('buyer_id', userId);
+  }
+
+  Future<Map<String, dynamic>> createStoreOrder(
+      List<Map<String, dynamic>> items) async {
+    final result = await client.rpc('create_store_order', params: {
+      'p_items': items,
+    });
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  Future<Map<String, dynamic>> createStoreInquiry({
+    required String listingId,
+    required String sellerId,
+    required String message,
+  }) async {
+    final row = await client.from('store_inquiries').insert({
+      'listing_id': listingId,
+      'buyer_id': userId,
+      'seller_id': sellerId,
+      'message': message.trim(),
+    }).select().single();
+    return Map<String, dynamic>.from(row);
+  }
+
+  Future<List<Map<String, dynamic>>> storeOrders() async {
+    final rows = await client.from('store_orders')
+        .select('*, store_order_items(*)')
+        .eq('buyer_id', userId)
+        .order('created_at', ascending: false)
+        .limit(50);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
   String _contentTypeFor(String? extension) {
     switch (extension?.toLowerCase()) {
       case 'jpg':
