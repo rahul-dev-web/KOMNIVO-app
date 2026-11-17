@@ -9,7 +9,8 @@ Future<void> _pumpKOMNIVO(WidgetTester tester) async {
   tester.view.devicePixelRatio = 1;
   await tester.pumpWidget(
     MaterialApp(
-      theme: KomnivoTheme.dark,
+      theme: KomnivoTheme.dark.copyWith(platform: TargetPlatform.android),
+      navigatorObservers: [AppShellBackObserver()],
       home: const AppShell(preview: true),
     ),
   );
@@ -45,6 +46,59 @@ void main() {
 
     expect(labels, ['Community', 'Compete', 'Store', 'Team', 'DM']);
     expect(tester.widget<NavigationBar>(navigationBar).selectedIndex, 0);
+  });
+
+  testWidgets('Android Back from a main tab returns to Community', (tester) async {
+    addTearDown(() => _resetTestView(tester));
+    await _pumpKOMNIVO(tester);
+
+    await tester.tap(find.text('Store'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, 2);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Android Back from a detail route returns directly to Community',
+      (tester) async {
+    addTearDown(() => _resetTestView(tester));
+    await _pumpKOMNIVO(tester);
+
+    await tester.tap(find.text('Team'));
+    await tester.pumpAndSettle();
+    final shellContext = tester.element(find.byType(AppShell));
+    Navigator.of(shellContext).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Center(child: Text('Player details'))),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Player details'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Player details'), findsNothing);
+    expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Android Back on Community asks before closing the app',
+      (tester) async {
+    addTearDown(() => _resetTestView(tester));
+    await _pumpKOMNIVO(tester);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Exit KOMNIVO?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('Exit KOMNIVO?'), findsNothing);
   });
 
   testWidgets('Store landing shows New in Store and full category names',
