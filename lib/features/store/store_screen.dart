@@ -210,14 +210,37 @@ class _StoreScreenState extends State<StoreScreen> {
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                showMessage(context, 'Contact and hiring workflow will be connected in a later marketplace phase.');
-              },
-              icon: const Icon(Icons.chat_bubble_outline, size: 17),
-              label: const Text('Request details'),
-            ),
+            if (listing.isSample)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text('DEMO ONLY', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10, fontWeight: FontWeight.w900)),
+              )
+            else if (listing.canPurchase) ...[
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  _addListingToCart(listing);
+                },
+                icon: const Icon(Icons.add_shopping_cart, size: 17),
+                label: const Text('Add to cart'),
+              ),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  _buyNow(listing);
+                },
+                icon: const Icon(Icons.shopping_bag_outlined, size: 17),
+                label: const Text('Buy now'),
+              ),
+            ] else
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  _requestService(listing);
+                },
+                icon: const Icon(Icons.chat_bubble_outline, size: 17),
+                label: const Text('Request via WhatsApp'),
+              ),
           ],
         );
       },
@@ -638,7 +661,7 @@ class _StoreScreenState extends State<StoreScreen> {
                     const SizedBox(height: 8),
                     Align(
                       alignment: Alignment.centerRight,
-                      child: _addButton(compact: true),
+                      child: _storeActions(compact: true),
                     ),
                   ],
                 )
@@ -667,10 +690,19 @@ class _StoreScreenState extends State<StoreScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    _addButton(compact: false),
+                    _storeActions(compact: false),
                   ],
                 ),
         ),
+        if (_isLoading) const LinearProgressIndicator(minHeight: 2),
+        if (_loadError != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(13, 8, 13, 0),
+            child: Text(
+              'Live Store could not be loaded: $_loadError',
+              style: const TextStyle(color: Colors.orangeAccent, fontSize: 10),
+            ),
+          ),
         Padding(
           padding: EdgeInsets.symmetric(horizontal: compact ? 13 : 24),
           child: _searchField(),
@@ -962,6 +994,8 @@ class _StoreListing {
     this.game = '',
     this.region = 'Remote',
     this.isSample = false,
+    this.sellerId = '',
+    this.sellerName = 'KOMNIVO seller',
   });
 
   final String id;
@@ -975,6 +1009,10 @@ class _StoreListing {
   final String game;
   final String region;
   final bool isSample;
+  final String sellerId;
+  final String sellerName;
+
+  bool get canPurchase => !isSample && (pricingMode == 'fixed' || pricingMode == 'license');
 
   String get priceLabel {
     final amount = priceValue % 1 == 0 ? priceValue.toStringAsFixed(0) : priceValue.toStringAsFixed(2);
@@ -1455,6 +1493,7 @@ class _AddStoreListingDialogState extends State<_AddStoreListingDialog> {
   final _role = TextEditingController();
   final _description = TextEditingController();
   final _game = TextEditingController();
+  final _region = TextEditingController(text: 'India · Remote');
   final _price = TextEditingController();
 
   late _StoreCategory _category;
@@ -1475,6 +1514,7 @@ class _AddStoreListingDialogState extends State<_AddStoreListingDialog> {
     _role.dispose();
     _description.dispose();
     _game.dispose();
+    _region.dispose();
     _price.dispose();
     super.dispose();
   }
@@ -1516,6 +1556,7 @@ class _AddStoreListingDialogState extends State<_AddStoreListingDialog> {
         pricingMode: _pricingMode,
         icon: category.icon,
         game: _game.text.trim(),
+        region: _region.text.trim().isEmpty ? 'Remote' : _region.text.trim(),
         isSample: false,
       ),
     );
@@ -1588,6 +1629,12 @@ class _AddStoreListingDialogState extends State<_AddStoreListingDialog> {
                   maxLength: 60,
                   decoration: const InputDecoration(labelText: 'Game / Skill (optional)', hintText: 'e.g. Free Fire MAX, Graphic Design'),
                 ),
+                const SizedBox(height: 7),
+                TextFormField(
+                  controller: _region,
+                  maxLength: 60,
+                  decoration: const InputDecoration(labelText: 'Region / Availability', hintText: 'e.g. India · Remote'),
+                ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   initialValue: _pricingMode,
@@ -1626,7 +1673,7 @@ class _AddStoreListingDialogState extends State<_AddStoreListingDialog> {
                     border: Border.all(color: KomnivoTheme.line),
                   ),
                   child: const Text(
-                    'UI draft only: listings are kept in this session for now. Public publishing, payments and hiring requests need backend workflows.',
+                    'Published listings become visible to signed-in Store users. Fixed-price assets and licenses can be ordered through WhatsApp; service listings create an inquiry instead of an in-app payment.',
                     style: TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.4),
                   ),
                 ),
