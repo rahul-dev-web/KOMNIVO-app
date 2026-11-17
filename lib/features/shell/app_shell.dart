@@ -46,14 +46,15 @@ class AppShellBackObserver extends NavigatorObserver {
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
 
-    if (defaultTargetPlatform != TargetPlatform.android ||
-        route is! PageRoute<dynamic> ||
-        _collapsingDetailRoutes) {
+    if (route is! PageRoute<dynamic> || _collapsingDetailRoutes) {
       return;
     }
 
     final activeNavigator = navigator;
-    if (activeNavigator == null) return;
+    if (activeNavigator == null ||
+        Theme.of(activeNavigator.context).platform != TargetPlatform.android) {
+      return;
+    }
 
     _collapsingDetailRoutes = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
