@@ -781,7 +781,7 @@ class _StoreScreenState extends State<StoreScreen> {
                     ),
                     Align(
                       alignment: Alignment.centerRight,
-                      child: _addButton(compact: true),
+                      child: _storeActions(compact: true),
                     ),
                   ],
                 )
@@ -818,7 +818,7 @@ class _StoreScreenState extends State<StoreScreen> {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    _addButton(compact: false),
+                    _storeActions(compact: false),
                   ],
                 ),
         ),
