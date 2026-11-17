@@ -448,7 +448,9 @@ class _StoreScreenState extends State<StoreScreen> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.sizeOf(context).width;
-    final sidebarWidth = screenWidth < 400 ? 130.0 : screenWidth < 600 ? 154.0 : 226.0;
+    // Keep the named categories readable while reserving enough space for
+    // listings on phone-sized viewports.
+    final sidebarWidth = screenWidth < 600 ? 130.0 : 226.0;
     return Container(
       color: KomnivoTheme.background,
       child: _activeCategory == null
