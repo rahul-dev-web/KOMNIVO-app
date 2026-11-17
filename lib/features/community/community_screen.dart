@@ -68,8 +68,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
       final logoBytes = draft.logoBytes;
       final logoExtension = draft.logoExtension;
+      String? logoUploadError;
       if (logoBytes != null && logoExtension != null) {
         try {
+          // The picker gives us device-local bytes; upload them to Storage
+          // before saving the returned object path in communities.icon_url.
           final logoPath = await KomnivoRepository.instance.uploadCommunityLogo(
             communityId: community['id'].toString(),
             bytes: logoBytes,
@@ -84,7 +87,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
             iconUrl: logoPath,
           );
         } catch (error) {
-          showMessage(context, 'Community created, but logo upload failed. You can add it from Manage community. $error');
+          logoUploadError = error.toString();
         }
       }
 
@@ -111,7 +114,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
         _refresh();
       }
       if (!mounted) return;
-      showMessage(context, 'Community created successfully.');
+      if (logoUploadError != null) {
+        showMessage(
+          context,
+          'Community created, but its logo was not saved. Open Manage community to retry. $logoUploadError',
+        );
+      } else {
+        showMessage(context, 'Community created successfully.');
+      }
     } catch (error) {
       if (mounted) showMessage(context, error.toString());
     }

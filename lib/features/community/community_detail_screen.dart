@@ -67,39 +67,34 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     );
     if (draft == null || !mounted) return;
     try {
-      var updated = await KomnivoRepository.instance.updateCommunity(
+      final logoBytes = draft.logoBytes;
+      final logoExtension = draft.logoExtension;
+      String? logoPath;
+      if (logoBytes != null && logoExtension != null) {
+        // Upload the actual image bytes before writing its Storage key to
+        // communities.icon_url. Never persist a path for a failed upload.
+        logoPath = await KomnivoRepository.instance.uploadCommunityLogo(
+          communityId: _communityId,
+          bytes: logoBytes,
+          extension: logoExtension,
+          contentType: communityLogoMimeType(logoExtension),
+        );
+      }
+      final updated = await KomnivoRepository.instance.updateCommunity(
         communityId: _communityId,
         name: draft.name,
         description: draft.description,
         visibility: draft.visibility,
+        iconUrl: logoPath,
       );
-      final logoBytes = draft.logoBytes;
-      final logoExtension = draft.logoExtension;
-      if (logoBytes != null && logoExtension != null) {
-        try {
-          final logoPath = await KomnivoRepository.instance.uploadCommunityLogo(
-            communityId: _communityId,
-            bytes: logoBytes,
-            extension: logoExtension,
-            contentType: communityLogoMimeType(logoExtension),
-          );
-          updated = await KomnivoRepository.instance.updateCommunity(
-            communityId: _communityId,
-            name: draft.name,
-            description: draft.description,
-            visibility: draft.visibility,
-            iconUrl: logoPath,
-          );
-        } catch (error) {
-          showMessage(context, 'Community details were saved, but logo upload failed: $error');
-        }
-      }
       if (!mounted) return;
       setState(() => _community = updated);
       widget.onCommunityUpdated?.call();
       showMessage(context, 'Community details updated.');
     } catch (error) {
-      if (mounted) showMessage(context, error.toString());
+      if (mounted) {
+        showMessage(context, 'Community update failed. The logo was not changed: $error');
+      }
     }
   }
 
