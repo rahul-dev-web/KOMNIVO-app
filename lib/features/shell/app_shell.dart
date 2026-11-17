@@ -9,6 +9,7 @@ import '../inbox/notifications_screen.dart';
 import '../liveops/liveops_screen.dart';
 import '../profile/profile_screen.dart';
 import '../teams/teams_screen.dart';
+import '../store/store_screen.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key, this.preview = false});
@@ -30,6 +31,7 @@ class _AppShellState extends State<AppShell> {
     final pages = <Widget>[
       CommunityScreen(preview: widget.preview),
       CompeteScreen(preview: widget.preview),
+      StoreScreen(preview: widget.preview),
       TeamsScreen(preview: widget.preview),
       InboxScreen(preview: widget.preview),
     ];
@@ -150,6 +152,11 @@ class _AppShellState extends State<AppShell> {
                   icon: Icon(Icons.emoji_events_outlined),
                   selectedIcon: Icon(Icons.emoji_events),
                   label: 'Compete',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.storefront_outlined),
+                  selectedIcon: Icon(Icons.storefront),
+                  label: 'Store',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.shield_outlined),
