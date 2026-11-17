@@ -54,9 +54,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           .eq('mode', widget.mode)
           .eq('status', 'active');
 
-      if (widget.communityId == null) {
-        query = query.isFilter('community_id', null);
-      } else {
+      // Global Player AI can continue the most recent chat even after
+      // the user selects and binds that chat to an owned community.
+      if (widget.communityId != null) {
         query = query.eq('community_id', widget.communityId!);
       }
       if (widget.eventId == null) {
