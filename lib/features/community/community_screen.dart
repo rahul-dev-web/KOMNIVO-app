@@ -466,6 +466,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                         const {'owner', 'admin', 'moderator', 'organiser'}
                             .contains(selectedMembership['role']?.toString()),
                     embedded: true,
+                    onCommunityUpdated: _refresh,
                   )
                 : _CommunityPreviewPane(
                     key: ValueKey(selectedCommunity['id']),

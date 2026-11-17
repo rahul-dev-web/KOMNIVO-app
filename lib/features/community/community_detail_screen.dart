@@ -17,11 +17,13 @@ class CommunityDetailScreen extends StatefulWidget {
     required this.community,
     required this.canManage,
     this.embedded = false,
+    this.onCommunityUpdated,
   });
 
   final Map<String, dynamic> community;
   final bool canManage;
   final bool embedded;
+  final VoidCallback? onCommunityUpdated;
 
   @override
   State<CommunityDetailScreen> createState() => _CommunityDetailScreenState();
@@ -42,6 +44,14 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     super.initState();
     _community = Map<String, dynamic>.from(widget.community);
     _channelsFuture = KomnivoRepository.instance.channels(communityId: _communityId);
+  }
+
+  @override
+  void didUpdateWidget(covariant CommunityDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.community != widget.community) {
+      _community = Map<String, dynamic>.from(widget.community);
+    }
   }
 
   void _reloadChannels() {
@@ -86,6 +96,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
       }
       if (!mounted) return;
       setState(() => _community = updated);
+      widget.onCommunityUpdated?.call();
       showMessage(context, 'Community details updated.');
     } catch (error) {
       if (mounted) showMessage(context, error.toString());
