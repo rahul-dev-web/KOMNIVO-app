@@ -468,6 +468,13 @@ class _StoreScreenState extends State<StoreScreen> {
                   ),
           ),
           actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showMyOrders();
+              },
+              child: const Text('My orders'),
+            ),
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Continue shopping')),
             if (_cartItems.isNotEmpty)
               FilledButton.icon(
@@ -482,6 +489,143 @@ class _StoreScreenState extends State<StoreScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _showMyStoreDashboard() async {
+    if (widget.preview) {
+      showMessage(context, 'Seller tools are available after signing in.');
+      return;
+    }
+    try {
+      var listings = await KomnivoRepository.instance.myStoreListings();
+      var inquiries = await KomnivoRepository.instance.myStoreInquiries();
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, refreshDialog) => AlertDialog(
+            title: const Text('Manage your Store'),
+            content: SizedBox(
+              width: 560,
+              height: 500,
+              child: ListView(
+                children: [
+                  const Text('MY LISTINGS', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                  const SizedBox(height: 8),
+                  if (listings.isEmpty)
+                    const Text('You have not published any listings yet.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 12))
+                  else
+                    ...listings.map((row) {
+                      final status = row['status']?.toString() ?? 'published';
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(row['title']?.toString() ?? 'Listing', style: const TextStyle(fontWeight: FontWeight.w800)),
+                        subtitle: Text('${_categoryFor(row['category_key']?.toString() ?? '').title} · ${status.toUpperCase()}'),
+                        trailing: PopupMenuButton<String>(
+                          tooltip: 'Listing actions',
+                          onSelected: (nextStatus) async {
+                            await KomnivoRepository.instance.updateStoreListingStatus(row['id'].toString(), nextStatus);
+                            listings = await KomnivoRepository.instance.myStoreListings();
+                            refreshDialog(() {});
+                            await _loadMarketplace();
+                          },
+                          itemBuilder: (_) => [
+                            if (status != 'published') const PopupMenuItem(value: 'published', child: Text('Publish')),
+                            if (status == 'published') const PopupMenuItem(value: 'paused', child: Text('Pause listing')),
+                            if (status == 'paused') const PopupMenuItem(value: 'published', child: Text('Resume listing')),
+                            if (status != 'archived') const PopupMenuItem(value: 'archived', child: Text('Archive')),
+                          ],
+                        ),
+                      );
+                    }),
+                  const Divider(color: KomnivoTheme.line, height: 28),
+                  const Text('SERVICE INQUIRIES', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                  const SizedBox(height: 8),
+                  if (inquiries.isEmpty)
+                    const Text('No service inquiries yet.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 12))
+                  else
+                    ...inquiries.map((row) {
+                      final listing = row['store_listings'] is Map ? Map<String, dynamic>.from(row['store_listings'] as Map) : <String, dynamic>{};
+                      final buyer = row['buyer'] is Map ? Map<String, dynamic>.from(row['buyer'] as Map) : <String, dynamic>{};
+                      final status = row['status']?.toString() ?? 'open';
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(listing['title']?.toString() ?? 'Store inquiry', style: const TextStyle(fontWeight: FontWeight.w800)),
+                        subtitle: Text('From ${buyer['display_name'] ?? 'Buyer'} · ${status.toUpperCase()}'),
+                        trailing: PopupMenuButton<String>(
+                          tooltip: 'Inquiry status',
+                          onSelected: (nextStatus) async {
+                            await KomnivoRepository.instance.updateStoreInquiryStatus(row['id'].toString(), nextStatus);
+                            inquiries = await KomnivoRepository.instance.myStoreInquiries();
+                            refreshDialog(() {});
+                          },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(value: 'open', child: Text('Open')),
+                            PopupMenuItem(value: 'responded', child: Text('Mark responded')),
+                            PopupMenuItem(value: 'closed', child: Text('Close inquiry')),
+                          ],
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
+            actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Done'))],
+          ),
+        ),
+      );
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not load seller dashboard: $error');
+    }
+  }
+
+  Future<void> _showMyOrders() async {
+    if (widget.preview) {
+      showMessage(context, 'Order history is available after signing in.');
+      return;
+    }
+    try {
+      final orders = await KomnivoRepository.instance.storeOrders();
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('My orders'),
+          content: SizedBox(
+            width: 520,
+            child: orders.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 25),
+                    child: EmptyState(title: 'No orders yet', message: 'Your WhatsApp order requests will appear here.', icon: Icons.receipt_long_outlined),
+                  )
+                : ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 420),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: orders.length,
+                      separatorBuilder: (_, __) => const Divider(color: KomnivoTheme.line),
+                      itemBuilder: (context, index) {
+                        final order = orders[index];
+                        final items = order['store_order_items'] is List ? List<Map<String, dynamic>>.from(order['store_order_items'] as List) : <Map<String, dynamic>>[];
+                        final summary = items.map((item) => '${item['title_snapshot']} × ${item['quantity']}').join(', ');
+                        final total = (order['subtotal'] as num?)?.toDouble() ?? 0;
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(order['order_code']?.toString() ?? 'Order', style: const TextStyle(fontWeight: FontWeight.w900)),
+                          subtitle: Text('$summary\n${(order['status'] ?? 'awaiting_whatsapp').toString().replaceAll('_', ' ').toUpperCase()}'),
+                          isThreeLine: true,
+                          trailing: Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900)),
+                        );
+                      },
+                    ),
+                  ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close'))],
+        ),
+      );
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not load orders: $error');
+    }
   }
 
   Widget _storeActions({required bool compact}) => Row(
@@ -603,24 +747,23 @@ class _StoreScreenState extends State<StoreScreen> {
           ),
           Padding(
             padding: const EdgeInsets.all(10),
-            child: Container(
-              padding: const EdgeInsets.all(11),
-              decoration: BoxDecoration(
-                color: KomnivoTheme.surfaceRaised,
-                borderRadius: BorderRadius.circular(13),
-                border: Border.all(color: KomnivoTheme.line),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.storefront_outlined, size: 17, color: KomnivoTheme.cyan),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Have something to offer?',
-                      style: TextStyle(fontSize: width < 150 ? 9 : 10, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
+            child: InkWell(
+              onTap: _showMyStoreDashboard,
+              borderRadius: BorderRadius.circular(13),
+              child: Container(
+                padding: const EdgeInsets.all(11),
+                decoration: BoxDecoration(
+                  color: KomnivoTheme.surfaceRaised,
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(color: KomnivoTheme.line),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.storefront_outlined, size: 17, color: KomnivoTheme.cyan),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text('Manage your Store', style: TextStyle(fontSize: width < 150 ? 9 : 10, fontWeight: FontWeight.w700))),
+                  ],
+                ),
               ),
             ),
           ),
