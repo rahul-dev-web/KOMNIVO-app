@@ -486,6 +486,25 @@ class KomnivoRepository {
     return Map<String, dynamic>.from(row);
   }
 
+  Future<List<Map<String, dynamic>>> myStoreInquiries() async {
+    final rows = await client.from('store_inquiries')
+        .select('*, store_listings(title,category_key), buyer:profiles!store_inquiries_buyer_id_fkey(display_name,username)')
+        .eq('seller_id', userId)
+        .order('created_at', ascending: false)
+        .limit(50);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> updateStoreInquiryStatus(String inquiryId, String status) async {
+    if (!const {'open', 'responded', 'closed'}.contains(status)) {
+      throw ArgumentError.value(status, 'status');
+    }
+    await client.from('store_inquiries')
+        .update({'status': status})
+        .eq('id', inquiryId)
+        .eq('seller_id', userId);
+  }
+
   Future<List<Map<String, dynamic>>> storeOrders() async {
     final rows = await client.from('store_orders')
         .select('*, store_order_items(*)')
