@@ -10,7 +10,7 @@ void main() {
     expect(KomnivoTheme.background, isNotNull);
   });
 
-  testWidgets('Four core destinations use the approved order and Community home',
+  testWidgets('Five core destinations use the approved order and Community home',
       (tester) async {
     tester.view.physicalSize = const Size(430, 900);
     tester.view.devicePixelRatio = 1;
@@ -36,7 +36,19 @@ void main() {
         .map((destination) => destination.label)
         .toList();
 
-    expect(labels, ['Community', 'Compete', 'Team', 'DM']);
+    expect(labels, ['Community', 'Compete', 'Store', 'Team', 'DM']);
     expect(tester.widget<NavigationBar>(navigationBar).selectedIndex, 0);
+
+    await tester.tap(find.text('Store'));
+    await tester.pumpAndSettle();
+    expect(find.text('New in Store'), findsOneWidget);
+    expect(find.text('Assets'), findsOneWidget);
+
+    await tester.tap(find.text('Players').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Back to Store categories'), findsNothing);
+    expect(find.byTooltip('Back to Store categories'), findsOneWidget);
+    expect(find.text('Players'), findsOneWidget);
+    expect(find.text('Assets'), findsNothing);
   });
 }
