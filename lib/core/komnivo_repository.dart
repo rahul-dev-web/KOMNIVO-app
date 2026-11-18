@@ -19,6 +19,41 @@ class KomnivoRepository {
     return List<Map<String, dynamic>>.from(rows);
   }
 
+  /// Ask the database's canonical permission resolver. The UI uses this only
+  /// to decide which controls to show; RLS and privileged RPCs enforce access.
+  Future<bool> hasPermission({
+    required String permissionKey,
+    required String scopeType,
+    required String scopeId,
+    String? relatedId,
+    String? resourceId,
+  }) async {
+    final result = await client.rpc('has_permission', params: {
+      'p_permission_key': permissionKey,
+      'p_scope_type': scopeType,
+      'p_scope_id': scopeId,
+      'p_related_id': relatedId,
+      'p_resource_id': resourceId,
+    });
+    return result == true;
+  }
+
+  /// Starts a server-bound LiveOps session for a platform Match ID.
+  Future<Map<String, dynamic>> startLiveOpsSession({
+    required String matchId,
+    Map<String, dynamic> deviceInfo = const <String, dynamic>{},
+  }) async {
+    final result = await client.rpc('start_liveops_session', params: {
+      'p_match_id': matchId,
+      'p_device_info': deviceInfo,
+    });
+    if (result is! Map) {
+      throw Exception('LiveOps session could not be created.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
+
   /// Reads this user's own membership rows, including the owner row created
   /// by the database trigger when a community is created.
   Future<Map<String, Map<String, dynamic>>> myCommunityMemberships() async {
