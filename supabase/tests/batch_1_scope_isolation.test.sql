@@ -52,7 +52,8 @@ insert into public.teams(id,name,tag,game_id,owner_user_id,is_public) values
 
 insert into public.team_members(team_id,user_id,role) values
  ('20000000-0000-4000-8000-000000000005','10000000-0000-4000-8000-000000000002','captain'),
- ('20000000-0000-4000-8000-000000000006','10000000-0000-4000-8000-000000000003','captain');
+ ('20000000-0000-4000-8000-000000000006','10000000-0000-4000-8000-000000000003','captain')
+on conflict (team_id,user_id) do nothing;
 
 insert into public.event_group_teams(group_id,team_id,seeded_by) values
  ('20000000-0000-4000-8000-000000000003','20000000-0000-4000-8000-000000000005','10000000-0000-4000-8000-000000000001'),
