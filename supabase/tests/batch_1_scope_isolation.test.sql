@@ -4,7 +4,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(16);
+select extensions.plan(28);
 
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_user_meta_data)
 values
@@ -79,6 +79,58 @@ insert into public.channels(id,name,kind,is_private,event_id,stage_id,group_id,m
 insert into public.room_credentials(id,match_id,room_code,room_password,release_at,created_by)
 values ('20000000-0000-4000-8000-000000000301','20000000-0000-4000-8000-000000000007','B1-ROOM','B1-SECRET',now()+interval '1 day','10000000-0000-4000-8000-000000000001');
 
+-- A normal community member receives a base role grant, then category/channel
+-- overrides prove inheritance and explicit Deny behaviour independently.
+insert into public.communities(id,name,slug,description,visibility,owner_user_id)
+values ('40000000-0000-4000-8000-000000000001','Batch One Permissions','batch-one-permissions-test','RLS fixture only','private','10000000-0000-4000-8000-000000000001');
+
+insert into public.community_members(community_id,user_id,role) values
+ ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','owner'),
+ ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','member');
+
+insert into public.community_roles(id,community_id,name,description,colour,position,is_system,created_by)
+values ('40000000-0000-4000-8000-000000000004','40000000-0000-4000-8000-000000000001',
+        'B1 Permission Role','Test fixture role',null,10,false,'10000000-0000-4000-8000-000000000001');
+
+insert into public.community_member_roles(community_id,user_id,role_id,assigned_by)
+values ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002',
+        '40000000-0000-4000-8000-000000000004','10000000-0000-4000-8000-000000000001');
+
+insert into public.role_permissions(role_id,permission_key,allowed)
+values ('40000000-0000-4000-8000-000000000004','channel.manage_messages',true);
+
+insert into public.channel_categories(id,community_id,name,description,position,created_by)
+values ('40000000-0000-4000-8000-000000000002','40000000-0000-4000-8000-000000000001',
+        'B1 Category','RLS fixture only',1,'10000000-0000-4000-8000-000000000001');
+
+insert into public.channels(id,community_id,category_id,name,description,kind,is_private,created_by)
+values ('40000000-0000-4000-8000-000000000003','40000000-0000-4000-8000-000000000001',
+        '40000000-0000-4000-8000-000000000002','B1 Channel','RLS fixture only','text',false,
+        '10000000-0000-4000-8000-000000000001');
+
+insert into public.category_permission_overrides(community_id,category_id,role_id,permission_key,effect,updated_by)
+values ('40000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000002',
+        '40000000-0000-4000-8000-000000000004','channel.manage_messages','deny',
+        '10000000-0000-4000-8000-000000000001');
+
+-- Cross-scope records for check-in, result, evidence and dispute isolation.
+insert into public.match_checkins(match_id,user_id,status)
+values ('20000000-0000-4000-8000-000000000008','10000000-0000-4000-8000-000000000003','ready');
+
+insert into public.match_results(id,match_id,team_id,submitted_by,placement,kills,points,status,result_json)
+values ('20000000-0000-4000-8000-000000000009','20000000-0000-4000-8000-000000000008',
+        '20000000-0000-4000-8000-000000000006','10000000-0000-4000-8000-000000000003',
+        1,3,10,'submitted','{}');
+
+insert into public.result_evidence(id,result_id,uploaded_by,storage_path,content_type,file_size)
+values ('20000000-0000-4000-8000-000000000302','20000000-0000-4000-8000-000000000009',
+        '10000000-0000-4000-8000-000000000003','fixture/team-b/evidence.png','image/png',123);
+
+insert into public.result_disputes(id,result_id,opened_by,reason,status)
+values ('20000000-0000-4000-8000-000000000303','20000000-0000-4000-8000-000000000009',
+        '10000000-0000-4000-8000-000000000003','Fixture dispute','open');
+
+
 -- The event owner uses the authenticated RPC; the operator is deliberately scoped to one match.
 set local role authenticated;
 set local request.jwt.claim.sub = '10000000-0000-4000-8000-000000000001';
@@ -97,6 +149,78 @@ select extensions.is((select count(*) from public.channels where id='20000000-00
 select extensions.is((select count(*) from public.channels where id='20000000-0000-4000-8000-000000000206'),0::bigint,'team A cannot see match B channel');
 select extensions.is((select count(*) from public.match_participants where match_id='20000000-0000-4000-8000-000000000008'),0::bigint,'team A cannot read match B roster');
 select extensions.is((select count(*) from public.room_credentials where match_id='20000000-0000-4000-8000-000000000007'),0::bigint,'room credentials stay hidden before release');
+
+select extensions.is(
+  public.has_permission('channel.manage_messages','community','40000000-0000-4000-8000-000000000001',null,'40000000-0000-4000-8000-000000000003'),
+  false,'category Deny blocks an ordinary role grant');
+
+-- Use service-context fixture changes; the permission checks themselves execute as the member.
+reset role;
+set local request.jwt.claim.sub = '';
+insert into public.channel_permission_overrides(community_id,channel_id,role_id,permission_key,effect,updated_by)
+values ('40000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000003',
+        '40000000-0000-4000-8000-000000000004','channel.manage_messages','allow',
+        '10000000-0000-4000-8000-000000000001');
+set local request.jwt.claim.sub = '10000000-0000-4000-8000-000000000002';
+set local role authenticated;
+select extensions.is(
+  public.has_permission('channel.manage_messages','community','40000000-0000-4000-8000-000000000001',null,'40000000-0000-4000-8000-000000000003'),
+  true,'channel Allow overrides inherited category Deny');
+
+reset role;
+set local request.jwt.claim.sub = '';
+update public.category_permission_overrides
+set effect='allow',updated_at=now()
+where community_id='40000000-0000-4000-8000-000000000001'
+  and category_id='40000000-0000-4000-8000-000000000002'
+  and role_id='40000000-0000-4000-8000-000000000004'
+  and permission_key='channel.manage_messages';
+update public.channel_permission_overrides
+set effect='deny',updated_at=now()
+where community_id='40000000-0000-4000-8000-000000000001'
+  and channel_id='40000000-0000-4000-8000-000000000003'
+  and role_id='40000000-0000-4000-8000-000000000004'
+  and permission_key='channel.manage_messages';
+set local request.jwt.claim.sub = '10000000-0000-4000-8000-000000000002';
+set local role authenticated;
+select extensions.is(
+  public.has_permission('channel.manage_messages','community','40000000-0000-4000-8000-000000000001',null,'40000000-0000-4000-8000-000000000003'),
+  false,'channel Deny overrides inherited category Allow');
+
+reset role;
+set local request.jwt.claim.sub = '';
+delete from public.channel_permission_overrides
+where community_id='40000000-0000-4000-8000-000000000001'
+  and channel_id='40000000-0000-4000-8000-000000000003'
+  and role_id='40000000-0000-4000-8000-000000000004'
+  and permission_key='channel.manage_messages';
+set local request.jwt.claim.sub = '10000000-0000-4000-8000-000000000002';
+set local role authenticated;
+select extensions.is(
+  public.has_permission('channel.manage_messages','community','40000000-0000-4000-8000-000000000001',null,'40000000-0000-4000-8000-000000000003'),
+  true,'removing channel override restores category inheritance');
+
+select extensions.is(
+  (with attempted as (
+    update public.match_checkins set status='absent'
+    where match_id='20000000-0000-4000-8000-000000000008'
+      and user_id='10000000-0000-4000-8000-000000000003'
+    returning 1
+  ) select count(*) from attempted),
+  0::bigint,'team A cannot mutate another match check-in');
+select extensions.is((select count(*) from public.match_results where id='20000000-0000-4000-8000-000000000009'),
+  0::bigint,'team A cannot read another match result');
+select extensions.is((select count(*) from public.result_evidence where id='20000000-0000-4000-8000-000000000302'),
+  0::bigint,'team A cannot read another team evidence');
+select extensions.is((select count(*) from public.result_disputes where id='20000000-0000-4000-8000-000000000303'),
+  0::bigint,'team A cannot read another team dispute');
+select extensions.is(
+  (with attempted as (
+    update public.match_results set points=999
+    where id='20000000-0000-4000-8000-000000000009'
+    returning 1
+  ) select count(*) from attempted),
+  0::bigint,'team A cannot mutate another match result');
 reset role;
 
 -- Team B has the inverse match/group visibility.
@@ -128,5 +252,17 @@ reset role;
 set local role authenticated;
 set local request.jwt.claim.sub = '10000000-0000-4000-8000-000000000001';
 select extensions.is((select count(*) from public.channels where id='20000000-0000-4000-8000-000000000202'),1::bigint,'event owner sees private staff channel');
+select extensions.is(
+  (select count(*) from public.audit_logs
+   where event_id='20000000-0000-4000-8000-000000000001'
+     and entity_type='room_credential'
+     and metadata::text like '%B1-SECRET%'),
+  0::bigint,'audit log never stores room password plaintext');
+select extensions.is(
+  (select count(*) from public.audit_logs
+   where event_id='20000000-0000-4000-8000-000000000001'
+     and entity_type='room_credential'
+     and metadata #>> '{after,room_password_present}'='true'),
+  1::bigint,'audit log records credential presence without secret value');
 select * from extensions.finish();
 rollback;

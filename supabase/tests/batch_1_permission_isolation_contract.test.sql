@@ -13,7 +13,8 @@ begin
   foreach v_table in array array[
     'matches','match_participants','match_checkins','room_credentials',
     'match_results','result_evidence','result_disputes',
-    'liveops_sessions','liveops_captures','channels',
+    'liveops_sessions','liveops_captures','channels','channel_categories',
+    'channel_permission_overrides','category_permission_overrides',
     'event_staff_assignments','audit_logs'
   ] loop
     if not exists (
@@ -44,6 +45,48 @@ begin
       and p.prosecdef
   ) then
     raise exception 'Batch 1 failed: canonical resolver must be SECURITY DEFINER';
+  end if;
+
+  select pg_get_functiondef(p.oid) into v_definition
+  from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname='app_private' and p.proname='resolve_permission';
+  if v_definition is null
+     or position('category_permission_overrides' in v_definition)=0
+     or position('channel_permission_overrides' in v_definition)=0 then
+    raise exception 'Batch 1 failed: resolver does not enforce channel > category permission inheritance';
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger t join pg_class c on c.oid=t.tgrelid
+    join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname='public' and c.relname='category_permission_overrides'
+      and t.tgname='category_permission_overrides_authority_guard' and not t.tgisinternal
+  ) then
+    raise exception 'Batch 1 failed: category override delegation guard is missing';
+  end if;
+
+  if (
+    select count(*) from pg_trigger t
+    join pg_class c on c.oid=t.tgrelid
+    join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname='public' and not t.tgisinternal
+      and t.tgname in (
+        'audit_matches_change','audit_match_participants_change','audit_match_checkins_change',
+        'audit_room_credentials_change','audit_match_results_change','audit_result_evidence_change',
+        'audit_result_disputes_change','audit_liveops_captures_change'
+      )
+  ) <> 8 then
+    raise exception 'Batch 1 failed: sensitive match/LiveOps audit trigger coverage is incomplete';
+  end if;
+
+  select pg_get_functiondef(p.oid) into v_definition
+  from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname='app_private' and p.proname='audit_sensitive_change';
+  if v_definition is null
+     or position('room_password_present' in v_definition)=0
+     or position('storage_object_present' in v_definition)=0
+     or position('v_old->''room_password''' in v_definition)>0 then
+    raise exception 'Batch 1 failed: secret-safe audit snapshot rules are missing';
   end if;
 
   if exists (
