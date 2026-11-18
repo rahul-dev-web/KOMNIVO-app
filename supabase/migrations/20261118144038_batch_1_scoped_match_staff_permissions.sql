@@ -11,7 +11,7 @@ AS $function$
       and a.user_id = (select auth.uid())
       and a.role_key = any(p_roles)
   );
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app_private.has_stage_staff_scope(p_stage_id uuid, p_role_keys text[])
@@ -26,7 +26,7 @@ AS $function$
     where r.id=p_stage_id and a.user_id=(select auth.uid()) and a.role_key=any(p_role_keys)
       and (a.scope_type='event' or (a.scope_type='stage' and a.stage_id=r.id))
   );
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app_private.has_group_staff_scope(p_group_id uuid, p_role_keys text[])
@@ -47,7 +47,7 @@ AS $function$
         or (a.scope_type='group' and a.group_id=g.id)
       )
   );
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app_private.has_match_staff_scope(p_match_id uuid, p_role_keys text[])
@@ -68,7 +68,7 @@ AS $function$
         or (a.scope_type='match' and a.match_id=m.id)
       )
   );
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app_private.event_staff_authority_rank(p_event_id uuid)
@@ -100,7 +100,7 @@ begin
     and a.scope_type='event';
   return v_rank;
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app_private.guard_event_staff_assignment()
@@ -176,7 +176,7 @@ begin
   if TG_OP='DELETE' then return OLD; end if;
   return NEW;
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app_private.resolve_permission(p_permission_key text, p_scope_type text, p_scope_id uuid, p_related_id uuid DEFAULT NULL::uuid, p_resource_id uuid DEFAULT NULL::uuid)
@@ -605,7 +605,7 @@ begin
 
   return false;
 end;
-$function$
+$function$;
 
 
 revoke all on function app_private.has_event_staff_role(uuid,text[]) from public,anon;
