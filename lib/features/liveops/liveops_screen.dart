@@ -62,7 +62,99 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
 
     final matchId = _matchId.text.trim();
     final uuidPattern = RegExp(
-      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    );
+    if (!uuidPattern.hasMatch(matchId)) {
+      showMessage(
+        context,
+        'Enter a valid KOMNIVO platform Match ID before starting LiveOps.',
+      );
+      return;
+    }
+
+    String? sessionId;
+    try {
+      if (mounted) setState(() => _state = 'Authorising platform match...');
+      final session = await KomnivoRepository.instance.startLiveOpsSession(
+        matchId: matchId,
+        deviceInfo: const <String, dynamic>{
+          'platform': 'android',
+          'source': 'liveops_assistant',
+        },
+      );
+      sessionId = session['session_id']?.toString();
+      if (sessionId == null || sessionId.isEmpty) {
+        throw Exception('The server did not return a LiveOps session ID.');
+      }
+      _sessionId = sessionId;
+
+      // Create the authorised, match-bound session before asking Android to
+      // capture. The session's event and Match ID are immutable on the server.
+      final captureGranted = await _methods.invokeMethod<bool>('startCapture');
+      if (captureGranted != true) {
+        throw Exception('Screen capture permission was not granted.');
+      }
+
+      await Supabase.instance.client
+          .from('liveops_sessions')
+          .update({'state': 'capturing'})
+          .eq('id', sessionId)
+          .eq('operator_id', Supabase.instance.client.auth.currentUser!.id);
+
+      _subscription = _events.receiveBroadcastStream().listen(
+        _onObservation,
+        onError: (Object error) async {
+          final activeSessionId = _sessionId;
+          if (mounted) {
+            setState(() {
+              _capturing = false;
+              _state = 'Capture error';
+              _latestText = error.toString();
+            });
+          }
+          if (activeSessionId != null) {
+            try {
+              await Supabase.instance.client.from('liveops_sessions').update({
+                'state': 'failed',
+                'ended_at': DateTime.now().toUtc().toIso8601String(),
+              }).eq('id', activeSessionId);
+            } catch (_) {
+              // The server remains authoritative if the device has gone offline.
+            }
+          }
+        },
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _capturing = true;
+        _state = 'Capturing · Match bound';
+      });
+      if (_voice) {
+        await _speak('LiveOps is active for the selected KOMNIVO match.');
+      }
+    } catch (error) {
+      if (sessionId != null) {
+        try {
+          await _methods.invokeMethod<void>('stopCapture');
+          await Supabase.instance.client.from('liveops_sessions').update({
+            'state': 'failed',
+            'ended_at': DateTime.now().toUtc().toIso8601String(),
+          }).eq('id', sessionId);
+        } catch (_) {
+          // Preserve the original failure; the database enforces session scope.
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _capturing = false;
+          _state = 'Start failed';
+          _sessionId = null;
+        });
+        showMessage(context, error.toString());
+      }
+    }
+  }
 
   Future<void> _onObservation(dynamic event) async {
     if (event is! Map) return;
