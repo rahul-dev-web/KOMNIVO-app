@@ -647,10 +647,10 @@ function applyExplicitTimestampsFromMessage(
   // the IST offset. Preserve those exact user-confirmed values rather than
   // relying on the language model to copy them into tool arguments.
   const startsAt = message.match(
-    /(?:^|\\n)Tournament starts:\\s*(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2})?(?:Z|[+-]\\d{2}:\\d{2}))/i,
+    /Tournament starts:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2}))/i,
   )?.[1];
   const registrationClosesAt = message.match(
-    /(?:^|\\n)Registration closes:\\s*(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2})?(?:Z|[+-]\\d{2}:\\d{2}))/i,
+    /Registration closes:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2}))/i,
   )?.[1];
   return {
     ...args,
