@@ -87,7 +87,8 @@ values ('40000000-0000-4000-8000-000000000001','Batch One Permissions','batch-on
 
 insert into public.community_members(community_id,user_id,role) values
  ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','owner'),
- ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','member');
+ ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','member')
+on conflict (community_id,user_id) do nothing;
 
 insert into public.community_roles(id,community_id,name,description,colour,position,is_system,created_by)
 values ('40000000-0000-4000-8000-000000000004','40000000-0000-4000-8000-000000000001',
