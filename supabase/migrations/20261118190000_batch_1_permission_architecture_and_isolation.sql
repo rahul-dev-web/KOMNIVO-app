@@ -588,15 +588,17 @@ declare
   v_community_id uuid;
   v_actor uuid := (select auth.uid());
   v_owner uuid;
-  v_old_role text;
+  v_actor_rank integer;
+  v_target_rank integer;
 begin
   v_community_id := case when TG_OP='DELETE' then OLD.community_id else NEW.community_id end;
   if v_actor is null then
     if TG_OP='DELETE' then return OLD; end if;
-  return NEW;
+    return NEW;
   end if;
 
   select c.owner_user_id into v_owner from public.communities c where c.id=v_community_id;
+
   if TG_OP='INSERT' then
     if NEW.role='owner' then
       if NEW.user_id is distinct from v_owner then
@@ -614,6 +616,7 @@ begin
       raise exception 'Community ownership cannot be assigned through membership roles';
     end if;
     return NEW;
+
   elsif TG_OP='UPDATE' then
     if NEW.community_id is distinct from OLD.community_id or NEW.user_id is distinct from OLD.user_id then
       raise exception 'Community membership identity is immutable';
@@ -633,6 +636,39 @@ begin
       end if;
     end if;
     return NEW;
+
+  elsif TG_OP='DELETE' then
+    if OLD.user_id=v_owner or OLD.role='owner' then
+      raise exception 'The community owner cannot leave or be removed until ownership is transferred';
+    end if;
+    if OLD.user_id=v_actor then
+      return OLD;
+    end if;
+    if not app_private.resolve_permission('community.manage_members','community',v_community_id,null,null) then
+      raise exception 'You cannot remove this community member';
+    end if;
+
+    v_actor_rank := app_private.community_authority_rank(v_community_id);
+    v_target_rank := case OLD.role
+      when 'admin' then 2000000000
+      when 'moderator' then 1000000
+      when 'organiser' then 900000
+      else 0
+    end;
+    select greatest(v_target_rank,coalesce(max(cr.position),0))
+      into v_target_rank
+    from public.community_member_roles cmr
+    join public.community_roles cr
+      on cr.id=cmr.role_id and cr.community_id=cmr.community_id
+    where cmr.community_id=OLD.community_id and cmr.user_id=OLD.user_id;
+
+    if v_actor_rank <= v_target_rank then
+      raise exception 'You cannot remove a member with equal or higher authority';
+    end if;
+    if OLD.role='admin' and v_owner is distinct from v_actor then
+      raise exception 'Only the community owner may remove an admin';
+    end if;
+    return OLD;
   end if;
   return OLD;
 end;
@@ -641,7 +677,7 @@ revoke all on function app_private.guard_community_membership_authority() from p
 
 drop trigger if exists community_members_authority_guard on public.community_members;
 create trigger community_members_authority_guard
-before insert or update on public.community_members
+before insert or update or delete on public.community_members
 for each row execute function app_private.guard_community_membership_authority();
 
 create or replace function app_private.guard_custom_role_change()
@@ -1851,3 +1887,36 @@ drop trigger if exists liveops_captures_scope_guard on public.liveops_captures;
 create trigger liveops_captures_scope_guard
 before insert or update on public.liveops_captures
 for each row execute function app_private.guard_liveops_capture_scope();
+
+
+-- Membership removal follows the same scoped permission and hierarchy rules as assignment.
+drop policy if exists community_members_leave_self on public.community_members;
+create policy community_members_leave_self on public.community_members
+for delete to authenticated
+using (
+  user_id=(select auth.uid())
+  or app_private.resolve_permission('community.manage_members','community',community_id,null,null)
+);
+
+-- An event cannot be attached to a community unless its creator may manage that community.
+drop policy if exists events_create_organizer on public.events;
+create policy events_create_organizer on public.events
+for insert to authenticated
+with check (
+  organizer_id=(select auth.uid())
+  and (
+    community_id is null
+    or app_private.resolve_permission('community.manage_structure','community',community_id,null,null)
+  )
+);
+
+-- Remove the actual legacy policy name, otherwise PostgreSQL OR-combines it with the new scoped policy.
+drop policy if exists event_stage_standings_manage_staff on public.event_stage_standings;
+
+-- Session operators must be able to stop their own active capture; the trigger locks identity
+-- and enforces legal state transitions, so this does not permit match retargeting.
+drop policy if exists liveops_sessions_update_owner on public.liveops_sessions;
+create policy liveops_sessions_update_owner on public.liveops_sessions
+for update to authenticated
+using (operator_id=(select auth.uid()))
+with check (operator_id=(select auth.uid()));
