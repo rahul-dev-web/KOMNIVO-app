@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
@@ -15,13 +14,11 @@ class CommunityDetailScreen extends StatefulWidget {
   const CommunityDetailScreen({
     super.key,
     required this.community,
-    required this.canManage,
     this.embedded = false,
     this.onCommunityUpdated,
   });
 
   final Map<String, dynamic> community;
-  final bool canManage;
   final bool embedded;
   final VoidCallback? onCommunityUpdated;
 
@@ -33,23 +30,74 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   late Map<String, dynamic> _community;
   late Future<List<Map<String, dynamic>>> _channelsFuture;
   String _channelQuery = '';
+  bool _canManageSettings = false;
+  bool _canManageStructure = false;
+  bool _permissionsLoading = true;
 
   String get _communityId => _community['id'] as String;
-  bool get _canManage =>
-      widget.canManage ||
-      _community['owner_user_id'] == Supabase.instance.client.auth.currentUser?.id;
+
+  Future<void> _loadPermissions() async {
+    final communityId = _communityId;
+    try {
+      final permissions = await Future.wait([
+        KomnivoRepository.instance.hasPermission(
+          permissionKey: 'community.manage_settings',
+          scopeType: 'community',
+          scopeId: communityId,
+        ),
+        KomnivoRepository.instance.hasPermission(
+          permissionKey: 'community.manage_structure',
+          scopeType: 'community',
+          scopeId: communityId,
+        ),
+      ]);
+      if (!mounted || communityId != _communityId) return;
+      setState(() {
+        _canManageSettings = permissions[0];
+        _canManageStructure = permissions[1];
+        _permissionsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || communityId != _communityId) return;
+      setState(() {
+        _canManageSettings = false;
+        _canManageStructure = false;
+        _permissionsLoading = false;
+      });
+    }
+  }
+
+  Future<bool> _verifyPermission(String permissionKey) async {
+    try {
+      return await KomnivoRepository.instance.hasPermission(
+        permissionKey: permissionKey,
+        scopeType: 'community',
+        scopeId: _communityId,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _community = Map<String, dynamic>.from(widget.community);
     _channelsFuture = KomnivoRepository.instance.channels(communityId: _communityId);
+    _loadPermissions();
   }
 
   @override
   void didUpdateWidget(covariant CommunityDetailScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.community != widget.community) {
+    if (oldWidget.community['id'] != widget.community['id']) {
+      _community = Map<String, dynamic>.from(widget.community);
+      _channelsFuture = KomnivoRepository.instance.channels(communityId: _communityId);
+      _permissionsLoading = true;
+      _canManageSettings = false;
+      _canManageStructure = false;
+      _loadPermissions();
+    } else if (oldWidget.community != widget.community) {
       _community = Map<String, dynamic>.from(widget.community);
     }
   }
@@ -61,6 +109,11 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   }
 
   Future<void> _editCommunity() async {
+    if (!await _verifyPermission('community.manage_settings')) {
+      if (mounted) showMessage(context, 'You do not have permission to edit community settings.');
+      await _loadPermissions();
+      return;
+    }
     final draft = await showDialog<_CommunityDraft>(
       context: context,
       builder: (_) => _EditCommunityDialog(community: _community),
@@ -99,6 +152,11 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   }
 
   Future<void> _addChannel() async {
+    if (!await _verifyPermission('community.manage_structure')) {
+      if (mounted) showMessage(context, 'You do not have permission to manage community channels.');
+      await _loadPermissions();
+      return;
+    }
     final draft = await showDialog<_ChannelDraft>(
       context: context,
       builder: (_) => const _AddChannelDialog(),
@@ -120,6 +178,11 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   }
 
   Future<void> _editChannel(Map<String, dynamic> channel) async {
+    if (!await _verifyPermission('community.manage_structure')) {
+      if (mounted) showMessage(context, 'You do not have permission to edit community channels.');
+      await _loadPermissions();
+      return;
+    }
     final draft = await showDialog<_ChannelDraft>(
       context: context,
       builder: (_) => _EditChannelDialog(channel: channel),
@@ -253,7 +316,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                       size: 14,
                     ),
                   ),
-                if (_canManage)
+                if (_canManageStructure)
                   IconButton(
                     tooltip: 'Edit channel',
                     visualDensity: VisualDensity.compact,
@@ -343,7 +406,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
           ],
         ),
         actions: [
-          if (_canManage)
+          if (_canManageStructure)
             IconButton(
               tooltip: 'Create channel',
               onPressed: _addChannel,
@@ -353,7 +416,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                   : const BoxConstraints(),
               padding: EdgeInsets.zero,
             ),
-          if (_canManage)
+          if (_canManageSettings)
             IconButton(
               tooltip: 'Edit community',
               onPressed: _editCommunity,
@@ -467,14 +530,14 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                               ? 'INVITE ONLY'
                               : 'PUBLIC',
                         ),
-                        if (_canManage)
+                        if (_canManageSettings)
                           const _InfoPill(
                             icon: Icons.shield_outlined,
                             label: 'OWNER / ADMIN',
                           ),
                       ],
                     ),
-                    if (_canManage) ...[
+                    if (_canManageSettings) ...[
                       const SizedBox(height: 13),
                       Align(
                         alignment: Alignment.centerLeft,
@@ -515,7 +578,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    if (_canManage) ...[
+                    if (_canManageStructure) ...[
                       const SizedBox(width: 8),
                       TextButton.icon(
                         onPressed: _addChannel,
@@ -558,7 +621,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                 _channelGroup('COMPETITIVE', competitive),
                 _channelGroup('VOICE CHANNELS', voiceChannels),
               ],
-              if (!_canManage)
+              if (!_canManageStructure)
                 const Padding(
                   padding: EdgeInsets.only(top: 12),
                   child: Text(
