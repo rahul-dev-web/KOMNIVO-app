@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:komnivo/core/komnivo_theme.dart';
 import 'package:komnivo/features/shell/app_shell.dart';
+import 'package:komnivo/features/ai/tournament_form_card.dart';
 
 Future<void> _pumpKOMNIVO(WidgetTester tester) async {
   tester.view.physicalSize = const Size(430, 900);
@@ -26,6 +27,23 @@ void main() {
   test('KOMNIVO theme uses a dark visual system', () {
     expect(KomnivoTheme.dark.brightness, Brightness.dark);
     expect(KomnivoTheme.background, isNotNull);
+  });
+
+  test('Tournament form serializes the selected time as India Standard Time', () {
+    expect(
+      formatKOMNIVOIstTimestamp(
+        DateTime(2026, 11, 19),
+        const TimeOfDay(hour: 9, minute: 0),
+      ),
+      '2026-11-19T09:00:00+05:30',
+    );
+    expect(
+      formatKOMNIVOIstTimestamp(
+        DateTime(2026, 11, 18),
+        const TimeOfDay(hour: 11, minute: 0),
+      ),
+      '2026-11-18T11:00:00+05:30',
+    );
   });
 
   testWidgets('Five core destinations use the approved order and Community home',
