@@ -4,7 +4,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(37);
+select extensions.plan(60);
 
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_user_meta_data)
 values
@@ -12,7 +12,8 @@ values
  ('10000000-0000-4000-8000-000000000002','authenticated','authenticated','b1-team-a@example.test',now(),'{"full_name":"B1 Team A"}'),
  ('10000000-0000-4000-8000-000000000003','authenticated','authenticated','b1-team-b@example.test',now(),'{"full_name":"B1 Team B"}'),
  ('10000000-0000-4000-8000-000000000004','authenticated','authenticated','b1-match-operator@example.test',now(),'{"full_name":"B1 Match Operator"}'),
- ('10000000-0000-4000-8000-000000000005','authenticated','authenticated','b1-public-viewer@example.test',now(),'{"full_name":"B1 Public Viewer"}')
+ ('10000000-0000-4000-8000-000000000005','authenticated','authenticated','b1-public-viewer@example.test',now(),'{"full_name":"B1 Public Viewer"}'),
+ ('10000000-0000-4000-8000-000000000006','authenticated','authenticated','b1-community-admin@example.test',now(),'{"full_name":"B1 Community Admin"}')
 on conflict (id) do nothing;
 
 update public.profiles set username='b1_owner' where id='10000000-0000-4000-8000-000000000001';
@@ -20,6 +21,7 @@ update public.profiles set username='b1_team_a' where id='10000000-0000-4000-800
 update public.profiles set username='b1_team_b' where id='10000000-0000-4000-8000-000000000003';
 update public.profiles set username='b1_match_operator' where id='10000000-0000-4000-8000-000000000004';
 update public.profiles set username='b1_public_viewer' where id='10000000-0000-4000-8000-000000000005';
+update public.profiles set username='b1_community_admin' where id='10000000-0000-4000-8000-000000000006';
 
 insert into public.games(id,code,name,platform,is_active)
 values ('30000000-0000-4000-8000-000000000001','b1-isolation-test','Batch One Isolation Test','mobile',true)
@@ -87,8 +89,14 @@ values ('40000000-0000-4000-8000-000000000001','Batch One Permissions','batch-on
 
 insert into public.community_members(community_id,user_id,role) values
  ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','owner'),
- ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','member')
+ ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000002','member'),
+ ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000006','admin')
 on conflict (community_id,user_id) do nothing;
+
+-- This event belongs to the test community so Community/Event boundaries are exercised.
+update public.events
+set community_id='40000000-0000-4000-8000-000000000001'
+where id='20000000-0000-4000-8000-000000000001';
 
 insert into public.community_roles(id,community_id,name,description,colour,position,is_system,created_by)
 values ('40000000-0000-4000-8000-000000000004','40000000-0000-4000-8000-000000000001',
@@ -193,9 +201,29 @@ select public.assign_scoped_event_staff_by_username(
 );
 reset role;
 
+-- Community Admin has authority inside the linked Community, but no Event or Team authority
+-- unless separately appointed within those scopes.
+set local role authenticated;
+set local request.jwt.claim.sub = '10000000-0000-4000-8000-000000000006';
+select extensions.is(public.has_permission('community.manage_roles','community','40000000-0000-4000-8000-000000000001'),true,'Community Admin can manage Community roles');
+select extensions.is(public.has_permission('community.manage_structure','community','40000000-0000-4000-8000-000000000001'),true,'Community Admin can manage Community structure');
+select extensions.is(public.has_permission('team.manage','team','20000000-0000-4000-8000-000000000005'),false,'Community Admin is not automatically a Team manager');
+select extensions.is(public.has_permission('event.manage','event','20000000-0000-4000-8000-000000000001'),false,'Community Admin is not automatically an Event manager');
+select extensions.is(public.has_permission('event.staff.assign','event','20000000-0000-4000-8000-000000000001'),false,'Community Admin cannot assign Event staff without Event authority');
+select extensions.is(public.has_permission('event.matches.operate','event','20000000-0000-4000-8000-000000000001'),false,'Community Admin cannot operate linked Event matches by Community role');
+select extensions.is(public.has_permission('event.results.review','event','20000000-0000-4000-8000-000000000001'),false,'Community Admin cannot review Event results by Community role');
+select extensions.is(public.has_permission('event.audit.read','event','20000000-0000-4000-8000-000000000001'),false,'Community Admin cannot read Event audit by Community role');
+select extensions.is(public.has_permission('match.operate','match','20000000-0000-4000-8000-000000000007'),false,'Community Admin cannot operate a match without Event staff assignment');
+reset role;
+
 -- Team A can see only its own group's and match's communication and participants.
 set local role authenticated;
 set local request.jwt.claim.sub = '10000000-0000-4000-8000-000000000002';
+select extensions.is(public.has_permission('team.manage','team','20000000-0000-4000-8000-000000000005'),true,'Team A Captain can manage Team A');
+select extensions.is(public.has_permission('community.manage_roles','community','40000000-0000-4000-8000-000000000001'),false,'Team A Captain does not inherit Community role management');
+select extensions.is(public.has_permission('event.staff.assign','event','20000000-0000-4000-8000-000000000001'),false,'Team A Captain does not inherit Event staff assignment');
+select extensions.is(public.has_permission('event.matches.operate','event','20000000-0000-4000-8000-000000000001'),false,'Team A Captain does not inherit Event match operations');
+select extensions.is(public.has_permission('event.results.review','event','20000000-0000-4000-8000-000000000001'),false,'Team A Captain does not inherit Event result review');
 select extensions.is(auth.uid(),'10000000-0000-4000-8000-000000000002'::uuid,'JWT context is Team A member');
 select extensions.is(public.is_team_member('20000000-0000-4000-8000-000000000006'),false,'Team A is not a member of Team B');
 select extensions.is(public.has_permission('match.operate','match','20000000-0000-4000-8000-000000000008'),false,'Team A has no operator permission on Match B');
@@ -292,9 +320,15 @@ select extensions.is(
   false,'authenticated users cannot directly update official match results');
 reset role;
 
--- Team B has the inverse match/group visibility.
+-- Team B Captain authority remains within Team B, not Community or Event staff.
 set local role authenticated;
 set local request.jwt.claim.sub = '10000000-0000-4000-8000-000000000003';
+select extensions.is(public.has_permission('team.manage','team','20000000-0000-4000-8000-000000000006'),true,'Team B Captain can manage Team B');
+select extensions.is(public.has_permission('team.manage','team','20000000-0000-4000-8000-000000000005'),false,'Team B Captain cannot manage Team A');
+select extensions.is(public.has_permission('community.manage_roles','community','40000000-0000-4000-8000-000000000001'),false,'Team B Captain does not inherit Community roles');
+select extensions.is(public.has_permission('event.staff.assign','event','20000000-0000-4000-8000-000000000001'),false,'Team B Captain does not inherit Event staff assignment');
+select extensions.is(public.has_permission('event.matches.operate','event','20000000-0000-4000-8000-000000000001'),false,'Team B Captain does not inherit Event operations');
+select extensions.is(public.has_permission('event.results.review','event','20000000-0000-4000-8000-000000000001'),false,'Team B Captain does not inherit Event result review');
 select extensions.is((select count(*) from public.channels where id='20000000-0000-4000-8000-000000000206'),1::bigint,'team B sees its match channel');
 select extensions.is((select count(*) from public.channels where id='20000000-0000-4000-8000-000000000205'),0::bigint,'team B cannot see match A channel');
 reset role;
@@ -307,6 +341,9 @@ select extensions.is(public.has_permission('match.operate','match','20000000-000
 select extensions.is((select count(*) from public.channels where id='20000000-0000-4000-8000-000000000205'),1::bigint,'operator sees assigned match channel');
 select extensions.is((select count(*) from public.channels where id='20000000-0000-4000-8000-000000000206'),0::bigint,'operator cannot see another match channel');
 select extensions.is((select count(*) from public.channels where id='20000000-0000-4000-8000-000000000202'),0::bigint,'match operator cannot see event-wide private staff channel');
+select extensions.is(public.has_permission('community.manage_roles','community','40000000-0000-4000-8000-000000000001'),false,'Event Match Operator does not inherit Community role management');
+select extensions.is(public.has_permission('team.manage','team','20000000-0000-4000-8000-000000000005'),false,'Event Match Operator does not inherit Team management');
+select extensions.is(public.has_permission('event.staff.assign','event','20000000-0000-4000-8000-000000000001'),false,'Match-scoped operator cannot assign event-wide staff');
 reset role;
 
 -- A public event viewer can discover the event channel but not private or match surfaces.
