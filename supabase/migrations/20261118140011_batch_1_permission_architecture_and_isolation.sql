@@ -158,6 +158,113 @@ $category_constraints$;
 create unique index if not exists channel_categories_one_event_group
   on public.channel_categories(group_id) where group_id is not null;
 
+-- Restore the complete roadmap/match scope columns that existed only in live schema.
+alter table public.event_rounds add column if not exists stage_type text default 'qualifier';
+alter table public.event_rounds add column if not exists group_size integer;
+alter table public.event_rounds add column if not exists matches_per_group integer;
+alter table public.event_rounds add column if not exists advancement_rules jsonb;
+alter table public.event_rounds add column if not exists room_release_minutes_before integer default 10;
+update public.event_rounds set stage_type='qualifier' where stage_type is null;
+update public.event_rounds set room_release_minutes_before=10 where room_release_minutes_before is null;
+alter table public.event_rounds alter column stage_type set not null;
+alter table public.event_rounds alter column group_size set not null;
+alter table public.event_rounds alter column advancement_rules set not null;
+alter table public.event_rounds alter column room_release_minutes_before set not null;
+
+do $round_constraints$
+begin
+  if not exists (select 1 from pg_constraint where conrelid='public.event_rounds'::regclass and conname='event_rounds_stage_type_check') then
+    alter table public.event_rounds add constraint event_rounds_stage_type_check
+      check (stage_type in ('qualifier','quarter_final','semi_final','final','grand_final','custom'));
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid='public.event_rounds'::regclass and conname='event_rounds_group_size_check') then
+    alter table public.event_rounds add constraint event_rounds_group_size_check
+      check (group_size >= 2 and group_size <= 24);
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid='public.event_rounds'::regclass and conname='event_rounds_matches_per_group_check') then
+    alter table public.event_rounds add constraint event_rounds_matches_per_group_check
+      check (matches_per_group is null or (matches_per_group >= 1 and matches_per_group <= 20));
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid='public.event_rounds'::regclass and conname='event_rounds_room_release_minutes_check') then
+    alter table public.event_rounds add constraint event_rounds_room_release_minutes_check
+      check (room_release_minutes_before >= 0 and room_release_minutes_before <= 180);
+  end if;
+end;
+$round_constraints$;
+
+alter table public.matches add column if not exists stage_id uuid;
+alter table public.matches add column if not exists group_id uuid;
+alter table public.matches add column if not exists group_match_number integer;
+alter table public.matches add column if not exists match_code text;
+
+do $match_scope_constraints$
+begin
+  if not exists (select 1 from pg_constraint where conrelid='public.matches'::regclass and conname='matches_stage_id_fkey') then
+    alter table public.matches add constraint matches_stage_id_fkey
+      foreign key (stage_id) references public.event_rounds(id) on delete set null;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid='public.matches'::regclass and conname='matches_group_id_fkey') then
+    alter table public.matches add constraint matches_group_id_fkey
+      foreign key (group_id) references public.event_groups(id) on delete set null;
+  end if;
+end;
+$match_scope_constraints$;
+
+create index if not exists matches_stage_group_schedule_idx
+  on public.matches(stage_id,group_id,group_match_number) where stage_id is not null;
+create unique index if not exists matches_event_match_code_unique
+  on public.matches(event_id,match_code) where match_code is not null;
+
+alter table public.match_participants add column if not exists slot_number smallint;
+do $participant_slot_constraint$
+begin
+  if not exists (select 1 from pg_constraint where conrelid='public.match_participants'::regclass and conname='match_participants_slot_number_check') then
+    alter table public.match_participants add constraint match_participants_slot_number_check
+      check (slot_number is null or (slot_number >= 1 and slot_number <= 24));
+  end if;
+end;
+$participant_slot_constraint$;
+create unique index if not exists match_participants_match_slot_unique
+  on public.match_participants(match_id,slot_number) where slot_number is not null;
+
+alter table public.liveops_sessions add column if not exists event_id uuid;
+do $session_event_constraint$
+begin
+  if not exists (select 1 from pg_constraint where conrelid='public.liveops_sessions'::regclass and conname='liveops_sessions_event_id_fkey') then
+    alter table public.liveops_sessions add constraint liveops_sessions_event_id_fkey
+      foreign key (event_id) references public.events(id) on delete cascade;
+  end if;
+end;
+$session_event_constraint$;
+
+-- The capture table was present in the deployed database but missing from tracked core migrations.
+create table if not exists public.liveops_captures (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references public.liveops_sessions(id) on delete cascade,
+  event_id uuid not null references public.events(id) on delete cascade,
+  match_id uuid not null references public.matches(id) on delete cascade,
+  operator_id uuid not null references public.profiles(id) on delete cascade,
+  evidence_path text not null,
+  ocr_text text not null default '',
+  capture_kind text not null default 'result'
+    check (capture_kind in ('lobby','result','other')),
+  review_status text not null default 'pending'
+    check (review_status in ('pending','submitted','accepted','rejected')),
+  reviewed_by uuid references public.profiles(id),
+  reviewed_at timestamptz,
+  review_note text not null default '',
+  created_at timestamptz not null default now(),
+  constraint liveops_capture_path_owner
+    check (split_part(evidence_path,'/',1)=operator_id::text)
+);
+alter table public.liveops_captures enable row level security;
+revoke all on public.liveops_captures from public,anon;
+grant select,insert,update on public.liveops_captures to authenticated;
+create index if not exists liveops_captures_match_created_idx
+  on public.liveops_captures(match_id,created_at desc);
+create index if not exists liveops_captures_session_created_idx
+  on public.liveops_captures(session_id,created_at);
+
 create index if not exists community_member_roles_scope_user_idx
   on public.community_member_roles(community_id,user_id,role_id);
 create index if not exists role_permissions_key_allowed_idx
