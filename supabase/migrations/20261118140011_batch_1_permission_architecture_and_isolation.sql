@@ -67,6 +67,37 @@ set scope_type = excluded.scope_type,
     owner_override = excluded.owner_override,
     description = excluded.description;
 
+-- The historical project database already contained this table, but its original
+-- CREATE TABLE statement was absent from tracked migrations. Keep clean installs
+-- reproducible by declaring its canonical schema before indexes/functions use it.
+create table if not exists public.event_staff_assignments (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references public.events(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  role_key text not null check (role_key in (
+    'competition_manager','tournament_director','match_operator','referee',
+    'result_reviewer','dispute_reviewer','support_staff','caster','streamer'
+  )),
+  assigned_by uuid not null references public.profiles(id),
+  created_at timestamptz not null default now(),
+  scope_type text not null default 'event'
+    check (scope_type in ('event','stage','group','match')),
+  stage_id uuid references public.event_rounds(id) on delete cascade,
+  group_id uuid references public.event_groups(id) on delete cascade,
+  match_id uuid references public.matches(id) on delete cascade,
+  constraint event_staff_assignments_scope_shape_check check (
+    (scope_type='event' and stage_id is null and group_id is null and match_id is null)
+    or (scope_type='stage' and stage_id is not null and group_id is null and match_id is null)
+    or (scope_type='group' and stage_id is null and group_id is not null and match_id is null)
+    or (scope_type='match' and stage_id is null and group_id is null and match_id is not null)
+  ),
+  constraint event_staff_assignments_scoped_unique
+    unique nulls not distinct (event_id,user_id,role_key,scope_type,stage_id,group_id,match_id)
+);
+alter table public.event_staff_assignments enable row level security;
+revoke all on public.event_staff_assignments from public,anon;
+grant select,insert,update,delete on public.event_staff_assignments to authenticated;
+
 create index if not exists community_member_roles_scope_user_idx
   on public.community_member_roles(community_id,user_id,role_id);
 create index if not exists role_permissions_key_allowed_idx
@@ -542,6 +573,18 @@ grant execute on function app_private.can_manage_community_roles(uuid) to authen
 grant execute on function app_private.can_manage_community_structure(uuid) to authenticated;
 grant execute on function app_private.can_manage_community(uuid) to authenticated;
 grant execute on function app_private.is_event_staff(uuid) to authenticated;
+
+-- Event staff records are visible only to the assignee and event staff managers.
+drop policy if exists event_staff_assignments_manage_staff on public.event_staff_assignments;
+create policy event_staff_assignments_manage_staff
+on public.event_staff_assignments for all to authenticated
+using (app_private.is_event_staff(event_id))
+with check (app_private.is_event_staff(event_id));
+
+drop policy if exists event_staff_assignments_read_own_or_manager on public.event_staff_assignments;
+create policy event_staff_assignments_read_own_or_manager
+on public.event_staff_assignments for select to authenticated
+using (user_id=(select auth.uid()) or app_private.is_event_staff(event_id));
 grant execute on function app_private.can_operate_event_matches(uuid) to authenticated;
 grant execute on function app_private.can_review_event_results(uuid) to authenticated;
 grant execute on function app_private.is_match_host(uuid) to authenticated;
