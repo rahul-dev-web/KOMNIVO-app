@@ -98,6 +98,39 @@ alter table public.event_staff_assignments enable row level security;
 revoke all on public.event_staff_assignments from public,anon;
 grant select,insert,update,delete on public.event_staff_assignments to authenticated;
 
+-- Event communication scope columns existed in the live database but were never
+-- declared in the tracked migration history. Add them before policies/helpers use them.
+alter table public.channels add column if not exists event_id uuid;
+alter table public.channels add column if not exists stage_id uuid;
+alter table public.channels add column if not exists group_id uuid;
+alter table public.channels add column if not exists match_id uuid;
+
+do $constraints$
+begin
+  if not exists (select 1 from pg_constraint where conrelid='public.channels'::regclass and conname='channels_event_id_fkey') then
+    alter table public.channels add constraint channels_event_id_fkey
+      foreign key (event_id) references public.events(id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid='public.channels'::regclass and conname='channels_stage_id_fkey') then
+    alter table public.channels add constraint channels_stage_id_fkey
+      foreign key (stage_id) references public.event_rounds(id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid='public.channels'::regclass and conname='channels_group_id_fkey') then
+    alter table public.channels add constraint channels_group_id_fkey
+      foreign key (group_id) references public.event_groups(id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid='public.channels'::regclass and conname='channels_match_id_fkey') then
+    alter table public.channels add constraint channels_match_id_fkey
+      foreign key (match_id) references public.matches(id) on delete cascade;
+  end if;
+end;
+$constraints$;
+
+create index if not exists channels_event_group_idx
+  on public.channels(event_id,group_id) where event_id is not null;
+create unique index if not exists channels_one_event_group_room
+  on public.channels(group_id) where group_id is not null and match_id is null;
+
 create index if not exists community_member_roles_scope_user_idx
   on public.community_member_roles(community_id,user_id,role_id);
 create index if not exists role_permissions_key_allowed_idx
