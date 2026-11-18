@@ -1511,15 +1511,250 @@ comment on table public.audit_logs is
   'Append-only audit history. Direct authenticated INSERT/UPDATE/DELETE/TRUNCATE is revoked; trusted RPCs and security triggers append records.';
 
 
--- Settings, invitations and community operations use their own permission keys.
-drop policy if exists communities_update_manager on public.communities;
-create policy communities_update_manager on public.communities
-for update to authenticated
-using (app_private.resolve_permission('community.manage_settings','community',id,null,null))
-with check (app_private.resolve_permission('community.manage_settings','community',id,null,null));
+-- Use the canonical resolver for team, stage, group and match data access.
+drop policy if exists teams_read_visible on public.teams;
+create policy teams_read_visible on public.teams
+for select to authenticated
+using (app_private.resolve_permission('team.view','team',id,null,null));
 
-drop policy if exists community_invites_manager on public.community_invites;
-create policy community_invites_manager on public.community_invites
+drop policy if exists teams_update_owner on public.teams;
+create policy teams_update_owner on public.teams
+for update to authenticated
+using (app_private.resolve_permission('team.manage','team',id,null,null))
+with check (app_private.resolve_permission('team.manage','team',id,null,null));
+
+drop policy if exists team_members_read_roster on public.team_members;
+create policy team_members_read_roster on public.team_members
+for select to authenticated
+using (app_private.resolve_permission('team.view','team',team_id,null,null));
+
+drop policy if exists team_members_leave on public.team_members;
+create policy team_members_leave on public.team_members
+for delete to authenticated
+using (
+  user_id=(select auth.uid())
+  or app_private.resolve_permission('team.manage','team',team_id,null,null)
+);
+
+drop policy if exists team_invites_create_captain on public.team_invites;
+create policy team_invites_create_captain on public.team_invites
+for insert to authenticated
+with check (
+  invited_by=(select auth.uid())
+  and app_private.resolve_permission('team.manage','team',team_id,null,null)
+);
+
+drop policy if exists team_invites_participants on public.team_invites;
+create policy team_invites_participants on public.team_invites
+for select to authenticated
+using (
+  invited_user_id=(select auth.uid())
+  or invited_by=(select auth.uid())
+  or app_private.resolve_permission('team.view','team',team_id,null,null)
+);
+
+drop policy if exists team_invites_respond_invitee on public.team_invites;
+create policy team_invites_respond_invitee on public.team_invites
+for update to authenticated
+using (invited_user_id=(select auth.uid()))
+with check (invited_user_id=(select auth.uid()));
+
+create or replace function app_private.guard_team_invite_response()
+returns trigger language plpgsql security definer set search_path = ''
+as $function$
+begin
+  if NEW.id is distinct from OLD.id
+     or NEW.team_id is distinct from OLD.team_id
+     or NEW.invited_user_id is distinct from OLD.invited_user_id
+     or NEW.invited_by is distinct from OLD.invited_by
+     or NEW.expires_at is distinct from OLD.expires_at
+     or NEW.created_at is distinct from OLD.created_at then
+    raise exception 'Team invite identity and scope are immutable';
+  end if;
+  if auth.uid() is not null and OLD.invited_user_id is distinct from auth.uid() then
+    raise exception 'Only the invited user may respond to this invite';
+  end if;
+  if OLD.status <> 'pending' or NEW.status not in ('accepted','declined') then
+    raise exception 'Only a pending team invite can be accepted or declined';
+  end if;
+  return NEW;
+end;
+$function$;
+revoke all on function app_private.guard_team_invite_response() from public,anon,authenticated;
+drop trigger if exists team_invites_response_guard on public.team_invites;
+create trigger team_invites_response_guard
+before update on public.team_invites
+for each row execute function app_private.guard_team_invite_response();
+
+drop policy if exists events_read_published on public.events;
+create policy events_read_published on public.events
+for select to authenticated
+using (app_private.resolve_permission('event.view','event',id,null,null));
+
+drop policy if exists event_rounds_read_visible on public.event_rounds;
+create policy event_rounds_read_visible on public.event_rounds
+for select to authenticated
+using (app_private.resolve_permission('stage.view','stage',id,null,null));
+
+drop policy if exists event_rounds_manage_staff on public.event_rounds;
+create policy event_rounds_manage_staff on public.event_rounds
 for all to authenticated
-using (app_private.resolve_permission('community.manage_invites','community',community_id,null,null))
-with check (app_private.resolve_permission('community.manage_invites','community',community_id,null,null));
+using (app_private.resolve_permission('stage.manage','stage',id,null,null))
+with check (app_private.resolve_permission('stage.manage','stage',id,null,null));
+
+drop policy if exists event_groups_read_visible on public.event_groups;
+create policy event_groups_read_visible on public.event_groups
+for select to authenticated
+using (app_private.resolve_permission('group.view','group',id,null,null));
+
+drop policy if exists event_groups_manage_staff on public.event_groups;
+create policy event_groups_manage_staff on public.event_groups
+for all to authenticated
+using (app_private.resolve_permission('group.manage','group',id,null,null))
+with check (app_private.resolve_permission('group.manage','group',id,null,null));
+
+drop policy if exists event_group_teams_read_visible on public.event_group_teams;
+create policy event_group_teams_read_visible on public.event_group_teams
+for select to authenticated
+using (app_private.resolve_permission('group.view','group',group_id,null,null));
+
+drop policy if exists event_group_teams_manage_staff on public.event_group_teams;
+create policy event_group_teams_manage_staff on public.event_group_teams
+for all to authenticated
+using (app_private.resolve_permission('group.manage','group',group_id,null,null))
+with check (app_private.resolve_permission('group.manage','group',group_id,null,null));
+
+drop policy if exists matches_read_event_members on public.matches;
+create policy matches_read_event_members on public.matches
+for select to authenticated
+using (app_private.resolve_permission('match.view','match',id,null,null));
+
+drop policy if exists matches_read_published_event on public.matches;
+create policy matches_read_published_event on public.matches
+for select to authenticated
+using (app_private.resolve_permission('event.view','event',event_id,null,null));
+
+drop policy if exists matches_create_staff on public.matches;
+create policy matches_create_staff on public.matches
+for insert to authenticated
+with check (app_private.resolve_permission('event.matches.manage','event',event_id,null,null));
+
+drop policy if exists matches_update_staff on public.matches;
+create policy matches_update_staff on public.matches
+for update to authenticated
+using (app_private.resolve_permission('event.matches.manage','event',event_id,null,null))
+with check (app_private.resolve_permission('event.matches.manage','event',event_id,null,null));
+
+drop policy if exists participants_manage_staff on public.match_participants;
+create policy participants_manage_staff on public.match_participants
+for all to authenticated
+using (app_private.resolve_permission('match.operate','match',match_id,null,null))
+with check (app_private.resolve_permission('match.operate','match',match_id,null,null));
+
+drop policy if exists participants_read_team_or_staff on public.match_participants;
+create policy participants_read_team_or_staff on public.match_participants
+for select to authenticated
+using (
+  app_private.resolve_permission('participant.view','participant',match_id,team_id,null)
+);
+
+drop policy if exists checkins_read_self_or_staff on public.match_checkins;
+create policy checkins_read_self_or_staff on public.match_checkins
+for select to authenticated
+using (
+  user_id=(select auth.uid())
+  or exists (
+    select 1 from public.matches m
+    where m.id=match_checkins.match_id
+      and app_private.resolve_permission('event.checkin.manage','event',m.event_id,null,null)
+  )
+);
+
+drop policy if exists standings_write_staff on public.event_stage_standings;
+create policy standings_write_staff on public.event_stage_standings
+for all to authenticated
+using (app_private.resolve_permission('event.standings.publish','event',event_id,null,null))
+with check (app_private.resolve_permission('event.standings.publish','event',event_id,null,null));
+
+drop policy if exists disputes_decide_staff on public.result_disputes;
+create policy disputes_decide_staff on public.result_disputes
+for update to authenticated
+using (
+  exists (
+    select 1 from public.match_results r
+    join public.matches m on m.id=r.match_id
+    where r.id=result_disputes.result_id
+      and app_private.resolve_permission('event.disputes.review','event',m.event_id,null,null)
+  )
+)
+with check (
+  exists (
+    select 1 from public.match_results r
+    join public.matches m on m.id=r.match_id
+    where r.id=result_disputes.result_id
+      and app_private.resolve_permission('event.disputes.review','event',m.event_id,null,null)
+  )
+);
+
+drop policy if exists disputes_read_reporter_or_staff on public.result_disputes;
+create policy disputes_read_reporter_or_staff on public.result_disputes
+for select to authenticated
+using (
+  opened_by=(select auth.uid())
+  or exists (
+    select 1 from public.match_results r
+    join public.matches m on m.id=r.match_id
+    where r.id=result_disputes.result_id
+      and (
+        app_private.resolve_permission('event.disputes.review','event',m.event_id,null,null)
+        or app_private.resolve_permission('event.results.review','event',m.event_id,null,null)
+      )
+  )
+);
+
+drop policy if exists evidence_insert_owner_or_staff on public.result_evidence;
+create policy evidence_insert_owner_or_staff on public.result_evidence
+for insert to authenticated
+with check (
+  uploaded_by=(select auth.uid())
+  and exists (
+    select 1 from public.match_results r
+    join public.matches m on m.id=r.match_id
+    where r.id=result_evidence.result_id
+      and (
+        app_private.is_team_member(r.team_id)
+        or app_private.resolve_permission('event.results.review','event',m.event_id,null,null)
+      )
+  )
+);
+
+drop policy if exists liveops_captures_review_staff on public.liveops_captures;
+create policy liveops_captures_review_staff on public.liveops_captures
+for update to authenticated
+using (
+  exists (
+    select 1 from public.liveops_sessions s
+    where s.id=liveops_captures.session_id
+      and app_private.resolve_permission('liveops.capture.review','liveops_session',s.id,null,null)
+  )
+)
+with check (
+  exists (
+    select 1 from public.liveops_sessions s
+    where s.id=liveops_captures.session_id
+      and app_private.resolve_permission('liveops.capture.review','liveops_session',s.id,null,null)
+  )
+);
+
+drop policy if exists room_credentials_read_eligible on public.room_credentials;
+create policy room_credentials_read_eligible on public.room_credentials
+for select to authenticated
+using (
+  app_private.resolve_permission('match.credentials.release','match',match_id,null,null)
+  or (
+    release_at <= now()
+    and app_private.resolve_permission('match.credentials.read','match',match_id,null,null)
+  )
+);
+
+-- A user-created role may never claim the protected system-role flag.
