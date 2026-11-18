@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
@@ -106,7 +105,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
           MaterialPageRoute(
             builder: (_) => CommunityDetailScreen(
               community: community,
-              canManage: true,
             ),
           ),
         );
@@ -158,15 +156,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
     }
     if (membership == null) return;
 
-    final role = membership['role']?.toString() ?? 'member';
-    final currentUser = Supabase.instance.client.auth.currentUser?.id;
-    final canManage = community['owner_user_id'] == currentUser ||
-        const {'owner', 'admin', 'moderator', 'organiser'}.contains(role);
     Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => CommunityDetailScreen(
           community: community,
-          canManage: canManage,
         ),
       ),
     ).then((_) {
@@ -471,10 +464,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 ? CommunityDetailScreen(
                     key: ValueKey(selectedCommunity['id']),
                     community: selectedCommunity,
-                    canManage: selectedCommunity['owner_user_id'] ==
-                            Supabase.instance.client.auth.currentUser?.id ||
-                        const {'owner', 'admin', 'moderator', 'organiser'}
-                            .contains(selectedMembership['role']?.toString()),
                     embedded: true,
                     onCommunityUpdated: _refresh,
                   )
