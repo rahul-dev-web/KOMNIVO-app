@@ -231,15 +231,23 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     }
     setState(() => _busy = true);
     try {
-      await _client.from('room_credentials').insert({
-        'match_id': matchId,
-        'room_code': code.text.trim(),
-        'room_password': password.text.trim(),
-        'release_at': DateTime.now().add(const Duration(minutes: 10)).toUtc().toIso8601String(),
-        'created_by': _client.auth.currentUser!.id,
+      final releaseAt = DateTime.now()
+          .add(const Duration(minutes: 10))
+          .toUtc()
+          .toIso8601String();
+      await _client.rpc('publish_match_room_credentials', params: {
+        'p_match_id': matchId,
+        'p_room_code': code.text.trim(),
+        'p_room_password': password.text.trim(),
+        'p_release_at': releaseAt,
       });
       _reload();
-      if (mounted) showMessage(context, 'Room details saved with a 10-minute release delay.');
+      if (mounted) {
+        showMessage(
+          context,
+          'Room details securely scheduled. Only eligible participants can view them after release.',
+        );
+      }
     } catch (error) {
       if (mounted) showMessage(context, error.toString());
     } finally {
