@@ -259,7 +259,7 @@ begin
 
     v_is_organizer := v_event_organizer = v_uid;
     v_community_manager := v_event_community is not null
-      and app_private.resolve_permission('community.manage_settings','community',v_event_community,null,null);
+      and app_private.resolve_permission('community.manage_structure','community',v_event_community,null,null);
 
     if p_permission_key = 'event.view' then
       return v_event_status in ('published','registration_open','registration_closed','live','completed')
@@ -666,12 +666,15 @@ begin
     raise exception 'System roles cannot be modified or deleted';
   end if;
   if TG_OP <> 'DELETE' then
+    if auth.uid() is not null and NEW.is_system then
+      raise exception 'System roles can only be provisioned by trusted migrations';
+    end if;
     v_position := NEW.position;
     v_rank := app_private.community_authority_rank(v_community_id);
     if v_position >= v_rank then
       raise exception 'You cannot create or move a role at or above your own hierarchy level';
     end if;
-    NEW.created_by := coalesce(NEW.created_by,auth.uid());
+    NEW.created_by := coalesce(auth.uid(),NEW.created_by);
   end if;
   if TG_OP='DELETE' then return OLD; end if;
   return NEW;
@@ -1556,8 +1559,21 @@ using (
 drop policy if exists team_invites_respond_invitee on public.team_invites;
 create policy team_invites_respond_invitee on public.team_invites
 for update to authenticated
-using (invited_user_id=(select auth.uid()))
-with check (invited_user_id=(select auth.uid()));
+using (
+  invited_user_id=(select auth.uid())
+  or (
+    invited_by=(select auth.uid())
+    and app_private.resolve_permission('team.manage','team',team_id,null,null)
+  )
+)
+with check (
+  invited_user_id=(select auth.uid())
+  or (
+    invited_by=(select auth.uid())
+    and status='cancelled'
+    and app_private.resolve_permission('team.manage','team',team_id,null,null)
+  )
+);
 
 create or replace function app_private.guard_team_invite_response()
 returns trigger language plpgsql security definer set search_path = ''
@@ -1571,11 +1587,19 @@ begin
      or NEW.created_at is distinct from OLD.created_at then
     raise exception 'Team invite identity and scope are immutable';
   end if;
-  if auth.uid() is not null and OLD.invited_user_id is distinct from auth.uid() then
-    raise exception 'Only the invited user may respond to this invite';
+  if OLD.status <> 'pending' then
+    raise exception 'Only a pending team invite may be updated';
   end if;
-  if OLD.status <> 'pending' or NEW.status not in ('accepted','declined') then
-    raise exception 'Only a pending team invite can be accepted or declined';
+  if auth.uid() = OLD.invited_user_id then
+    if NEW.status not in ('accepted','declined') then
+      raise exception 'Invitees may only accept or decline their invitation';
+    end if;
+  elsif auth.uid() = OLD.invited_by
+     and NEW.status = 'cancelled'
+     and app_private.resolve_permission('team.manage','team',OLD.team_id,null,null) then
+    null;
+  else
+    raise exception 'Only the invited user may respond or the inviter may cancel this invite';
   end if;
   return NEW;
 end;
@@ -1758,3 +1782,72 @@ using (
 );
 
 -- A user-created role may never claim the protected system-role flag.
+
+
+-- A capture's identity and source are immutable once submitted; reviewers can only
+-- change review fields, never retarget evidence to another match/session.
+create or replace function app_private.guard_liveops_capture_scope()
+returns trigger language plpgsql security definer set search_path = ''
+as $function$
+declare
+  v_match_event uuid;
+  v_session_operator uuid;
+  v_session_match uuid;
+  v_session_event uuid;
+begin
+  if TG_OP='INSERT' then
+    select s.operator_id,s.match_id,s.event_id,m.event_id
+      into v_session_operator,v_session_match,v_session_event,v_match_event
+    from public.liveops_sessions s
+    join public.matches m on m.id=s.match_id
+    where s.id=NEW.session_id;
+    if not found
+       or v_session_operator is distinct from NEW.operator_id
+       or v_session_match is distinct from NEW.match_id
+       or v_session_event is distinct from NEW.event_id
+       or v_match_event is distinct from NEW.event_id then
+      raise exception 'Capture must be bound to its operator session, match and event';
+    end if;
+    if auth.uid() is not null then
+      if NEW.operator_id is distinct from auth.uid()
+         or not app_private.resolve_permission('liveops.capture.submit','match',NEW.match_id,null,null) then
+        raise exception 'You are not authorised to attach evidence to this match';
+      end if;
+    end if;
+    return NEW;
+  end if;
+
+  if NEW.id is distinct from OLD.id
+     or NEW.session_id is distinct from OLD.session_id
+     or NEW.event_id is distinct from OLD.event_id
+     or NEW.match_id is distinct from OLD.match_id
+     or NEW.operator_id is distinct from OLD.operator_id
+     or NEW.evidence_path is distinct from OLD.evidence_path
+     or NEW.ocr_text is distinct from OLD.ocr_text
+     or NEW.capture_kind is distinct from OLD.capture_kind
+     or NEW.created_at is distinct from OLD.created_at then
+    raise exception 'Capture identity, evidence and source cannot be edited after upload';
+  end if;
+  if auth.uid() is not null
+     and not app_private.resolve_permission('liveops.capture.review','liveops_session',OLD.session_id,null,null) then
+    raise exception 'Only an authorised reviewer may review a capture';
+  end if;
+  if NEW.review_status not in ('pending','submitted','accepted','rejected') then
+    raise exception 'Invalid capture review status';
+  end if;
+  if NEW.review_status is distinct from OLD.review_status
+     or NEW.reviewed_by is distinct from OLD.reviewed_by
+     or NEW.reviewed_at is distinct from OLD.reviewed_at
+     or NEW.review_note is distinct from OLD.review_note then
+    if NEW.reviewed_by is distinct from auth.uid() and auth.uid() is not null then
+      raise exception 'Capture reviewer must match the authenticated user';
+    end if;
+  end if;
+  return NEW;
+end;
+$function$;
+revoke all on function app_private.guard_liveops_capture_scope() from public,anon,authenticated;
+drop trigger if exists liveops_captures_scope_guard on public.liveops_captures;
+create trigger liveops_captures_scope_guard
+before insert or update on public.liveops_captures
+for each row execute function app_private.guard_liveops_capture_scope();
