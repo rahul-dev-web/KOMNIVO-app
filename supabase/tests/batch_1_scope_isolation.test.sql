@@ -4,7 +4,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(28);
+select extensions.plan(31);
 
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_user_meta_data)
 values
@@ -132,6 +132,57 @@ insert into public.result_disputes(id,result_id,opened_by,reason,status)
 values ('20000000-0000-4000-8000-000000000303','20000000-0000-4000-8000-000000000009',
         '10000000-0000-4000-8000-000000000003','Fixture dispute','open');
 
+-- A second event proves that otherwise valid IDs in another event cannot be read
+-- through the first event's match/channel/credential scope.
+insert into public.events(
+ id,game_id,organizer_id,name,description,format,status,starts_at,capacity,rules_json,scoring_config
+) values (
+ '20000000-0000-4000-8000-000000000010',
+ '30000000-0000-4000-8000-000000000001',
+ '10000000-0000-4000-8000-000000000001',
+ 'Batch One Cross-Event Test','RLS fixture only','squad','published',now(),2,'{}','{"kill_point":1,"placement_points":{}}'
+);
+
+insert into public.event_rounds(
+ id,event_id,round_number,name,status,configuration,stage_type,group_size,matches_per_group,advancement_rules,room_release_minutes_before
+) values (
+ '20000000-0000-4000-8000-000000000011',
+ '20000000-0000-4000-8000-000000000010',
+ 1,'Other Event Stage','live','{}','qualifier',2,1,'{"top_n":1}',10
+);
+
+insert into public.event_groups(id,round_id,label,sort_order)
+values ('20000000-0000-4000-8000-000000000012','20000000-0000-4000-8000-000000000011','Other Event Group',1);
+
+insert into public.matches(
+ id,event_id,round_number,group_label,match_number,status,stage_id,group_id,group_match_number
+) values (
+ '20000000-0000-4000-8000-000000000013',
+ '20000000-0000-4000-8000-000000000010',
+ 1,'Other Event Group',1,'scheduled',
+ '20000000-0000-4000-8000-000000000011',
+ '20000000-0000-4000-8000-000000000012',1
+);
+
+insert into public.channels(id,name,kind,is_private,event_id,stage_id,group_id,match_id,created_by)
+values (
+ '20000000-0000-4000-8000-000000000207','Other Event Private Match','match',true,
+ '20000000-0000-4000-8000-000000000010',
+ '20000000-0000-4000-8000-000000000011',
+ '20000000-0000-4000-8000-000000000012',
+ '20000000-0000-4000-8000-000000000013',
+ '10000000-0000-4000-8000-000000000001'
+);
+
+insert into public.room_credentials(id,match_id,room_code,room_password,release_at,created_by)
+values (
+ '20000000-0000-4000-8000-000000000304',
+ '20000000-0000-4000-8000-000000000013',
+ 'B1-OTHER-ROOM','B1-OTHER-SECRET',now()+interval '1 day',
+ '10000000-0000-4000-8000-000000000001'
+);
+
+
 
 -- The event owner uses the authenticated RPC; the operator is deliberately scoped to one match.
 set local role authenticated;
@@ -151,6 +202,8 @@ select extensions.is((select count(*) from public.channels where id='20000000-00
 select extensions.is((select count(*) from public.channels where id='20000000-0000-4000-8000-000000000206'),0::bigint,'team A cannot see match B channel');
 select extensions.is((select count(*) from public.match_participants where match_id='20000000-0000-4000-8000-000000000008'),0::bigint,'team A cannot read match B roster');
 select extensions.is((select count(*) from public.room_credentials where match_id='20000000-0000-4000-8000-000000000007'),0::bigint,'room credentials stay hidden before release');
+select extensions.is((select count(*) from public.channels where id='20000000-0000-4000-8000-000000000207'),0::bigint,'team A cannot see a private match channel in another event');
+select extensions.is((select count(*) from public.room_credentials where match_id='20000000-0000-4000-8000-000000000013'),0::bigint,'team A cannot read another event room credentials');
 
 select extensions.is(
   public.has_permission('channel.manage_messages','community','40000000-0000-4000-8000-000000000001',null,'40000000-0000-4000-8000-000000000003'),
@@ -201,6 +254,19 @@ set local role authenticated;
 select extensions.is(
   public.has_permission('channel.manage_messages','community','40000000-0000-4000-8000-000000000001',null,'40000000-0000-4000-8000-000000000003'),
   true,'removing channel override restores category inheritance');
+
+-- Permission changes are resolved server-side on the next request; no client refresh is needed.
+reset role;
+set local request.jwt.claim.sub = '';
+delete from public.community_member_roles
+where community_id='40000000-0000-4000-8000-000000000001'
+  and user_id='10000000-0000-4000-8000-000000000002'
+  and role_id='40000000-0000-4000-8000-000000000004';
+set local request.jwt.claim.sub = '10000000-0000-4000-8000-000000000002';
+set local role authenticated;
+select extensions.is(
+  public.has_permission('channel.manage_messages','community','40000000-0000-4000-8000-000000000001',null,'40000000-0000-4000-8000-000000000003'),
+  false,'removing a role revokes its permission immediately');
 
 with attempted as (
   update public.match_checkins set status='absent'
