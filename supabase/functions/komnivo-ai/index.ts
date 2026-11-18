@@ -6,7 +6,7 @@ type Provider = "cloudflare" | "groq";
 
 const MAX_MESSAGE_CHARS = 8000;
 const DEFAULT_DAILY_LIMIT = 25;
-const HISTORY_LIMIT = 12;
+const HISTORY_LIMIT = 6;
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -356,7 +356,12 @@ async function buildContext(
   }
 
   if (!capabilities.eventId) {
-    await attachDocumentSources(admin, snapshot, capabilities, userQuery);
+    // Tournament creation requests do not need retrieved document chunks.
+    // Skipping document search keeps the provider prompt lean and reduces latency.
+    const creationIntent = /\b(create|make|build|setup|set up|banao|ban[aā]o|tournament|event)\b/i.test(userQuery);
+    if (!creationIntent) {
+      await attachDocumentSources(admin, snapshot, capabilities, userQuery);
+    }
     return snapshot;
   }
 
@@ -498,7 +503,7 @@ async function requestCloudflare(
         model, messages, temperature: 0.2, max_completion_tokens: 1200, reasoning_effort: "low",
         ...(allowOrganizerTools ? { tools: ORGANIZER_TOOLS, tool_choice: "auto" } : {}),
       }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(32000),
     },
   );
   const data = await response.json().catch(() => ({}));
@@ -547,7 +552,7 @@ async function requestGroq(
       model, messages, temperature: 0.2, max_tokens: 1200,
       ...(allowOrganizerTools ? { tools: ORGANIZER_TOOLS, tool_choice: "auto" } : {}),
     }),
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(25000),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -594,8 +599,12 @@ async function callModel(
   try {
     return await requestCloudflare(messages, allowOrganizerTools);
   } catch (error) {
-    const retryable = Boolean((error as Error & {retryable?: boolean}).retryable);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const retryable = Boolean((error as Error & {retryable?: boolean}).retryable)
+      || errorMessage.toLowerCase().includes("timed out")
+      || errorMessage.toLowerCase().includes("abort");
     if (!retryable || !hasGroq) throw error;
+    console.warn("[komnivo-ai] Cloudflare request timed out or failed transiently; trying configured Groq fallback.");
     return await requestGroq(messages, allowOrganizerTools);
   }
 }
@@ -926,7 +935,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         ...contextSnapshot,
         available_managed_communities: availableManagedCommunities.map((community) => community.name),
-      }).slice(0, 10000),
+      }).slice(0, 6000),
     ].join("\\n"),
   ].join("\\n\\n");
   const messages = [
