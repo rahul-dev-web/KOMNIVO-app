@@ -132,6 +132,26 @@ begin
     raise exception 'Batch 1 failed: match participants are not guarded by participant scope';
   end if;
 
+  if exists (
+    select 1 from pg_policies
+    where schemaname='public' and tablename='match_participants'
+      and policyname='participants_read_published_event'
+  ) then
+    raise exception 'Batch 1 failed: legacy published-event roster reader still bypasses match scope';
+  end if;
+
+  select coalesce(qual,'') into v_policy
+  from pg_policies
+  where schemaname='public' and tablename='match_results'
+    and policyname='results_read_participant_or_staff' and cmd='SELECT';
+  if v_policy is null
+     or position('match.results.review' in v_policy)=0
+     or position('match.disputes.review' in v_policy)=0
+     or position('is_match_team_participant' in v_policy)=0
+     or position('is_team_member' in v_policy)>0 then
+    raise exception 'Batch 1 failed: match result SELECT policy is not restricted to its match scope';
+  end if;
+
   select coalesce(qual,'') into v_policy
   from pg_policies
   where schemaname='public' and tablename='room_credentials'
