@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
 
@@ -33,27 +34,68 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
         .select('*, match_participants(team_id,check_in_status,teams(name,tag)), room_credentials(id,release_at)')
         .eq('event_id', eventId).order('match_number'),
       _client.from('match_results')
-        .select('*, teams(name,tag), matches!inner(event_id,match_number)')
+        .select('*, teams(name,tag), matches!inner(id,event_id,match_number)')
         .eq('matches.event_id', eventId).order('submitted_at', ascending: false),
       _client.from('event_rounds')
         .select('*, event_groups(id,label,sort_order,event_group_teams(team_id,teams(name,tag)))')
         .eq('event_id', eventId).order('round_number'),
       _client.from('opponent_confirmations')
-        .select('*, match_results!inner(id,match_id,team_id,matches!inner(event_id,match_number))')
+        .select('*, match_results!inner(id,match_id,team_id,matches!inner(id,event_id,match_number))')
         .eq('match_results.matches.event_id', eventId)
         .eq('decision', 'disputed')
         .order('created_at', ascending: false),
     ]);
+    final matches = List<Map<String, dynamic>>.from(results[1] as List);
+    const eventKeys = [
+      'event.manage',
+      'event.registrations.manage',
+      'event.roster.lock',
+      'event.matches.manage',
+      'event.matches.operate',
+      'event.results.review',
+      'event.disputes.review',
+      'event.standings.publish',
+    ];
+    final eventValues = await Future.wait(eventKeys.map((key) =>
+      KomnivoRepository.instance.hasPermission(
+        permissionKey: key, scopeType: 'event', scopeId: eventId,
+      ),
+    ));
+    final eventPermissions = Map<String, bool>.fromIterables(eventKeys, eventValues);
+
+    const matchKeys = [
+      'match.operate',
+      'match.credentials.release',
+      'match.results.review',
+      'match.disputes.review',
+    ];
+    final matchPermissionEntries = await Future.wait(matches.map((match) async {
+      final id = match['id'].toString();
+      final values = await Future.wait(matchKeys.map((key) =>
+        KomnivoRepository.instance.hasPermission(
+          permissionKey: key, scopeType: 'match', scopeId: id,
+        ),
+      ));
+      return MapEntry(id, Map<String, bool>.fromIterables(matchKeys, values));
+    }));
+
     return _EventData(
       registrations: List<Map<String, dynamic>>.from(results[0] as List),
-      matches: List<Map<String, dynamic>>.from(results[1] as List),
+      matches: matches,
       results: List<Map<String, dynamic>>.from(results[2] as List),
       rounds: List<Map<String, dynamic>>.from(results[3] as List),
       disputedConfirmations: List<Map<String, dynamic>>.from(results[4] as List),
+      eventPermissions: eventPermissions,
+      matchPermissions: Map<String, Map<String, bool>>.fromEntries(matchPermissionEntries),
     );
   }
 
   void _reload() => setState(() => _future = _load());
+
+  bool _canEvent(_EventData data, String key) => data.eventPermissions[key] == true;
+
+  bool _canMatch(_EventData data, String? matchId, String key) =>
+      matchId != null && data.matchPermissions[matchId]?[key] == true;
 
   Future<void> _reviewRegistration(String id, String status) async {
     setState(() => _busy = true);
@@ -86,7 +128,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
   }
 
   Future<void> _generateGroups() async {
-    final size = TextEditingController(text: '12');
+    final size = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -94,7 +136,10 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
         content: TextField(
           controller: size,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Target team count per group'),
+          decoration: const InputDecoration(
+            labelText: 'Target team count per group',
+            helperText: 'Enter the value approved for this stage in the event roadmap.',
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
@@ -102,9 +147,13 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
         ],
       ),
     );
-    final groupSize = int.tryParse(size.text);
+    final groupSize = int.tryParse(size.text.trim());
     size.dispose();
-    if (ok != true || groupSize == null || groupSize < 2 || groupSize > 24) return;
+    if (ok != true) return;
+    if (groupSize == null || groupSize < 2 || groupSize > 24) {
+      if (mounted) showMessage(context, 'Enter a group size from 2 to 24 as defined by the event rules.');
+      return;
+    }
 
     setState(() => _busy = true);
     try {
@@ -340,6 +389,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
               ]),
             ),
             const SizedBox(height: 22),
+            if (_canEvent(data, 'event.registrations.manage'))
             SectionTitle('Registration review', subtitle: 'Approve, waitlist or reject team applications', trailing: Text('${pending.length} pending', style: const TextStyle(color: KomnivoTheme.cyan, fontWeight: FontWeight.w800))),
             const SizedBox(height: 10),
             if (pending.isEmpty) const EmptyState(title: 'No registrations awaiting review', message: 'New applications will appear here.')
@@ -349,28 +399,34 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                 title: team['name']?.toString() ?? 'Solo player registration',
                 subtitle: '${row['status']} · Captain ID ${(row['captain_user_id'] ?? '').toString().substring(0, 8)}…',
                 badge: row['status'] == 'waitlisted' ? 'WAITLIST' : 'PENDING',
-                trailing: Wrap(spacing: 6, children: [
-                  IconButton(tooltip: 'Reject', onPressed: _busy ? null : () => _reviewRegistration(row['id'] as String, 'rejected'), icon: const Icon(Icons.close, color: Color(0xFFFF8193))),
-                  IconButton(tooltip: 'Approve', onPressed: _busy ? null : () => _reviewRegistration(row['id'] as String, 'approved'), icon: const Icon(Icons.check_circle, color: KomnivoTheme.cyan)),
-                ]),
+                trailing: _canEvent(data, 'event.registrations.manage')
+                    ? Wrap(spacing: 6, children: [
+                        IconButton(tooltip: 'Reject', onPressed: _busy ? null : () => _reviewRegistration(row['id'] as String, 'rejected'), icon: const Icon(Icons.close, color: Color(0xFFFF8193))),
+                        IconButton(tooltip: 'Approve', onPressed: _busy ? null : () => _reviewRegistration(row['id'] as String, 'approved'), icon: const Icon(Icons.check_circle, color: KomnivoTheme.cyan)),
+                      ])
+                    : null,
               );
             }),
             const SizedBox(height: 22),
-            SectionTitle('Roster control', subtitle: 'Snapshot accepted team members before group allocation'),
+            if (_canEvent(data, 'event.roster.lock') || _canEvent(data, 'event.manage'))
+              SectionTitle('Roster control', subtitle: 'Snapshot accepted team members before group allocation'),
             const SizedBox(height: 10),
-            Row(children: [
-              Expanded(child: OutlinedButton.icon(
-                onPressed: _busy || approved.isEmpty ? null : _lockRosters,
-                icon: const Icon(Icons.lock_outline),
-                label: Text('Lock rosters (${approved.length - locked.length} remaining)'),
-              )),
-              const SizedBox(width: 8),
-              Expanded(child: FilledButton.icon(
-                onPressed: _busy || locked.length < 2 ? null : _generateGroups,
-                icon: const Icon(Icons.account_tree_outlined),
-                label: const Text('Generate groups'),
-              )),
-            ]),
+            if (_canEvent(data, 'event.roster.lock') || _canEvent(data, 'event.manage'))
+              Row(children: [
+                if (_canEvent(data, 'event.roster.lock'))
+                  Expanded(child: OutlinedButton.icon(
+                    onPressed: _busy || approved.isEmpty ? null : _lockRosters,
+                    icon: const Icon(Icons.lock_outline),
+                    label: Text('Lock rosters (${approved.length - locked.length} remaining)'),
+                  )),
+                if (_canEvent(data, 'event.roster.lock') && _canEvent(data, 'event.manage')) const SizedBox(width: 8),
+                if (_canEvent(data, 'event.manage'))
+                  Expanded(child: FilledButton.icon(
+                    onPressed: _busy || locked.length < 2 ? null : _generateGroups,
+                    icon: const Icon(Icons.account_tree_outlined),
+                    label: const Text('Generate groups'),
+                  )),
+              ]),
             const SizedBox(height: 10),
             if (groups.isNotEmpty)
               ...groups.map((group) {
@@ -384,34 +440,43 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
             else
               const Text('Approve registrations, lock rosters, then generate balanced groups.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
             const SizedBox(height: 22),
-            SectionTitle('Match operations', subtitle: 'Create matches only from approved, locked team rosters', trailing: FilledButton.icon(
-              onPressed: _busy || eligible.length < 2 ? null : () => _createMatch(eligible, groups),
-              icon: const Icon(Icons.add),
-              label: const Text('Create match'),
-            )),
+            SectionTitle('Match operations', subtitle: 'Create matches only from approved, locked team rosters', trailing: _canEvent(data, 'event.matches.manage')
+                ? FilledButton.icon(
+                    onPressed: _busy || eligible.length < 2 ? null : () => _createMatch(eligible, groups),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Create match'),
+                  )
+                : null),
             const SizedBox(height: 10),
             if (data.matches.isEmpty) const EmptyState(title: 'No matches created', message: 'Lock at least two team rosters, then create a match.')
             else ...data.matches.map((row) {
               final participants = row['match_participants'] as List? ?? [];
               final credentials = row['room_credentials'] as List? ?? [];
               final hasCredentials = credentials.isNotEmpty;
+              final matchId = row['id']?.toString();
+              final menuItems = <PopupMenuEntry<String>>[];
+              if (_canEvent(data, 'event.matches.manage')) {
+                menuItems.addAll([
+                  const PopupMenuItem(value: 'check_in', child: Text('Open check-in')),
+                  const PopupMenuItem(value: 'room_setup', child: Text('Room setup')),
+                  const PopupMenuItem(value: 'lobby_review', child: Text('Lobby review')),
+                  const PopupMenuItem(value: 'live', child: Text('Mark live')),
+                  const PopupMenuItem(value: 'awaiting_result', child: Text('Await result')),
+                ]);
+              }
+              if (_canMatch(data, matchId, 'match.credentials.release')) {
+                menuItems.add(const PopupMenuItem(value: 'room', child: Text('Add room credentials')));
+              }
               return _OperationCard(
                 title: 'Match #${row['match_number']} · ${row['group_label'] ?? 'Unassigned group'}',
                 subtitle: '${participants.length} teams · ${row['status']} · ${row['starts_at'] ?? 'Time pending'}',
                 badge: (row['status'] ?? 'scheduled').toString().toUpperCase(),
-                trailing: PopupMenuButton<String>(
+                trailing: menuItems.isEmpty ? null : PopupMenuButton<String>(
                   onSelected: (value) {
                     if (value == 'room') _addRoomCredentials(row['id'] as String);
                     else _updateMatchStatus(row['id'] as String, value);
                   },
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(value: 'check_in', child: Text('Open check-in')),
-                    const PopupMenuItem(value: 'room_setup', child: Text('Room setup')),
-                    const PopupMenuItem(value: 'lobby_review', child: Text('Lobby review')),
-                    const PopupMenuItem(value: 'live', child: Text('Mark live')),
-                    const PopupMenuItem(value: 'awaiting_result', child: Text('Await result')),
-                    const PopupMenuItem(value: 'room', child: Text('Add room credentials')),
-                  ],
+                  itemBuilder: (_) => menuItems,
                 ),
                 footer: hasCredentials ? 'Room details saved · release at ${credentials.first['release_at']}' : 'Room details not added yet',
               );
@@ -427,11 +492,15 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                 title: 'Match result · team ${(result['team_id'] ?? '').toString().substring(0, 8)}…',
                 subtitle: 'Opponent has disputed this submission.',
                 badge: 'DISPUTED',
-                trailing: IconButton(
+                trailing: _canMatch(
+                  data,
+                  result['match_id']?.toString(),
+                  'match.disputes.review',
+                ) ? IconButton(
                   tooltip: 'Mark dispute reviewed',
                   onPressed: _busy ? null : () => _resolveOpponentDispute(row['id'] as String),
                   icon: const Icon(Icons.fact_check_outlined, color: KomnivoTheme.cyan),
-                ),
+                ) : null,
               );
             }),
             const SizedBox(height: 22),
@@ -444,15 +513,19 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                 final result = d['match_results'] is Map ? Map<String, dynamic>.from(d['match_results'] as Map) : <String, dynamic>{};
                 return result['id'] == row['id'] && d['review_status'] != 'resolved';
               });
+              final matchDetails = row['matches'] is Map
+                  ? Map<String, dynamic>.from(row['matches'] as Map)
+                  : <String, dynamic>{};
+              final matchId = matchDetails['id']?.toString();
               return _OperationCard(
                 title: team['name']?.toString() ?? 'Team result',
                 subtitle: 'Placement ${row['placement'] ?? '—'} · ${row['kills']} kills · ${row['status']}${disputed ? ' · dispute must be reviewed' : ''}',
                 badge: disputed ? 'DISPUTED' : 'REVIEW',
-                trailing: IconButton(
+                trailing: _canMatch(data, matchId, 'match.results.review') ? IconButton(
                   tooltip: 'Approve official result',
                   onPressed: _busy || disputed ? null : () => _approveResult(row['id'] as String),
                   icon: const Icon(Icons.verified_outlined, color: KomnivoTheme.cyan),
-                ),
+                ) : null,
               );
             }),
             const SizedBox(height: 22),
@@ -489,12 +562,16 @@ class _EventData {
     required this.results,
     required this.rounds,
     required this.disputedConfirmations,
+    required this.eventPermissions,
+    required this.matchPermissions,
   });
   final List<Map<String, dynamic>> registrations;
   final List<Map<String, dynamic>> matches;
   final List<Map<String, dynamic>> results;
   final List<Map<String, dynamic>> rounds;
   final List<Map<String, dynamic>> disputedConfirmations;
+  final Map<String, bool> eventPermissions;
+  final Map<String, Map<String, bool>> matchPermissions;
 }
 
 class _MatchSetup {
