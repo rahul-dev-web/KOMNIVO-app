@@ -4,7 +4,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(31);
+select extensions.plan(37);
 
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_user_meta_data)
 values
@@ -196,6 +196,12 @@ reset role;
 -- Team A can see only its own group's and match's communication and participants.
 set local role authenticated;
 set local request.jwt.claim.sub = '10000000-0000-4000-8000-000000000002';
+select extensions.is(auth.uid(),'10000000-0000-4000-8000-000000000002'::uuid,'JWT context is Team A member');
+select extensions.is(public.is_team_member('20000000-0000-4000-8000-000000000006'),false,'Team A is not a member of Team B');
+select extensions.is(public.has_permission('match.operate','match','20000000-0000-4000-8000-000000000008'),false,'Team A has no operator permission on Match B');
+select extensions.is(public.has_permission('participant.view','participant','20000000-0000-4000-8000-000000000008','20000000-0000-4000-8000-000000000006'),false,'Team A has no participant-view permission on Match B roster');
+select extensions.is(public.has_permission('match.results.review','match','20000000-0000-4000-8000-000000000008'),false,'Team A has no result-review permission on Match B');
+select extensions.is(public.has_permission('match.disputes.review','match','20000000-0000-4000-8000-000000000008'),false,'Team A has no dispute-review permission on Match B');
 select extensions.is((select count(*) from public.channels where id='20000000-0000-4000-8000-000000000203'),1::bigint,'team A sees its group channel');
 select extensions.is((select count(*) from public.channels where id='20000000-0000-4000-8000-000000000205'),1::bigint,'team A sees its match channel');
 select extensions.is((select count(*) from public.channels where id='20000000-0000-4000-8000-000000000204'),0::bigint,'team A cannot see group B channel');
