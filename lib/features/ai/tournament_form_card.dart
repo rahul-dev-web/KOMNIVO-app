@@ -52,6 +52,7 @@ class _TournamentFormCardState extends State<TournamentFormCard> {
     text: 'All maps will be randomly decided.',
   );
 
+  static const String _game = 'Free Fire MAX';
   String _format = 'squad';
   String? _communityId;
   DateTime? _startDate;
