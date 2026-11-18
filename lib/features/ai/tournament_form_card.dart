@@ -112,12 +112,17 @@ class _TournamentFormCardState extends State<TournamentFormCard> {
     return '${hour}:${time.minute.toString().padLeft(2, '0')} ${time.period == DayPeriod.am ? 'AM' : 'PM'}';
   }
 
+  DateTime _todayInIndia() {
+    final indiaNow = DateTime.now().toUtc().add(const Duration(hours: 5, minutes: 30));
+    return DateTime(indiaNow.year, indiaNow.month, indiaNow.day);
+  }
+
   Future<void> _pickStart() async {
-    final now = DateTime.now();
+    final todayInIndia = _todayInIndia();
     final date = await showDatePicker(
       context: context,
-      initialDate: _startDate ?? now,
-      firstDate: DateTime(now.year, now.month, now.day),
+      initialDate: _startDate ?? todayInIndia,
+      firstDate: todayInIndia,
       lastDate: DateTime(2100),
       helpText: 'Tournament start date (IST)',
     );
@@ -135,11 +140,11 @@ class _TournamentFormCardState extends State<TournamentFormCard> {
   }
 
   Future<void> _pickRegistrationClose() async {
-    final now = DateTime.now();
+    final todayInIndia = _todayInIndia();
     final date = await showDatePicker(
       context: context,
-      initialDate: _registrationDate ?? _startDate ?? now,
-      firstDate: DateTime(now.year, now.month, now.day),
+      initialDate: _registrationDate ?? _startDate ?? todayInIndia,
+      firstDate: todayInIndia,
       lastDate: DateTime(2100),
       helpText: 'Registration closing date (IST)',
     );
