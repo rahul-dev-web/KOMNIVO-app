@@ -316,7 +316,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                       size: 14,
                     ),
                   ),
-                if (_canManageStructure)
+                if (!_permissionsLoading && _canManageStructure)
                   IconButton(
                     tooltip: 'Edit channel',
                     visualDensity: VisualDensity.compact,
@@ -406,7 +406,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
           ],
         ),
         actions: [
-          if (_canManageStructure)
+          if (!_permissionsLoading && _canManageStructure)
             IconButton(
               tooltip: 'Create channel',
               onPressed: _addChannel,
@@ -416,7 +416,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                   : const BoxConstraints(),
               padding: EdgeInsets.zero,
             ),
-          if (_canManageSettings)
+          if (!_permissionsLoading && _canManageSettings)
             IconButton(
               tooltip: 'Edit community',
               onPressed: _editCommunity,
@@ -530,14 +530,14 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                               ? 'INVITE ONLY'
                               : 'PUBLIC',
                         ),
-                        if (_canManageSettings)
+                        if (!_permissionsLoading && _canManageSettings)
                           const _InfoPill(
                             icon: Icons.shield_outlined,
                             label: 'OWNER / ADMIN',
                           ),
                       ],
                     ),
-                    if (_canManageSettings) ...[
+                    if (!_permissionsLoading && _canManageSettings) ...[
                       const SizedBox(height: 13),
                       Align(
                         alignment: Alignment.centerLeft,
@@ -578,7 +578,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    if (_canManageStructure) ...[
+                    if (!_permissionsLoading && _canManageStructure) ...[
                       const SizedBox(width: 8),
                       TextButton.icon(
                         onPressed: _addChannel,
