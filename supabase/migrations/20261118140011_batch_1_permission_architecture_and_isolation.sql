@@ -131,6 +131,32 @@ create index if not exists channels_event_group_idx
 create unique index if not exists channels_one_event_group_room
   on public.channels(group_id) where group_id is not null and match_id is null;
 
+-- Event/stage/group fields for categories were also present only in live schema.
+alter table public.channel_categories add column if not exists event_id uuid;
+alter table public.channel_categories add column if not exists stage_id uuid;
+alter table public.channel_categories add column if not exists group_id uuid;
+alter table public.channel_categories add column if not exists archived_at timestamptz;
+
+do $category_constraints$
+begin
+  if not exists (select 1 from pg_constraint where conrelid='public.channel_categories'::regclass and conname='channel_categories_event_id_fkey') then
+    alter table public.channel_categories add constraint channel_categories_event_id_fkey
+      foreign key (event_id) references public.events(id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid='public.channel_categories'::regclass and conname='channel_categories_stage_id_fkey') then
+    alter table public.channel_categories add constraint channel_categories_stage_id_fkey
+      foreign key (stage_id) references public.event_rounds(id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conrelid='public.channel_categories'::regclass and conname='channel_categories_group_id_fkey') then
+    alter table public.channel_categories add constraint channel_categories_group_id_fkey
+      foreign key (group_id) references public.event_groups(id) on delete cascade;
+  end if;
+end;
+$category_constraints$;
+
+create unique index if not exists channel_categories_one_event_group
+  on public.channel_categories(group_id) where group_id is not null;
+
 create index if not exists community_member_roles_scope_user_idx
   on public.community_member_roles(community_id,user_id,role_id);
 create index if not exists role_permissions_key_allowed_idx
