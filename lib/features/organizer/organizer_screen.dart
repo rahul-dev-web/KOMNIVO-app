@@ -31,9 +31,18 @@ class _OrganizerScreenState extends State<OrganizerScreen> {
 
   Future<List<Map<String, dynamic>>> _loadEvents() async {
     final client = Supabase.instance.client;
+    final userId = client.auth.currentUser!.id;
+    final scopes = await client.from('event_staff_assignments')
+        .select('event_id').eq('user_id', userId);
+    final owned = await client.from('events').select('id').eq('organizer_id', userId);
+    final eventIds = <String>{
+      ...List<Map<String, dynamic>>.from(owned).map((row) => row['id'].toString()),
+      ...List<Map<String, dynamic>>.from(scopes).map((row) => row['event_id'].toString()),
+    };
+    if (eventIds.isEmpty) return <Map<String, dynamic>>[];
     final rows = await client.from('events').select('*, games(name,code)')
-      .eq('organizer_id', client.auth.currentUser!.id)
-      .order('created_at', ascending: false).limit(30);
+        .inFilter('id', eventIds.toList())
+        .order('created_at', ascending: false).limit(30);
     return List<Map<String, dynamic>>.from(rows);
   }
 
