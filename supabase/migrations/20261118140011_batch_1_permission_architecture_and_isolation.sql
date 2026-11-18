@@ -227,6 +227,30 @@ $participant_slot_constraint$;
 create unique index if not exists match_participants_match_slot_unique
   on public.match_participants(match_id,slot_number) where slot_number is not null;
 
+-- Stage/group standings existed only in the deployed database; declare them for fresh installs.
+create table if not exists public.event_stage_standings (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references public.events(id) on delete cascade,
+  stage_id uuid not null references public.event_rounds(id) on delete cascade,
+  group_id uuid not null references public.event_groups(id) on delete cascade,
+  team_id uuid not null references public.teams(id) on delete cascade,
+  points integer not null default 0,
+  kills integer not null default 0,
+  matches_played integer not null default 0,
+  first_places integer not null default 0,
+  group_rank integer,
+  qualified boolean not null default false,
+  qualified_at timestamptz,
+  updated_at timestamptz not null default now(),
+  constraint event_stage_standings_stage_id_group_id_team_id_key
+    unique (stage_id,group_id,team_id)
+);
+alter table public.event_stage_standings enable row level security;
+revoke all on public.event_stage_standings from public,anon;
+grant select,insert,update,delete on public.event_stage_standings to authenticated;
+create index if not exists event_stage_standings_stage_rank_idx
+  on public.event_stage_standings(stage_id,group_id,group_rank);
+
 alter table public.liveops_sessions add column if not exists event_id uuid;
 do $session_event_constraint$
 begin
