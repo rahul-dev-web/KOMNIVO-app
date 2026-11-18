@@ -1,3 +1,22 @@
+-- Team membership at a particular event group is derived from the group's
+-- seeded teams and the authenticated user's current team membership.
+create or replace function app_private.is_event_group_team_member(p_group_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select exists (
+    select 1
+    from public.event_group_teams gt
+    where gt.group_id = p_group_id
+      and app_private.is_team_member(gt.team_id)
+  );
+$function$;
+revoke all on function app_private.is_event_group_team_member(uuid) from public,anon;
+grant execute on function app_private.is_event_group_team_member(uuid) to authenticated;
+
 -- Batch 1 follow-up: public event discovery must not grant access to private group/match surfaces.
 -- The published schedule remains discoverable through the matches public-event policy;
 -- chat, roster, room, lobby and evidence surfaces require their exact match/group scope.
