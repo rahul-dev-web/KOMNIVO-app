@@ -191,6 +191,7 @@ begin
     if p_permission_key = 'channel.view' then
       v_builtin_allowed :=
         (not v_channel_private)
+        or v_member_role in ('owner','admin','moderator','organiser')
         or exists (
           select 1 from public.channel_members cm
           where cm.channel_id = p_resource_id and cm.user_id = v_uid
@@ -206,9 +207,10 @@ begin
         when 'community.audit.read' then v_is_owner or v_member_role = 'admin'
         when 'channel.read_history' then
           (not v_channel_private)
+          or v_member_role in ('owner','admin','moderator','organiser')
           or exists (select 1 from public.channel_members cm where cm.channel_id = p_resource_id and cm.user_id = v_uid)
         when 'channel.send_messages' then
-          (not v_channel_private or exists (
+          (not v_channel_private or v_member_role in ('owner','admin','moderator','organiser') or exists (
             select 1 from public.channel_members cm where cm.channel_id = p_resource_id and cm.user_id = v_uid
           ))
           and not exists (
@@ -217,7 +219,7 @@ begin
               and cm.muted_until is not null and cm.muted_until > now()
           )
         when 'channel.react' then
-          (not v_channel_private or exists (
+          (not v_channel_private or v_member_role in ('owner','admin','moderator','organiser') or exists (
             select 1 from public.channel_members cm where cm.channel_id = p_resource_id and cm.user_id = v_uid
           ))
         when 'channel.manage_messages' then v_is_owner or v_member_role in ('admin','moderator')
@@ -257,7 +259,7 @@ begin
 
     v_is_organizer := v_event_organizer = v_uid;
     v_community_manager := v_event_community is not null
-      and app_private.resolve_permission('community.manage_structure','community',v_event_community,null,null);
+      and app_private.resolve_permission('community.manage_settings','community',v_event_community,null,null);
 
     if p_permission_key = 'event.view' then
       return v_event_status in ('published','registration_open','registration_closed','live','completed')
@@ -590,7 +592,8 @@ declare
 begin
   v_community_id := case when TG_OP='DELETE' then OLD.community_id else NEW.community_id end;
   if v_actor is null then
-    return case when TG_OP='DELETE' then OLD else NEW end;
+    if TG_OP='DELETE' then return OLD; end if;
+  return NEW;
   end if;
 
   select c.owner_user_id into v_owner from public.communities c where c.id=v_community_id;
@@ -653,7 +656,8 @@ declare
 begin
   v_community_id := case when TG_OP='DELETE' then OLD.community_id else NEW.community_id end;
   if auth.uid() is null then
-    return case when TG_OP='DELETE' then OLD else NEW end;
+    if TG_OP='DELETE' then return OLD; end if;
+  return NEW;
   end if;
   if not app_private.resolve_permission('community.manage_roles','community',v_community_id,null,null) then
     raise exception 'You cannot manage roles in this community';
@@ -669,7 +673,8 @@ begin
     end if;
     NEW.created_by := coalesce(NEW.created_by,auth.uid());
   end if;
-  return case when TG_OP='DELETE' then OLD else NEW end;
+  if TG_OP='DELETE' then return OLD; end if;
+  return NEW;
 end;
 $function$;
 revoke all on function app_private.guard_custom_role_change() from public,anon,authenticated;
@@ -698,7 +703,8 @@ begin
   from public.community_roles cr where cr.id=v_role_id;
   if not found then raise exception 'Role not found'; end if;
   if auth.uid() is null then
-    return case when TG_OP='DELETE' then OLD else NEW end;
+    if TG_OP='DELETE' then return OLD; end if;
+  return NEW;
   end if;
   if not app_private.resolve_permission('community.manage_permissions','community',v_community_id,null,null) then
     raise exception 'You cannot manage permission grants in this community';
@@ -739,7 +745,8 @@ declare
   v_has_community boolean;
 begin
   if auth.uid() is null then
-    return case when TG_OP='DELETE' then OLD else NEW end;
+    if TG_OP='DELETE' then return OLD; end if;
+  return NEW;
   end if;
   if TG_OP='DELETE' then
     if not app_private.resolve_permission('community.manage_roles','community',OLD.community_id,null,null) then
@@ -831,7 +838,8 @@ begin
   v_event_id := case when TG_OP='DELETE' then OLD.event_id else NEW.event_id end;
   v_target_role := case when TG_OP='DELETE' then OLD.role_key else NEW.role_key end;
   if auth.uid() is null then
-    return case when TG_OP='DELETE' then OLD else NEW end;
+    if TG_OP='DELETE' then return OLD; end if;
+  return NEW;
   end if;
   if not app_private.resolve_permission('event.staff.assign','event',v_event_id,null,null) then
     raise exception 'You cannot assign event staff in this event';
@@ -881,7 +889,8 @@ begin
   v_permission := case when TG_OP='DELETE' then OLD.permission_key else NEW.permission_key end;
   v_effect := case when TG_OP='DELETE' then OLD.effect else NEW.effect end;
   if auth.uid() is null then
-    return case when TG_OP='DELETE' then OLD else NEW end;
+    if TG_OP='DELETE' then return OLD; end if;
+  return NEW;
   end if;
   if not app_private.resolve_permission('community.manage_permissions','community',v_community_id,null,null) then
     raise exception 'You cannot manage channel permission overrides';
@@ -1500,3 +1509,17 @@ comment on function public.has_permission(text,text,uuid,uuid,uuid) is
   'Authenticated read-only permission preview endpoint. Authoritative enforcement remains in RLS and privileged RPCs.';
 comment on table public.audit_logs is
   'Append-only audit history. Direct authenticated INSERT/UPDATE/DELETE/TRUNCATE is revoked; trusted RPCs and security triggers append records.';
+
+
+-- Settings, invitations and community operations use their own permission keys.
+drop policy if exists communities_update_manager on public.communities;
+create policy communities_update_manager on public.communities
+for update to authenticated
+using (app_private.resolve_permission('community.manage_settings','community',id,null,null))
+with check (app_private.resolve_permission('community.manage_settings','community',id,null,null));
+
+drop policy if exists community_invites_manager on public.community_invites;
+create policy community_invites_manager on public.community_invites
+for all to authenticated
+using (app_private.resolve_permission('community.manage_invites','community',community_id,null,null))
+with check (app_private.resolve_permission('community.manage_invites','community',community_id,null,null));
