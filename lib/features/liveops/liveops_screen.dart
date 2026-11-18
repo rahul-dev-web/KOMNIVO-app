@@ -153,7 +153,16 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
             if (_capturing) const Icon(Icons.circle, size: 10, color: Color(0xFF73D6A2)),
           ]),
           const SizedBox(height: 16),
-          TextField(controller: _matchId, decoration: const InputDecoration(labelText: 'Match ID (optional)', hintText: 'Paste the match UUID')),
+          TextField(
+            controller: _matchId,
+            enabled: !_capturing,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              labelText: 'Platform Match ID (required)',
+              hintText: 'Paste the KOMNIVO Match UUID',
+              helperText: 'This is not the Free Fire Room ID.',
+            ),
+          ),
           const SizedBox(height: 12),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
