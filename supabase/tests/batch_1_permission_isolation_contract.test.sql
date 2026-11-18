@@ -3,6 +3,8 @@
 -- These catalog checks complement (but do not replace) authenticated multi-user RLS tests.
 
 begin;
+create extension if not exists pgtap with schema extensions;
+select extensions.plan(1);
 
 do $test$
 declare
@@ -156,5 +158,7 @@ begin
   end if;
 end;
 $test$;
+select extensions.ok(true,'Batch 1 permission and audit catalog contracts hold');
+select * from extensions.finish();
 
 rollback;
