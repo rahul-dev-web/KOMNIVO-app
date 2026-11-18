@@ -639,6 +639,26 @@ function parseToolArguments(call: AiToolCall): Record<string, unknown> {
   return parsed;
 }
 
+function applyExplicitTimestampsFromMessage(
+  args: Record<string, unknown>,
+  message: string,
+): Record<string, unknown> {
+  // The inline tournament form sends canonical ISO-8601 timestamps with
+  // the IST offset. Preserve those exact user-confirmed values rather than
+  // relying on the language model to copy them into tool arguments.
+  const startsAt = message.match(
+    /(?:^|\\n)Tournament starts:\\s*(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2})?(?:Z|[+-]\\d{2}:\\d{2}))/i,
+  )?.[1];
+  const registrationClosesAt = message.match(
+    /(?:^|\\n)Registration closes:\\s*(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2})?(?:Z|[+-]\\d{2}:\\d{2}))/i,
+  )?.[1];
+  return {
+    ...args,
+    ...(startsAt ? { starts_at: startsAt } : {}),
+    ...(registrationClosesAt ? { registration_closes_at: registrationClosesAt } : {}),
+  };
+}
+
 async function prepareEventDraftProposal(
   admin: SupabaseClient,
   args: Record<string, unknown>,
@@ -666,7 +686,7 @@ async function prepareEventDraftProposal(
   if (!Number.isInteger(capacity) || capacity < 1 || capacity > 1000) throw new Error("Team capacity must be an integer from 1 to 1000.");
 
   // Require an explicit timezone so server validation is independent of the model/runtime locale.
-  if (!/(Z|[+-]\\d{2}:\\d{2})$/i.test(startsAtRaw)) {
+  if (!/(Z|[+-]\d{2}:\d{2})$/i.test(startsAtRaw)) {
     throw new Error("Provide the event start time with an explicit timezone.");
   }
   const startsAt = new Date(startsAtRaw);
@@ -675,7 +695,7 @@ async function prepareEventDraftProposal(
   }
   let registrationClosesAt: string | null = null;
   if (closesAtRaw) {
-    if (!/(Z|[+-]\\d{2}:\\d{2})$/i.test(closesAtRaw)) {
+    if (!/(Z|[+-]\d{2}:\d{2})$/i.test(closesAtRaw)) {
       throw new Error("Registration close time must include an explicit timezone.");
     }
     const closesAt = new Date(closesAtRaw);
@@ -973,7 +993,10 @@ Deno.serve(async (req: Request) => {
       const supportedCall = result.toolCalls.find((call) => call.function?.name === "propose_event_draft");
       if (supportedCall) {
         try {
-          const args = parseToolArguments(supportedCall);
+          const args = applyExplicitTimestampsFromMessage(
+            parseToolArguments(supportedCall),
+            message,
+          );
           const card = await prepareEventDraftProposal(
             admin,
             args,
