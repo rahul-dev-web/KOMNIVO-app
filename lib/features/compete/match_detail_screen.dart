@@ -57,7 +57,14 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         .order('created_at'),
     ]);
 
+    final canOperateMatch = await KomnivoRepository.instance.hasPermission(
+      permissionKey: 'match.operate',
+      scopeType: 'match',
+      scopeId: widget.matchId,
+    );
+
     return _MatchDetailData(
+      canOperateMatch: canOperateMatch,
       match: Map<String, dynamic>.from(results[0] as Map),
       results: List<Map<String, dynamic>>.from(results[1] as List),
       checkIn: results[2] == null ? null : Map<String, dynamic>.from(results[2] as Map),
@@ -306,9 +313,9 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               ]),
             ),
             const SizedBox(height: 14),
-            if (eligibleTeams.isNotEmpty)
+            if (data.canOperateMatch)
               FilledButton.icon(
-                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+                onPressed: _busy ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
                   appBar: AppBar(title: const Text('LiveOps Assistant')),
                   body: LiveOpsScreen(preview: false, initialMatchId: widget.matchId, onBack: () => Navigator.pop(context)),
                 ))),
@@ -375,6 +382,7 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 
 class _MatchDetailData {
   const _MatchDetailData({
+    required this.canOperateMatch,
     required this.match,
     required this.results,
     required this.checkIn,
@@ -382,6 +390,7 @@ class _MatchDetailData {
     required this.myTeams,
     required this.confirmations,
   });
+  final bool canOperateMatch;
   final Map<String, dynamic> match;
   final List<Map<String, dynamic>> results;
   final Map<String, dynamic>? checkIn;
