@@ -215,12 +215,9 @@ select extensions.is((select count(*) from public.result_evidence where id='2000
   0::bigint,'team A cannot read another team evidence');
 select extensions.is((select count(*) from public.result_disputes where id='20000000-0000-4000-8000-000000000303'),
   0::bigint,'team A cannot read another team dispute');
-with attempted as (
-  update public.match_results set points=999
-  where id='20000000-0000-4000-8000-000000000009'
-  returning 1
-)
-select extensions.is((select count(*) from attempted),0::bigint,'team A cannot mutate another match result');
+select extensions.is(
+  has_table_privilege('authenticated','public.match_results','UPDATE'),
+  false,'authenticated users cannot directly update official match results');
 reset role;
 
 -- Team B has the inverse match/group visibility.
