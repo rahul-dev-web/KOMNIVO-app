@@ -52,7 +52,8 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
         .select('team_id,role,teams(name,tag)')
         .eq('user_id', _userId),
       _client.from('opponent_confirmations')
-        .select('result_id,confirming_team_id,decision,note,confirmed_by')
+        .select('result_id,confirming_team_id,decision,note,confirmed_by,match_results!inner(match_id)')
+        .eq('match_results.match_id', widget.matchId)
         .order('created_at'),
     ]);
 
