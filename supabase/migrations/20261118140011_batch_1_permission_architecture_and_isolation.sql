@@ -104,6 +104,7 @@ alter table public.channels add column if not exists event_id uuid;
 alter table public.channels add column if not exists stage_id uuid;
 alter table public.channels add column if not exists group_id uuid;
 alter table public.channels add column if not exists match_id uuid;
+alter table public.channels add column if not exists archived_at timestamptz;
 
 do $constraints$
 begin
