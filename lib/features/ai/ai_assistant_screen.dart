@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/komnivo_theme.dart';
+import 'tournament_form_card.dart';
 
 class AiAssistantScreen extends StatefulWidget {
   const AiAssistantScreen({
@@ -27,6 +28,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   final _scroll = ScrollController();
   final List<_ChatItem> _items = [];
   String? _conversationId;
+  String? _activeCommunityId;
+  List<Map<String, String>> _managedCommunities = [];
+  bool _loadingManagedCommunities = true;
+  String? _communityLoadError;
   bool _sending = false;
   bool _restoring = true;
   String? _resolvingProposalId;
@@ -43,13 +48,61 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           : 'Namaste! Main KOMNIVO Player AI hoon. App, teams, tournament rules aur registration process samajhne mein help karunga.',
     ));
     _restoreConversation();
+    _loadManagedCommunities();
+  }
+
+  Future<void> _loadManagedCommunities() async {
+    try {
+      final client = Supabase.instance.client;
+      final user = client.auth.currentUser;
+      if (user == null) throw Exception('Sign in again to load your communities.');
+
+      final results = await Future.wait([
+        client.from('communities').select('id').eq('owner_user_id', user.id),
+        client.from('community_members')
+            .select('community_id')
+            .eq('user_id', user.id)
+            .inFilter('role', ['owner', 'admin', 'moderator', 'organiser']),
+      ]);
+      final communityIds = <String>{};
+      for (final row in results[0] as List) {
+        if (row is Map && row['id'] != null) communityIds.add(row['id'].toString());
+      }
+      for (final row in results[1] as List) {
+        if (row is Map && row['community_id'] != null) {
+          communityIds.add(row['community_id'].toString());
+        }
+      }
+
+      final List rows = communityIds.isEmpty
+          ? <Map<String, dynamic>>[]
+          : await client.from('communities')
+              .select('id,name')
+              .inFilter('id', communityIds.toList())
+              .order('name');
+      if (!mounted) return;
+      setState(() {
+        _managedCommunities = rows.map((row) => <String, String>{
+          'id': row['id'].toString(),
+          'name': row['name']?.toString() ?? 'Unnamed community',
+        }).toList();
+        _communityLoadError = null;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => _communityLoadError =
+            error.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _loadingManagedCommunities = false);
+    }
   }
 
   Future<void> _restoreConversation() async {
     try {
       final client = Supabase.instance.client;
       var query = client.from('ai_conversations')
-          .select('id')
+          .select('id,community_id')
           .eq('owner_user_id', client.auth.currentUser!.id)
           .eq('mode', widget.mode)
           .eq('status', 'active');
@@ -69,6 +122,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       if (rows.isEmpty) return;
       final conversationId = rows.first['id']?.toString();
       if (conversationId == null || conversationId.isEmpty) return;
+      _activeCommunityId = rows.first['community_id']?.toString();
 
       final results = await Future.wait([
         client.from('ai_messages')
@@ -127,6 +181,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   void _startNewConversation() {
     setState(() {
       _conversationId = null;
+      _activeCommunityId = null;
       _items
         ..clear()
         ..add(_ChatItem(
@@ -288,13 +343,42 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     }
   }
 
-  Future<void> _send() async {
-    final message = _input.text.trim();
+  Future<void> _send() async => _sendMessage(_input.text.trim());
+
+  void _openTournamentForm() {
+    if (_sending || _restoring || _organizer) return;
+    if (_items.any((item) => item.tournamentForm)) return;
+    setState(() => _items.add(_ChatItem(
+      false,
+      'Create tournament',
+      tournamentForm: true,
+    )));
+    _scrollToBottom();
+  }
+
+  void _closeTournamentForm() {
+    setState(() => _items.removeWhere((item) => item.tournamentForm));
+  }
+
+  Future<void> _submitTournamentForm(String message, String communityId) async {
+    final currentCommunityId = _activeCommunityId ?? widget.communityId;
+    if (currentCommunityId != null && currentCommunityId != communityId) {
+      // Existing conversations are scoped to one community. Start a clean
+      // chat when the form selects a different managed community.
+      _startNewConversation();
+    }
+    _closeTournamentForm();
+    await _sendMessage(message, communityId: communityId);
+  }
+
+  Future<void> _sendMessage(String message, {String? communityId}) async {
     if (message.isEmpty || _sending || _restoring) return;
+    final selectedCommunityId = communityId ?? _activeCommunityId ?? widget.communityId;
     setState(() {
       _sending = true;
       _items.add(_ChatItem(true, message));
-      _input.clear();
+      if (communityId != null) _activeCommunityId = communityId;
+      if (_input.text.isNotEmpty) _input.clear();
     });
     _scrollToBottom();
 
@@ -305,7 +389,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           'mode': widget.mode,
           'message': message,
           if (_conversationId != null) 'conversation_id': _conversationId,
-          if (widget.communityId != null) 'community_id': widget.communityId,
+          if (selectedCommunityId != null) 'community_id': selectedCommunityId,
           if (widget.eventId != null) 'event_id': widget.eventId,
         },
       );
@@ -455,6 +539,20 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                   ),
                 );
               }
+              if (item.tournamentForm) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: TournamentFormCard(
+                    communities: _managedCommunities,
+                    loadingCommunities: _loadingManagedCommunities,
+                    communityLoadError: _communityLoadError,
+                    initialCommunityId: _activeCommunityId ?? widget.communityId,
+                    busy: _sending || _restoring,
+                    onSubmit: _submitTournamentForm,
+                    onClose: _closeTournamentForm,
+                  ),
+                );
+              }
               return Align(
                 alignment: item.fromUser ? Alignment.centerRight : Alignment.centerLeft,
                 child: Container(
@@ -482,8 +580,26 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-            child: Row(children: [
+            padding: const EdgeInsets.fromLTRB(12, 5, 12, 12),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              if (!_organizer)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 3, bottom: 5),
+                    child: TextButton.icon(
+                      onPressed: _sending || _restoring ? null : _openTournamentForm,
+                      icon: const Icon(Icons.emoji_events_outlined, size: 17),
+                      label: const Text('Create tournament'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: KomnivoTheme.cyan,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                      ),
+                    ),
+                  ),
+                ),
+              Row(children: [
               Expanded(
                 child: TextField(
                   controller: _input,
@@ -512,6 +628,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                 icon: const Icon(Icons.arrow_upward_rounded),
                 style: IconButton.styleFrom(backgroundColor: KomnivoTheme.cyan, foregroundColor: Colors.black),
               ),
+              ]),
             ]),
           ),
         ),
@@ -521,18 +638,26 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 }
 
 class _ChatItem {
-  const _ChatItem(this.fromUser, this.text, {this.isError = false, this.proposal});
+  const _ChatItem(
+    this.fromUser,
+    this.text, {
+    this.isError = false,
+    this.proposal,
+    this.tournamentForm = false,
+  });
 
   final bool fromUser;
   final String text;
   final bool isError;
   final Map<String, dynamic>? proposal;
+  final bool tournamentForm;
 
   _ChatItem copyWith({Map<String, dynamic>? proposal}) => _ChatItem(
     fromUser,
     text,
     isError: isError,
     proposal: proposal ?? this.proposal,
+    tournamentForm: tournamentForm,
   );
 }
 
