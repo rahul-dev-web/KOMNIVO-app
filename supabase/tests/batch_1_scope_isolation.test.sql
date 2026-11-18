@@ -202,27 +202,25 @@ select extensions.is(
   public.has_permission('channel.manage_messages','community','40000000-0000-4000-8000-000000000001',null,'40000000-0000-4000-8000-000000000003'),
   true,'removing channel override restores category inheritance');
 
-select extensions.is(
-  (with attempted as (
-    update public.match_checkins set status='absent'
-    where match_id='20000000-0000-4000-8000-000000000008'
-      and user_id='10000000-0000-4000-8000-000000000003'
-    returning 1
-  ) select count(*) from attempted),
-  0::bigint,'team A cannot mutate another match check-in');
+with attempted as (
+  update public.match_checkins set status='absent'
+  where match_id='20000000-0000-4000-8000-000000000008'
+    and user_id='10000000-0000-4000-8000-000000000003'
+  returning 1
+)
+select extensions.is((select count(*) from attempted),0::bigint,'team A cannot mutate another match check-in');
 select extensions.is((select count(*) from public.match_results where id='20000000-0000-4000-8000-000000000009'),
   0::bigint,'team A cannot read another match result');
 select extensions.is((select count(*) from public.result_evidence where id='20000000-0000-4000-8000-000000000302'),
   0::bigint,'team A cannot read another team evidence');
 select extensions.is((select count(*) from public.result_disputes where id='20000000-0000-4000-8000-000000000303'),
   0::bigint,'team A cannot read another team dispute');
-select extensions.is(
-  (with attempted as (
-    update public.match_results set points=999
-    where id='20000000-0000-4000-8000-000000000009'
-    returning 1
-  ) select count(*) from attempted),
-  0::bigint,'team A cannot mutate another match result');
+with attempted as (
+  update public.match_results set points=999
+  where id='20000000-0000-4000-8000-000000000009'
+  returning 1
+)
+select extensions.is((select count(*) from attempted),0::bigint,'team A cannot mutate another match result');
 reset role;
 
 -- Team B has the inverse match/group visibility.
