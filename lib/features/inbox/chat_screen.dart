@@ -268,13 +268,30 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     question.dispose(); optionOne.dispose(); optionTwo.dispose();
     if (result == null || (result['question'] ?? '').isEmpty || (result['one'] ?? '').isEmpty || (result['two'] ?? '').isEmpty) return;
-    setState(() => _pollPreviews.insert(0, {
-      'question': result['question'],
-      'options': [result['one'], result['two']],
-      'votes': [0, 0],
-      'selected': -1,
-    }));
-    showMessage(context, 'Poll preview added. It has not been published.');
+    final communityId = widget.channel['community_id']?.toString();
+    if (communityId == null || communityId.isEmpty) {
+      showMessage(context, 'This channel is not linked to a community.');
+      return;
+    }
+    try {
+      final pollId = await KomnivoRepository.instance.createChannelPoll(
+        channelId: _channelId,
+        communityId: communityId,
+        question: result['question']!,
+        options: [result['one']!, result['two']!],
+      );
+      if (!mounted) return;
+      setState(() => _pollPreviews.insert(0, {
+        'id': pollId,
+        'question': result['question'],
+        'options': [result['one'], result['two']],
+        'votes': [0, 0],
+        'selected': -1,
+      }));
+      showMessage(context, 'Poll published.');
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not publish poll: $error');
+    }
   }
 
   Future<void> _scheduleAnnouncementPreview() async {
@@ -308,8 +325,38 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     title.dispose(); body.dispose();
     if (result == null || (result['title'] ?? '').isEmpty || (result['body'] ?? '').isEmpty) return;
-    setState(() => _scheduledPreviews.insert(0, result));
-    showMessage(context, 'Scheduled announcement preview added. Nothing has been queued on the server.');
+    final communityId = widget.channel['community_id']?.toString();
+    if (communityId == null || communityId.isEmpty) {
+      showMessage(context, 'This channel is not linked to a community.');
+      return;
+    }
+    final now = DateTime.now();
+    DateTime publishAt;
+    if (when.startsWith('Today')) {
+      publishAt = DateTime(now.year, now.month, now.day, 18);
+      if (!publishAt.isAfter(now)) publishAt = publishAt.add(const Duration(days: 1));
+    } else if (when.contains('9:00 AM')) {
+      publishAt = DateTime(now.year, now.month, now.day + 1, 9);
+    } else {
+      publishAt = DateTime(now.year, now.month, now.day + 1, 17, 30);
+    }
+    try {
+      final queued = await KomnivoRepository.instance.scheduleChannelAnnouncement(
+        channelId: _channelId,
+        communityId: communityId,
+        body: '${result['title']}: ${result['body']}',
+        publishAt: publishAt,
+      );
+      if (!mounted) return;
+      setState(() => _scheduledPreviews.insert(0, {
+        ...result,
+        'id': queued['id'],
+        'when': publishAt.toLocal().toString(),
+      }));
+      showMessage(context, 'Announcement queued. It will publish automatically at the selected time.');
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not schedule announcement: $error');
+    }
   }
 
   void _showChannelTools() {
