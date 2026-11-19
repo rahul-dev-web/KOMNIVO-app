@@ -79,6 +79,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   String _closeRule = 'Archive after event completion';
 
   bool _readOnly = false;
+  bool _announcementPublishersOnly = true;
   bool _slowMode = false;
   double _slowSeconds = 10;
   bool _attachments = true;
@@ -1061,27 +1062,41 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       channel['id'] != null).toList();
     if (matches.isEmpty) return;
     final row = matches.first;
+    if (mounted) setState(() => _textChannel = row['name'].toString());
+    await _loadTextSettingsForChannel(row['name'].toString());
+  }
+
+  Future<void> _loadTextSettingsForChannel(String channelName) async {
+    final matches = _channels.where((channel) =>
+      channel['name'] == channelName &&
+      (channel['kind'] == 'text' || channel['kind'] == 'announcement') &&
+      channel['id'] != null).toList();
+    if (matches.isEmpty) return;
+    final row = matches.first;
+    Map<String, dynamic> settings = <String, dynamic>{};
     try {
-      final settings = await KomnivoRepository.instance.channelSettings(row['id'].toString());
-      if (!mounted || settings.isEmpty) return;
-      setState(() {
-        _textChannel = row['name'].toString();
-        _readOnly = settings['read_only'] == true;
-        _slowSeconds = (settings['slow_mode_seconds'] as num?)?.toDouble() ?? 0;
-        _slowMode = _slowSeconds > 0;
-        _attachments = settings['allow_attachments'] != false;
-        _links = settings['allow_links'] != false;
-        _threadsAllowed = settings['allow_threads'] != false;
-        _pins = settings['allow_pins'] != false;
-        _history = settings['keep_history'] != false;
-        _restrictBroadMentions = settings['allow_everyone_mention'] != true;
-        _mentionPolicy = settings['allow_user_mentions'] == true
-          ? 'Members and roles'
-          : settings['allow_role_mentions'] == true ? 'Role mentions only' : 'No broad mentions';
-      });
+      settings = await KomnivoRepository.instance.channelSettings(row['id'].toString());
     } catch (_) {
-      // The settings screen remains usable if the channel has no saved row yet.
+      // A channel without a settings row uses the safe defaults below.
     }
+    if (!mounted || _textChannel != channelName) return;
+    setState(() {
+      _readOnly = settings['read_only'] == true;
+      _announcementPublishersOnly = settings.containsKey('announcement_publishers_only')
+        ? settings['announcement_publishers_only'] == true
+        : row['kind'] == 'announcement';
+      _slowSeconds = (settings['slow_mode_seconds'] as num?)?.toDouble() ?? 0;
+      _slowMode = _slowSeconds > 0;
+      _attachments = settings['allow_attachments'] != false;
+      _links = settings['allow_links'] != false;
+      _threadsAllowed = settings['allow_threads'] != false;
+      _pins = settings['allow_pins'] != false;
+      _history = settings['keep_history'] != false;
+      _restrictBroadMentions = settings['allow_everyone_mention'] != true;
+      _mentionPolicy = settings['allow_user_mentions'] == true
+        ? 'Members and roles'
+        : settings['allow_role_mentions'] == true ? 'Role mentions only' : 'No broad mentions';
+    });
   }
 
   Future<void> _saveTextSettings() async {
@@ -1108,7 +1123,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           'allow_everyone_mention': !_restrictBroadMentions,
           'allow_role_mentions': _mentionPolicy == 'Role mentions only' || _mentionPolicy == 'Members and roles',
           'allow_user_mentions': _mentionPolicy == 'Members and roles',
-          'announcement_publishers_only': channel?['kind'] == 'announcement',
+          'announcement_publishers_only': channel?['kind'] == 'announcement' && _announcementPublishersOnly,
         },
       );
       if (mounted) showMessage(context, 'Channel behaviour settings saved.');
@@ -1133,7 +1148,11 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           value: names.contains(_textChannel) ? _textChannel : null,
           decoration: const InputDecoration(labelText: 'Channel'),
           items: names.map((name) => DropdownMenuItem(value: name, child: Text('#' + name))).toList(),
-          onChanged: (value) => setState(() => _textChannel = value ?? _textChannel),
+          onChanged: (value) async {
+            if (value == null) return;
+            setState(() => _textChannel = value);
+            await _loadTextSettingsForChannel(value);
+          },
         ),
         const SizedBox(height: 10),
         Row(children: [
@@ -1146,6 +1165,14 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(children: [
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Read-only channel', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)), subtitle: const Text('Only users with publish permission can send messages.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)), value: _readOnly, onChanged: (value) => setState(() => _readOnly = value)),
         const Divider(height: 1),
+         if (selectedType == 'Announcement')
+           SwitchListTile(
+             contentPadding: EdgeInsets.zero,
+             title: const Text('Only authorised publishers can post', style: TextStyle(fontSize: 11)),
+             subtitle: const Text('Audience members can still read this announcement channel.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+             value: _announcementPublishersOnly,
+             onChanged: (value) => setState(() => _announcementPublishersOnly = value),
+           ),
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Slow mode', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)), subtitle: Text(_slowMode ? 'One message every ' + _slowSeconds.round().toString() + ' seconds' : 'No per-member delay', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9)), value: _slowMode, onChanged: (value) => setState(() => _slowMode = value)),
         if (_slowMode) Slider(min: 5, max: 120, divisions: 23, value: _slowSeconds, label: _slowSeconds.round().toString() + ' sec', onChanged: (value) => setState(() => _slowSeconds = value)),
         const Divider(height: 1),
