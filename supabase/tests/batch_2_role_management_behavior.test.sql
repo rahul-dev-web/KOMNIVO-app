@@ -3,7 +3,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(24);
+select extensions.plan(33);
 
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_user_meta_data)
 values
@@ -30,6 +30,10 @@ insert into public.channels(id,community_id,name,description,kind,is_private,cre
 values ('62000000-0000-4000-8000-000000000002','62000000-0000-4000-8000-000000000001',
         'b2-private-role-preview','Private role preview fixture','text',true,
         '61000000-0000-4000-8000-000000000001');
+
+insert into public.games(id,code,name,platform,is_active)
+values ('63000000-0000-4000-8000-000000000001','b2-role-trust-test','Batch 2 Trust State Test','mobile',true)
+on conflict (id) do nothing;
 
 -- A fresh community must receive every built-in preset through the insert trigger.
 select extensions.is(
@@ -292,6 +296,99 @@ select extensions.ok(
            and position('spectator' in lower(pg_get_constraintdef(oid)))=0),
   'Spectator is not a Community membership role'
 );
+
+
+-- Client-created game account links cannot claim trust or verification state.
+set local role authenticated;
+set local request.jwt.claim.sub = '61000000-0000-4000-8000-000000000003';
+insert into public.game_accounts(
+ id,user_id,game_id,uid,provider,ownership_status,verification_attempts,
+ verification_locked_at,verification_last_attempt_at
+) values (
+ '64000000-0000-4000-8000-000000000001',
+ '61000000-0000-4000-8000-000000000003',
+ '63000000-0000-4000-8000-000000000001',
+ 'B2-TRUST-UID','manual','verified',2,now(),now()
+);
+select extensions.is(
+ (select ownership_status from public.game_accounts where id='64000000-0000-4000-8000-000000000001'),
+ 'linked_unverified',
+ 'Client-created game account always begins linked and unverified'
+);
+select extensions.is(
+ (select verification_attempts from public.game_accounts where id='64000000-0000-4000-8000-000000000001'),
+ 0,
+ 'Client cannot seed verification attempts when linking a game account'
+);
+select extensions.ok(
+ (select verification_locked_at is null and verification_last_attempt_at is null
+  from public.game_accounts where id='64000000-0000-4000-8000-000000000001'),
+ 'Client cannot seed verification lock timestamps'
+);
+select extensions.throws_ok(
+ $update public.game_accounts set ownership_status='verified'
+   where id='64000000-0000-4000-8000-000000000001'$,
+ 'P0001',
+ 'Game account ownership and verification state can only be changed by the verification workflow',
+ 'Client cannot promote its linked game account to Verified Player'
+);
+select extensions.is(
+ (select is_verified_player from public.my_competition_trust_states
+  where game_account_id='64000000-0000-4000-8000-000000000001'),
+ false,
+ 'Verified Player is derived as false for a client-linked unverified account'
+);
+reset role;
+
+-- The other trust states are derived from approved registration and an actual ready check-in.
+insert into public.events(
+ id,game_id,organizer_id,name,description,format,status,starts_at,capacity,rules_json,scoring_config
+) values (
+ '65000000-0000-4000-8000-000000000001',
+ '63000000-0000-4000-8000-000000000001',
+ '61000000-0000-4000-8000-000000000001',
+ 'Batch 2 Trust Event','Trust-state fixture','squad','published',now(),8,'{}'::jsonb,
+ '{"kill_point":1,"placement_points":{}}'::jsonb
+);
+insert into public.event_registrations(event_id,captain_user_id,status)
+values ('65000000-0000-4000-8000-000000000001','61000000-0000-4000-8000-000000000003','approved');
+insert into public.registration_players(registration_id,user_id,game_account_id)
+select er.id,'61000000-0000-4000-8000-000000000003','64000000-0000-4000-8000-000000000001'
+from public.event_registrations er where er.event_id='65000000-0000-4000-8000-000000000001';
+insert into public.matches(id,event_id,round_number,match_number,status)
+values ('66000000-0000-4000-8000-000000000001','65000000-0000-4000-8000-000000000001',1,1,'scheduled');
+insert into public.match_checkins(match_id,user_id,status)
+values ('66000000-0000-4000-8000-000000000001','61000000-0000-4000-8000-000000000003','ready');
+
+set local role authenticated;
+set local request.jwt.claim.sub = '61000000-0000-4000-8000-000000000003';
+select extensions.is(
+ (select is_registered_player from public.my_competition_trust_states
+  where game_account_id='64000000-0000-4000-8000-000000000001'
+    and event_id='65000000-0000-4000-8000-000000000001'),
+ true,
+ 'Registered Player is derived from an approved event registration'
+);
+select extensions.is(
+ (select is_checked_in_player from public.my_competition_trust_states
+  where game_account_id='64000000-0000-4000-8000-000000000001'
+    and event_id='65000000-0000-4000-8000-000000000001'
+    and match_id='66000000-0000-4000-8000-000000000001'),
+ true,
+ 'Checked-in Player is derived from a ready check-in for that registered event'
+);
+reset role;
+
+-- Table SELECT grant does not expose role history to Admin: the RLS policy remains authoritative.
+set local role authenticated;
+set local request.jwt.claim.sub = '61000000-0000-4000-8000-000000000002';
+select extensions.is(
+ (select count(*)::int from public.community_role_history
+  where community_id='62000000-0000-4000-8000-000000000001'),
+ 0,
+ 'Admin cannot read Owner-only role history despite authenticated table SELECT grant'
+);
+reset role;
 
 select * from extensions.finish();
 rollback;
