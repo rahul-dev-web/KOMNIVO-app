@@ -201,32 +201,10 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
   );
 
   Future<void> _newPost() async {
-    final title = TextEditingController();
-    final body = TextEditingController();
-    String tag = 'LFG';
     final result = await showDialog<Map<String, String>>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
-        title: const Text('Create Forum post'),
-        content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: title, autofocus: true, maxLength: 100, decoration: const InputDecoration(labelText: 'Topic title')),
-          TextField(controller: body, maxLength: 1200, minLines: 3, maxLines: 5, decoration: const InputDecoration(labelText: 'Details')),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            value: tag,
-            decoration: const InputDecoration(labelText: 'Tag'),
-            items: const ['LFG', 'Recruitment', 'Scrims', 'Support', 'Suggestions'].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
-            onChanged: (value) => setDialogState(() => tag = value ?? tag),
-          ),
-        ])),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, {'title': title.text.trim(), 'body': body.text.trim(), 'tag': tag}), child: const Text('Preview post')),
-        ],
-      )),
+      builder: (_) => const _ForumPostDraftDialog(),
     );
-    title.dispose();
-    body.dispose();
     if (result == null || (result['title'] ?? '').length < 3) return;
     setState(() => _posts.insert(0, {
       'title': result['title']!,
@@ -243,50 +221,16 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
   }
 
   Future<void> _openPost(Map<String, dynamic> post) async {
-    final reply = TextEditingController();
     final preview = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: KomnivoTheme.surface,
-      builder: (sheetContext) => SingleChildScrollView(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(16, 18, 16, MediaQuery.viewInsetsOf(sheetContext).bottom + 18),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            _pill(post['status'].toString(), _statusColor(post['status'].toString())),
-            const SizedBox(width: 6),
-            _pill(post['tag'].toString(), KomnivoTheme.cyan),
-          ]),
-          const SizedBox(height: 10),
-          Text(post['title'].toString(), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-          const SizedBox(height: 7),
-          Text(post['body'].toString(), style: const TextStyle(fontSize: 11, height: 1.45)),
-          const SizedBox(height: 12),
-          const Divider(),
-          const Text('Replies', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 8),
-          const _Reply(author: 'Nova', body: 'I can join after 7 PM.'),
-          const _Reply(author: 'RDX_Ace', body: 'Share your preferred role and availability.'),
-          const SizedBox(height: 10),
-          if (post['locked'] == true || post['status'] == 'Closed')
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Row(children: [
-                Icon(Icons.lock_outline, size: 15, color: KomnivoTheme.muted),
-                SizedBox(width: 7),
-                Expanded(child: Text('Replies are locked for this topic.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))),
-              ]),
-            )
-          else ...[
-            TextField(controller: reply, minLines: 1, maxLines: 3, decoration: const InputDecoration(hintText: 'Write a reply…')),
-            const SizedBox(height: 10),
-            Align(alignment: Alignment.centerRight, child: FilledButton(onPressed: () => Navigator.pop(sheetContext, reply.text.trim().isNotEmpty), child: const Text('Preview reply'))),
-          ],
-          ]),
-        ),
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .88),
+      builder: (_) => _ForumPostDetailSheet(
+        post: post,
+        statusColor: _statusColor(post['status'].toString()),
       ),
     );
-    reply.dispose();
     if (preview == true && mounted) {
       setState(() => post['replies'] = (post['replies'] as int? ?? 0) + 1);
       showMessage(context, 'Reply preview added. It has not been published.');
@@ -307,6 +251,185 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
         _Guideline(text: 'Moderation actions must follow the role and channel permission rules.'),
         SizedBox(height: 10),
       ]),
+    ),
+  );
+}
+
+class _ForumPostDraftDialog extends StatefulWidget {
+  const _ForumPostDraftDialog();
+
+  @override
+  State<_ForumPostDraftDialog> createState() => _ForumPostDraftDialogState();
+}
+
+class _ForumPostDraftDialogState extends State<_ForumPostDraftDialog> {
+  final _title = TextEditingController();
+  final _body = TextEditingController();
+  String _tag = 'LFG';
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _body.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_title.text.trim().length < 3) {
+      showMessage(context, 'Enter a topic title with at least 3 characters.');
+      return;
+    }
+    Navigator.pop(context, {
+      'title': _title.text.trim(),
+      'body': _body.text.trim(),
+      'tag': _tag,
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Create Forum post'),
+    content: SizedBox(
+      width: 440,
+      child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: _title,
+            autofocus: true,
+            maxLength: 100,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(labelText: 'Topic title'),
+          ),
+          TextField(
+            controller: _body,
+            maxLength: 1200,
+            minLines: 3,
+            maxLines: 5,
+            decoration: const InputDecoration(labelText: 'Details'),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: _tag,
+            decoration: const InputDecoration(labelText: 'Tag'),
+            items: const ['LFG', 'Recruitment', 'Scrims', 'Support', 'Suggestions']
+                .map((value) => DropdownMenuItem(value: value, child: Text(value)))
+                .toList(),
+            onChanged: (value) => setState(() => _tag = value ?? _tag),
+          ),
+        ]),
+      ),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+      FilledButton(onPressed: _submit, child: const Text('Preview post')),
+    ],
+  );
+}
+
+class _ForumPostDetailSheet extends StatefulWidget {
+  const _ForumPostDetailSheet({
+    required this.post,
+    required this.statusColor,
+  });
+
+  final Map<String, dynamic> post;
+  final Color statusColor;
+
+  @override
+  State<_ForumPostDetailSheet> createState() => _ForumPostDetailSheetState();
+}
+
+class _ForumPostDetailSheetState extends State<_ForumPostDetailSheet> {
+  final _reply = TextEditingController();
+
+  bool get _locked =>
+      widget.post['locked'] == true || widget.post['status'] == 'Closed';
+
+  @override
+  void dispose() {
+    _reply.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: SingleChildScrollView(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          18,
+          16,
+          MediaQuery.viewInsetsOf(context).bottom + 18,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: widget.statusColor.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: widget.statusColor.withValues(alpha: .24)),
+                ),
+                child: Text(widget.post['status'].toString(), style: TextStyle(color: widget.statusColor, fontSize: 9, fontWeight: FontWeight.w800)),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(color: KomnivoTheme.cyan.withValues(alpha: .12), borderRadius: BorderRadius.circular(30)),
+                child: Text(widget.post['tag'].toString(), style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 9, fontWeight: FontWeight.w800)),
+              ),
+              if (widget.post['pinned'] == true)
+                const Chip(label: Text('Pinned'), visualDensity: VisualDensity.compact),
+              if (_locked)
+                const Chip(label: Text('Replies locked'), visualDensity: VisualDensity.compact),
+            ]),
+            const SizedBox(height: 10),
+            Text(widget.post['title'].toString(), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+            const SizedBox(height: 7),
+            Text(widget.post['body'].toString(), style: const TextStyle(fontSize: 11, height: 1.45)),
+            const SizedBox(height: 12),
+            const Divider(),
+            Text('Replies · ${widget.post['replies'] ?? 0}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            const _Reply(author: 'Nova', body: 'I can join after 7 PM.'),
+            const _Reply(author: 'RDX_Ace', body: 'Share your preferred role and availability.'),
+            const SizedBox(height: 10),
+            if (_locked)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Row(children: [
+                  Icon(Icons.lock_outline, size: 15, color: KomnivoTheme.muted),
+                  SizedBox(width: 7),
+                  Expanded(child: Text('Replies are locked for this topic.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))),
+                ]),
+              )
+            else ...[
+              TextField(
+                controller: _reply,
+                minLines: 1,
+                maxLines: 3,
+                decoration: const InputDecoration(hintText: 'Write a reply…'),
+              ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: () {
+                    if (_reply.text.trim().isEmpty) {
+                      showMessage(context, 'Write a reply before previewing it.');
+                      return;
+                    }
+                    Navigator.pop(context, true);
+                  },
+                  child: const Text('Preview reply'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     ),
   );
 }
