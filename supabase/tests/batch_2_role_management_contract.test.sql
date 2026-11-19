@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(42);
+select extensions.plan(43);
 select extensions.is((select count(*)::int from public.community_role_presets),4,'four built-in community presets exist');
 select extensions.is((select assignable from public.community_role_presets where preset_key='owner'),false,'Owner preset is non-delegable');
 select extensions.is((select assignable from public.community_role_presets where preset_key='admin'),true,'Admin preset is assignable under hierarchy guard');
@@ -49,6 +49,8 @@ select extensions.ok(position('community.manage_roles' in lower(pg_get_functiond
 
 select extensions.ok(to_regprocedure('public.save_community_role(uuid,uuid,text,text,text,integer,jsonb)') is not null and has_function_privilege('authenticated','public.save_community_role(uuid,uuid,text,text,text,integer,jsonb)','execute') and not has_function_privilege('anon','public.save_community_role(uuid,uuid,text,text,text,integer,jsonb)','execute'),'Role create and edit uses an authenticated atomic server-side RPC');
 select extensions.ok(to_regprocedure('public.replace_community_member_roles(uuid,uuid,uuid[])') is not null and has_function_privilege('authenticated','public.replace_community_member_roles(uuid,uuid,uuid[])','execute') and position('community.manage_roles' in lower(pg_get_functiondef('public.replace_community_member_roles(uuid,uuid,uuid[])'::regprocedure))) > 0,'Multi-role member assignment uses an authorised atomic server-side RPC');
+
+select extensions.ok(position('cr.preset_key=''owner''' in lower(pg_get_functiondef('public.preview_community_role_permissions(uuid,uuid,uuid,uuid)'::regprocedure))) > 0 and position('v_is_owner and k.owner_override' in lower(pg_get_functiondef('public.preview_community_role_permissions(uuid,uuid,uuid,uuid)'::regprocedure))) > 0,'Owner preset preview includes non-delegable Owner override capabilities');
 
 select * from extensions.finish();
 rollback;
