@@ -36,6 +36,24 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> scrollStudioListUntilVisible(
+    WidgetTester tester,
+    String listKey,
+    Finder target, {
+    double delta = 320,
+  }) async {
+    final scrollable = find.descendant(
+      of: find.byKey(ValueKey(listKey)),
+      matching: find.byType(Scrollable),
+    ).first;
+    await tester.scrollUntilVisible(
+      target,
+      delta,
+      scrollable: scrollable,
+    );
+    await tester.pumpAndSettle();
+  }
+
   Future<void> pumpForum(
     WidgetTester tester, {
     bool canModerate = true,
@@ -92,15 +110,15 @@ void main() {
 
     await openStudioTab(tester, 'Engage');
     expect(find.text('Threads & replies'), findsOneWidget);
+    await scrollStudioListUntilVisible(
+      tester, 'batch3-engagement-list', find.text('Polls'),
+    );
     expect(find.text('Polls'), findsOneWidget);
     // The engagement surface is intentionally a vertical feed. Scroll the
-    // lazy list before asserting the lower scheduled-announcement section.
-    await tester.scrollUntilVisible(
-      find.text('Scheduled announcements'),
-      320,
-      scrollable: find.byKey(const ValueKey('batch3-engagement-list')),
+    // actual Scrollable to build the lower scheduled-announcement section.
+    await scrollStudioListUntilVisible(
+      tester, 'batch3-engagement-list', find.text('Scheduled announcements'),
     );
-    await tester.pumpAndSettle();
     expect(find.text('Scheduled announcements'), findsOneWidget);
 
     await openStudioTab(tester, 'Voice / Stage');
@@ -265,6 +283,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('OFFICIAL UPDATES'), findsNothing);
 
+    await scrollStudioListUntilVisible(
+      tester, 'batch3-structure-list', find.text('Show archived'), delta: -320,
+    );
     await tester.tap(find.text('Show archived'));
     await tester.pumpAndSettle();
     expect(find.text('OFFICIAL UPDATES'), findsOneWidget);
@@ -292,7 +313,9 @@ void main() {
     expect(tester.widget<SwitchListTile>(readOnly).value, isFalse);
     await tester.tap(readOnly);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('READ ONLY'));
+    await scrollStudioListUntilVisible(
+      tester, 'batch3-text-list', find.text('READ ONLY'),
+    );
     expect(find.text('READ ONLY'), findsOneWidget);
 
     final slowMode = find.widgetWithText(SwitchListTile, 'Slow mode');
@@ -300,6 +323,9 @@ void main() {
     await tester.tap(slowMode);
     await tester.pumpAndSettle();
     expect(find.byType(Slider), findsOneWidget);
+    await scrollStudioListUntilVisible(
+      tester, 'batch3-text-list', find.textContaining('Slow mode:'),
+    );
     expect(find.textContaining('Slow mode:'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -320,6 +346,9 @@ void main() {
     expect(find.text('Room visibility'), findsOneWidget);
     await tester.ensureVisible(find.text('Temporary room lifetime'));
     expect(find.text('Temporary room lifetime'), findsOneWidget);
+    await scrollStudioListUntilVisible(
+      tester, 'batch3-voice-stage-list', find.text('Access preview'),
+    );
     expect(find.text('Access preview'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -331,12 +360,18 @@ void main() {
     await openStudioTab(tester, 'Event flow');
 
     expect(find.text('Approved event channel templates'), findsOneWidget);
+    await tester.ensureVisible(find.text('Results & disputes'));
     await tester.tap(find.text('Results & disputes'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Generate local preview'));
+    await scrollStudioListUntilVisible(
+      tester, 'batch3-event-flow-list', find.text('Generate local preview'),
+    );
     await tester.tap(find.text('Generate local preview'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Preview ready · nothing has been published or created.'));
+    await scrollStudioListUntilVisible(
+      tester, 'batch3-event-flow-list',
+      find.text('Preview ready · nothing has been published or created.'),
+    );
     expect(find.text('Preview ready · nothing has been published or created.'), findsOneWidget);
     expect(find.textContaining('NO PARTICIPANT OR CREDENTIAL AUTHORITY'), findsOneWidget);
     expect(tester.takeException(), isNull);
