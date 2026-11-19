@@ -120,15 +120,18 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         'group_id': row['group_id'],
         'match_id': row['match_id'],
       }).toList();
-    } else {
+    } else if (widget.communityId.contains('ui-test')) {
       _channels = [
-      {'id': 'ch-announcements', 'name': 'announcements', 'description': 'Official news and organiser updates', 'kind': 'announcement', 'category': 'cat-announcements', 'private': false, 'temporary': false},
-      {'id': 'ch-general', 'name': 'general', 'description': 'Everyday community conversation', 'kind': 'text', 'category': 'cat-community', 'private': false, 'temporary': false},
-      {'id': 'ch-help', 'name': 'help-and-support', 'description': 'Ask questions and get help', 'kind': 'forum', 'category': 'cat-community', 'private': false, 'temporary': false},
-      {'id': 'ch-lfg', 'name': 'looking-for-team', 'description': 'Find teammates and substitutes', 'kind': 'forum', 'category': 'cat-competitive', 'private': false, 'temporary': false},
-      {'id': 'ch-match', 'name': 'match-room-01', 'description': 'Temporary communication for one scheduled match', 'kind': 'text', 'category': 'cat-competitive', 'private': true, 'temporary': true},
-      {'id': 'ch-voice', 'name': 'squad-lounge', 'description': 'Community voice conversation', 'kind': 'voice', 'category': 'cat-voice', 'private': false, 'temporary': false},
+        {'id': 'ch-announcements', 'name': 'announcements', 'description': 'Official news and organiser updates', 'kind': 'announcement', 'category': 'cat-announcements', 'private': false, 'temporary': false},
+        {'id': 'ch-general', 'name': 'general', 'description': 'Everyday community conversation', 'kind': 'text', 'category': 'cat-community', 'private': false, 'temporary': false},
+        {'id': 'ch-help', 'name': 'help-and-support', 'description': 'Ask questions and get help', 'kind': 'forum', 'category': 'cat-community', 'private': false, 'temporary': false},
+        {'id': 'ch-lfg', 'name': 'looking-for-team', 'description': 'Find teammates and substitutes', 'kind': 'forum', 'category': 'cat-competitive', 'private': false, 'temporary': false},
+        {'id': 'ch-match', 'name': 'match-room-01', 'description': 'Temporary communication for one scheduled match', 'kind': 'text', 'category': 'cat-competitive', 'private': true, 'temporary': true},
+        {'id': 'ch-voice', 'name': 'squad-lounge', 'description': 'Community voice conversation', 'kind': 'voice', 'category': 'cat-voice', 'private': false, 'temporary': false},
       ];
+    } else {
+      _categories.clear();
+      _channels = <Map<String, dynamic>>[];
     }
     _loadTextSettings();
     _loadCategories().then((_) => _loadPermissionOverrides());
@@ -173,9 +176,13 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           'name': row['name']?.toString() ?? 'channel',
           'description': row['description']?.toString() ?? '',
           'kind': row['kind']?.toString() ?? 'text',
-          'category': row['category_id']?.toString() ?? 'cat-community',
+          'category': row['category_id']?.toString() ?? '',
           'private': row['is_private'] == true,
-          'temporary': row['is_temporary'] == true,
+          'temporary': row['is_temporary'] == true || row['match_id'] != null,
+          'event_id': row['event_id'],
+          'stage_id': row['stage_id'],
+          'group_id': row['group_id'],
+          'match_id': row['match_id'],
         }));
     }
   }
@@ -458,9 +465,28 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         (channel['name'].toString().toLowerCase().contains(query) ||
          channel['description'].toString().toLowerCase().contains(query)));
     }).toList();
+    final uncategorized = _channels.where((channel) {
+      final categoryId = channel['category']?.toString() ?? '';
+      final known = _categories.any((category) => category['id'].toString() == categoryId);
+      final matchesQuery = query.isEmpty ||
+        channel['name'].toString().toLowerCase().contains(query) ||
+        channel['description'].toString().toLowerCase().contains(query);
+      return (!known || categoryId.isEmpty) && matchesQuery;
+    }).toList();
     return ListView(key: const ValueKey('batch3-structure-list'), padding: const EdgeInsets.only(bottom: 28), children: [
       _section('Channel structure', 'Arrange categories, choose channel types and keep temporary spaces separate.',
-        trailing: FilledButton.tonalIcon(onPressed: _createCategory, icon: const Icon(Icons.create_new_folder_outlined, size: 17), label: const Text('Category'))),
+        trailing: Wrap(spacing: 6, children: [
+          FilledButton.tonalIcon(
+            onPressed: _createCategory,
+            icon: const Icon(Icons.create_new_folder_outlined, size: 16),
+            label: const Text('Category'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => _createChannel(),
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('Channel'),
+          ),
+        ])),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(children: [
@@ -480,13 +506,25 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           onChanged: (_) => setState(() {}),
         ),
       ),
-      if (visible.isEmpty)
-        const Padding(
-          padding: EdgeInsets.all(22),
-          child: EmptyState(title: 'No matching channels', message: 'Try another category or channel name.', icon: Icons.search_off),
-        )
-      else
-        ...visible.map((category) => _categoryCard(category, query: query)),
+      if (visible.isEmpty && uncategorized.isEmpty)
+        Padding(
+          padding: const EdgeInsets.all(22),
+          child: EmptyState(
+            title: _categories.isEmpty ? 'No channel categories yet' : 'No matching channels',
+            message: _categories.isEmpty
+              ? 'Create a category or add an uncategorized channel to start the community structure.'
+              : 'Try another category or channel name.',
+            icon: Icons.search_off,
+          ),
+        ),
+      ...visible.map((category) => _categoryCard(category, query: query)),
+      if (uncategorized.isNotEmpty) ...[
+        _section('Uncategorized channels', 'These channels are not assigned to a category.'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: _surface(child: Column(children: uncategorized.map(_channelRow).toList())),
+        ),
+      ],
       _section('Channel types', 'Each surface has a different purpose and permission model.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Wrap(spacing: 7, runSpacing: 7, children: [
         _typeGuide(Icons.tag, 'Text', 'Conversation', KomnivoTheme.muted),
@@ -613,7 +651,17 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   Future<void> _loadCategories() async {
     try {
       final rows = await KomnivoRepository.instance.channelCategories(widget.communityId);
-      if (!mounted || rows.isEmpty) return;
+      if (!mounted) return;
+      if (rows.isEmpty) {
+        if (!widget.communityId.contains('ui-test')) {
+          setState(() {
+            _categories.clear();
+            _archived.clear();
+            _collapsed.clear();
+          });
+        }
+        return;
+      }
       setState(() {
         _categories
           ..clear()
@@ -748,14 +796,16 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     );
     if (draft == null) return;
     try {
-      final selectedCategory = draft['category'] ?? categoryId ?? _categories.first['id'].toString();
+      final selectedCategory = draft['category']?.toString().isNotEmpty == true
+        ? draft['category']
+        : categoryId ?? (_categories.isEmpty ? null : _categories.first['id'].toString());
       if (!widget.communityId.contains('ui-test')) {
         final created = await KomnivoRepository.instance.createCommunityChannel(
           communityId: widget.communityId,
           name: draft['name']!,
           description: draft['description'] ?? '',
           kind: draft['kind'] ?? 'text',
-          categoryId: selectedCategory.startsWith('cat-') ? null : selectedCategory,
+          categoryId: selectedCategory == null || selectedCategory.startsWith('cat-') ? null : selectedCategory,
           isPrivate: draft['private'] == 'true',
         );
         if (!mounted) return;
@@ -767,7 +817,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         setState(() => _channels.add({
           'id': 'ch-' + DateTime.now().microsecondsSinceEpoch.toString(),
           'name': draft['name']!, 'description': draft['description'] ?? '',
-          'kind': draft['kind'] ?? 'text', 'category': selectedCategory,
+          'kind': draft['kind'] ?? 'text', 'category': selectedCategory ?? '',
           'private': draft['private'] == 'true', 'temporary': draft['temporary'] == 'true',
         }));
       }
@@ -792,7 +842,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           name: draft['name']!,
           description: draft['description'] ?? '',
           kind: draft['kind'] ?? 'text',
-          categoryId: nextCategory != null && !nextCategory.startsWith('cat-') ? nextCategory : null,
+          categoryId: nextCategory != null && nextCategory.isNotEmpty && !nextCategory.startsWith('cat-') ? nextCategory : null,
           isPrivate: draft['private'] == 'true',
         );
       }
