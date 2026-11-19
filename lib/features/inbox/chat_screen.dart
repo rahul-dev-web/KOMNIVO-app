@@ -280,12 +280,14 @@ class _ChatScreenState extends State<ChatScreen> {
         question: result['question']!,
         options: [result['one']!, result['two']!],
       );
+      final optionRows = await KomnivoRepository.instance.channelPollOptions(pollId);
       if (!mounted) return;
       setState(() => _pollPreviews.insert(0, {
         'id': pollId,
         'question': result['question'],
-        'options': [result['one'], result['two']],
-        'votes': [0, 0],
+        'options': optionRows.map((row) => row['label'].toString()).toList(),
+        'optionIds': optionRows.map((row) => row['id'].toString()).toList(),
+        'votes': List<int>.filled(optionRows.length, 0),
         'selected': -1,
       }));
       showMessage(context, 'Poll published.');
@@ -400,12 +402,24 @@ class _ChatScreenState extends State<ChatScreen> {
         Text(poll['question'].toString(), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
         const SizedBox(height: 5),
         ...List.generate(options.length, (index) => InkWell(
-          onTap: () => setState(() {
-            final previous = poll['selected'] as int;
-            if (previous >= 0) votes[previous] = votes[previous] - 1;
-            poll['selected'] = index;
-            votes[index] = votes[index] + 1;
-          }),
+          onTap: () async {
+            final pollId = poll['id']?.toString();
+            final optionIds = (poll['optionIds'] as List).cast<String>();
+            if (pollId == null || index >= optionIds.length) return;
+            try {
+              await KomnivoRepository.instance.voteChannelPoll(pollId, [optionIds[index]]);
+              if (!mounted) return;
+              setState(() {
+                final previous = poll['selected'] as int;
+                if (previous >= 0) votes[previous] = votes[previous] - 1;
+                poll['selected'] = index;
+                votes[index] = votes[index] + 1;
+              });
+              showMessage(context, 'Vote recorded.');
+            } catch (error) {
+              if (mounted) showMessage(context, 'Vote failed: $error');
+            }
+          },
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 3),
             child: Row(children: [
@@ -416,7 +430,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ]),
           ),
         )),
-        const Text('Preview vote · not published', style: TextStyle(color: KomnivoTheme.muted, fontSize: 8)),
+        const Text('Vote is saved to the channel poll', style: TextStyle(color: KomnivoTheme.muted, fontSize: 8)),
       ]),
     );
   }
