@@ -83,7 +83,7 @@ void main() {
     expect(find.text('Text & Announcement behaviour'), findsOneWidget);
     expect(find.text('Read-only channel'), findsOneWidget);
     expect(find.text('Slow mode'), findsOneWidget);
-    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
+    await tester.drag(find.byKey(const ValueKey('batch3-text-list')), const Offset(0, -1100));
     await tester.pumpAndSettle();
     await tester.pumpAndSettle();
     expect(find.text('Controlled mentions'), findsOneWidget);
@@ -130,7 +130,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final newCategory = find.text('PRACTICE ROOMS');
-    await tester.drag(find.byType(ListView).first, const Offset(0, -1400));
+    await tester.drag(find.byKey(const ValueKey('batch3-structure-list')), const Offset(0, -1600));
     await tester.pumpAndSettle();
     await tester.pumpAndSettle();
     expect(newCategory, findsOneWidget);
@@ -223,7 +223,7 @@ void main() {
     expect(find.text('Forum channels'), findsOneWidget);
     await openStudioTab(tester, 'Event flow');
     final lifecycle = find.text('Temporary channel lifecycle');
-    await tester.drag(find.byType(ListView).first, const Offset(0, -1400));
+    await tester.drag(find.byKey(const ValueKey('batch3-event-flow-list')), const Offset(0, -1600));
     await tester.pumpAndSettle();
     await tester.pumpAndSettle();
     expect(lifecycle, findsOneWidget);
