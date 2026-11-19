@@ -26,10 +26,10 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
   void initState() {
     super.initState();
     _posts = [
-      {'title': 'Looking for two players for tonight', 'body': 'Need two reliable players for a squad. Share your role and availability.', 'tag': 'Recruitment', 'status': 'Open', 'author': 'RDX_Ace', 'replies': 8, 'time': '12 min ago'},
-      {'title': 'Scrim schedule discussion', 'body': 'Can we agree on a practice window for this weekend?', 'tag': 'Scrims', 'status': 'In discussion', 'author': 'Nova', 'replies': 14, 'time': '38 min ago'},
-      {'title': 'Support with voice setup', 'body': 'Microphone permissions are not appearing on my device.', 'tag': 'Support', 'status': 'Filled', 'author': 'Kairo', 'replies': 3, 'time': 'Yesterday'},
-      {'title': 'Team recruitment closed', 'body': 'The roster is complete. Thanks to everyone who responded.', 'tag': 'Recruitment', 'status': 'Closed', 'author': 'IGL_Lead', 'replies': 6, 'time': 'Yesterday'},
+      {'title': 'Looking for two players for tonight', 'body': 'Need two reliable players for a squad. Share your role and availability.', 'tag': 'Recruitment', 'status': 'Open', 'author': 'RDX_Ace', 'replies': 8, 'time': '12 min ago', 'pinned': true, 'locked': false},
+      {'title': 'Scrim schedule discussion', 'body': 'Can we agree on a practice window for this weekend?', 'tag': 'Scrims', 'status': 'In discussion', 'author': 'Nova', 'replies': 14, 'time': '38 min ago', 'pinned': false, 'locked': false},
+      {'title': 'Support with voice setup', 'body': 'Microphone permissions are not appearing on my device.', 'tag': 'Support', 'status': 'Filled', 'author': 'Kairo', 'replies': 3, 'time': 'Yesterday', 'pinned': false, 'locked': false},
+      {'title': 'Team recruitment closed', 'body': 'The roster is complete. Thanks to everyone who responded.', 'tag': 'Recruitment', 'status': 'Closed', 'author': 'IGL_Lead', 'replies': 6, 'time': 'Yesterday', 'pinned': false, 'locked': true},
     ];
   }
 
@@ -142,18 +142,39 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
           _pill(post['status'].toString(), _statusColor(post['status'].toString())),
           const SizedBox(width: 6),
           _pill(post['tag'].toString(), KomnivoTheme.cyan),
+          if (post['pinned'] == true) ...[
+            const SizedBox(width: 6),
+            _pill('Pinned', KomnivoTheme.accent),
+          ],
+          if (post['locked'] == true) ...[
+            const SizedBox(width: 6),
+            const Icon(Icons.lock_outline, color: KomnivoTheme.muted, size: 13),
+          ],
           const Spacer(),
           if (widget.canModerate)
             PopupMenuButton<String>(
               onSelected: (value) {
-                setState(() => post['status'] = value);
-                showMessage(context, 'Post status preview updated. It will be persisted in the backend phase.');
+                setState(() {
+                  if (value == 'pin') {
+                    post['pinned'] = post['pinned'] != true;
+                  } else if (value == 'lock') {
+                    post['locked'] = post['locked'] != true;
+                  } else {
+                    post['status'] = value;
+                    if (value == 'Closed') post['locked'] = true;
+                    if (value == 'Open') post['locked'] = false;
+                  }
+                });
+                showMessage(context, 'Forum moderation preview updated. Persistent actions connect in the backend phase.');
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'Open', child: Text('Reopen topic')),
-                PopupMenuItem(value: 'In discussion', child: Text('Move to discussion')),
-                PopupMenuItem(value: 'Filled', child: Text('Mark filled')),
-                PopupMenuItem(value: 'Closed', child: Text('Close topic')),
+              itemBuilder: (_) => [
+                PopupMenuItem(value: 'pin', child: Text(post['pinned'] == true ? 'Unpin topic' : 'Pin topic')),
+                PopupMenuItem(value: 'lock', child: Text(post['locked'] == true ? 'Unlock replies' : 'Lock replies')),
+                const PopupMenuDivider(),
+                const PopupMenuItem(value: 'Open', child: Text('Reopen topic')),
+                const PopupMenuItem(value: 'In discussion', child: Text('Move to discussion')),
+                const PopupMenuItem(value: 'Filled', child: Text('Mark filled')),
+                const PopupMenuItem(value: 'Closed', child: Text('Close topic')),
               ],
             ),
         ]),
@@ -215,6 +236,8 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
       'author': 'You',
       'replies': 0,
       'time': 'Just now',
+      'pinned': false,
+      'locked': false,
     }));
     showMessage(context, 'Post preview added. Publishing will be connected in the backend phase.');
   }
@@ -225,9 +248,10 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: KomnivoTheme.surface,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.fromLTRB(16, 18, 16, MediaQuery.viewInsetsOf(sheetContext).bottom + 18),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      builder: (sheetContext) => SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 18, 16, MediaQuery.viewInsetsOf(sheetContext).bottom + 18),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             _pill(post['status'].toString(), _statusColor(post['status'].toString())),
             const SizedBox(width: 6),
@@ -244,14 +268,29 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
           const _Reply(author: 'Nova', body: 'I can join after 7 PM.'),
           const _Reply(author: 'RDX_Ace', body: 'Share your preferred role and availability.'),
           const SizedBox(height: 10),
-          TextField(controller: reply, minLines: 1, maxLines: 3, decoration: const InputDecoration(hintText: 'Write a reply…')),
-          const SizedBox(height: 10),
-          Align(alignment: Alignment.centerRight, child: FilledButton(onPressed: () => Navigator.pop(sheetContext, reply.text.trim().isNotEmpty), child: const Text('Preview reply'))),
-        ]),
+          if (post['locked'] == true || post['status'] == 'Closed')
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Row(children: [
+                Icon(Icons.lock_outline, size: 15, color: KomnivoTheme.muted),
+                SizedBox(width: 7),
+                Expanded(child: Text('Replies are locked for this topic.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))),
+              ]),
+            )
+          else ...[
+            TextField(controller: reply, minLines: 1, maxLines: 3, decoration: const InputDecoration(hintText: 'Write a reply…')),
+            const SizedBox(height: 10),
+            Align(alignment: Alignment.centerRight, child: FilledButton(onPressed: () => Navigator.pop(sheetContext, reply.text.trim().isNotEmpty), child: const Text('Preview reply'))),
+          ],
+          ]),
+        ),
       ),
     );
     reply.dispose();
-    if (preview == true && mounted) showMessage(context, 'Reply preview created. It has not been published.');
+    if (preview == true && mounted) {
+      setState(() => post['replies'] = (post['replies'] as int? ?? 0) + 1);
+      showMessage(context, 'Reply preview added. It has not been published.');
+    }
   }
 
   void _showGuidelines() => showModalBottomSheet<void>(
