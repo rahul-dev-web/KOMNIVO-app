@@ -29,9 +29,6 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     'Read history': 'channel.read_history',
     'Send messages': 'channel.send_messages',
     'Add reactions': 'channel.react',
-    'Attach files': 'channel.attachments',
-    'Create threads': 'channel.create_threads',
-    'Pin messages': 'channel.pin_messages',
     'Manage messages': 'channel.manage_messages',
   };
 
@@ -176,7 +173,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     super.dispose();
   }
 
-  void _previewNotice() => showMessage(context, 'UI preview updated. Persistent saving is part of the next backend phase.');
+  void _previewNotice() => showMessage(context, 'Channel structure updated.');
 
   Widget _banner() => Container(
     margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
@@ -185,7 +182,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Icon(Icons.design_services_outlined, color: KomnivoTheme.accent, size: 18),
       SizedBox(width: 9),
-      Expanded(child: Text('UI/UX preview · Controls are interactive. Persistent configuration will be connected after the frontend pass.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4))),
+      Expanded(child: Text('Channel settings and permission overrides are saved to this community. Event templates still require an approved event scope before publishing.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4))),
     ]),
   );
 
@@ -340,7 +337,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
             const Icon(Icons.drag_indicator, color: KomnivoTheme.muted, size: 18),
             const SizedBox(width: 5),
             Expanded(child: InkWell(
-              onTap: () => setState(() { if (collapsed) { _collapsed.remove(id); } else { _collapsed.add(id); } }),
+              onTap: () => _toggleCategoryCollapsed(id),
               child: Row(children: [
                 Icon(collapsed ? Icons.chevron_right : Icons.expand_more, size: 19, color: KomnivoTheme.muted),
                 const SizedBox(width: 3),
@@ -431,8 +428,33 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           ..clear()
           ..addAll(rows.where((row) => row['archived_at'] != null).map((row) => row['id'].toString()));
       });
+      final savedCollapsed = await KomnivoRepository.instance.collapsedCategoryIds(
+        rows.map((row) => row['id'].toString()).toList(),
+      );
+      if (mounted) setState(() {
+        _collapsed
+          ..clear()
+          ..addAll(savedCollapsed);
+      });
     } catch (_) {
       // Keep the editor's starter layout when the community has no saved categories yet.
+    }
+  }
+
+  Future<void> _toggleCategoryCollapsed(String categoryId) async {
+    final next = !_collapsed.contains(categoryId);
+    setState(() {
+      if (next) { _collapsed.add(categoryId); } else { _collapsed.remove(categoryId); }
+    });
+    if (categoryId.startsWith('cat-') || widget.communityId.contains('ui-test')) return;
+    try {
+      await KomnivoRepository.instance.setCategoryCollapsed(categoryId, next);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (next) { _collapsed.remove(categoryId); } else { _collapsed.add(categoryId); }
+      });
+      showMessage(context, 'Category preference could not be saved: $error');
     }
   }
 
@@ -692,9 +714,12 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
           isExpanded: true,
-          value: _selectedRole,
+          value: (_roleIds.keys.toList().isNotEmpty ? _roleIds.keys.toList() : const ['Owner', 'Admin', 'Moderator', 'Organiser']).contains(_selectedRole)
+              ? _selectedRole
+              : (_roleIds.keys.toList().isNotEmpty ? _roleIds.keys.first : 'Moderator'),
           decoration: const InputDecoration(isDense: true),
-          items: const ['Owner', 'Admin', 'Moderator', 'Organiser', 'Member'].map((role) => DropdownMenuItem(value: role, child: Text(role))).toList(),
+          items: (_roleIds.keys.toList().isNotEmpty ? _roleIds.keys.toList() : const ['Owner', 'Admin', 'Moderator', 'Organiser'])
+              .map((role) => DropdownMenuItem(value: role, child: Text(role))).toList(),
           onChanged: (value) => setState(() => _selectedRole = value ?? _selectedRole),
         ),
         const SizedBox(height: 12),
@@ -803,13 +828,33 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     ]);
   }
 
-  void _syncWithCategory(String channelName) {
-    for (final permission in _permissionKeys.values) {
-      final key = _selectedRole + '|Channel|' + channelName + '|' + permission;
-      _permissionStates[key] = 'Inherit';
+  Future<void> _syncWithCategory(String channelName) async {
+    final roleId = _roleIds[_selectedRole];
+    final matching = _channels.where((row) => row['name'] == channelName).toList();
+    if (roleId == null || matching.isEmpty) {
+      showMessage(context, 'Select a saved role and channel before syncing.');
+      return;
     }
-    setState(() {});
-    _previewNotice();
+    final channelId = matching.first['id'].toString();
+    try {
+      for (final permission in _permissionKeys.values) {
+        await KomnivoRepository.instance.setChannelPermissionOverride(
+          communityId: widget.communityId,
+          channelId: channelId,
+          roleId: roleId,
+          permissionKey: permission,
+          effect: 'Inherit',
+        );
+        _permissionStates.remove('$_selectedRole|Channel|$channelName|$permission');
+      }
+      if (mounted) {
+        setState(() {});
+        showMessage(context, 'Channel overrides removed. The channel now inherits its category.');
+      }
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not sync channel permissions: $error');
+      await _loadPermissionOverrides();
+    }
   }
 
   Future<void> _loadTextSettings() async {
