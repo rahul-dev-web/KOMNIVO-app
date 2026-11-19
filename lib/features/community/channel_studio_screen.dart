@@ -613,7 +613,10 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       setState(() {
         _categories
           ..clear()
-          ..addAll(rows.map((row) => <String, dynamic>{'id': row['id'], 'name': row['name']}));
+          ..addAll(rows.map((row) => <String, dynamic>{
+            'id': row['id'], 'name': row['name'], 'event_id': row['event_id'],
+            'stage_id': row['stage_id'], 'group_id': row['group_id'],
+          }));
         _archived
           ..clear()
           ..addAll(rows.where((row) => row['archived_at'] != null).map((row) => row['id'].toString()));
@@ -876,7 +879,9 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
 
   Widget _permissionsTab() {
     final targets = _permissionScope == 'Category'
-      ? _categories.map((row) => row['name'].toString()).toList()
+      ? _categories.where((row) =>
+          row['event_id'] == null && row['stage_id'] == null && row['group_id'] == null
+        ).map((row) => row['name'].toString()).toList()
       : _channels.map((row) => row['name'].toString()).toList();
     final selected = _permissionScope == 'Category' ? _permissionCategory : _permissionChannel;
     final safeTarget = targets.contains(selected) ? selected : (targets.isEmpty ? '' : targets.first);
