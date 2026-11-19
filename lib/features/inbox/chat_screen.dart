@@ -197,16 +197,22 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _togglePin(Map<String, dynamic> message) {
+  Future<void> _togglePin(Map<String, dynamic> message) async {
     final id = message['id']?.toString();
     if (id == null) return;
-    setState(() {
-      if (_pinnedMessageIds.contains(id)) { _pinnedMessageIds.remove(id); }
-      else { _pinnedMessageIds.add(id); }
-    });
-    showMessage(context, _pinnedMessageIds.contains(id)
-      ? 'Pinned in this preview. Persistent pins connect in the backend phase.'
-      : 'Pin removed from this preview.');
+    try {
+      await KomnivoRepository.instance.toggleMessagePin(_channelId, id);
+      final pins = await KomnivoRepository.instance.messagePinIds(_channelId);
+      if (!mounted) return;
+      setState(() {
+        _pinnedMessageIds
+          ..clear()
+          ..addAll(pins);
+      });
+      showMessage(context, pins.contains(id) ? 'Message pinned.' : 'Pin removed.');
+    } catch (error) {
+      if (mounted) showMessage(context, 'Pin update failed: $error');
+    }
   }
 
   Future<void> _showPinnedMessages() async {
@@ -223,19 +229,19 @@ class _ChatScreenState extends State<ChatScreen> {
           ]),
           const SizedBox(height: 12),
           if (rows.isEmpty)
-            const Text('No pinned messages in this preview yet. Use a message menu to pin an important update.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4))
+            const Text('No pinned messages in this channel yet. Use a message menu to pin an important update.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4))
           else
             ...rows.map((row) => ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.push_pin_outlined, color: KomnivoTheme.cyan),
               title: Text((row['body'] ?? '').toString(), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
-              trailing: IconButton(onPressed: () {
-                setState(() => _pinnedMessageIds.remove(row['id'].toString()));
+              trailing: IconButton(onPressed: () async {
                 Navigator.pop(sheetContext);
+                await _togglePin(row);
               }, icon: const Icon(Icons.close, size: 17)),
             )),
           const SizedBox(height: 6),
-          const Text('Pin state is local to this UI preview; durable pins will connect after the migration phase.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+          const Text('Pins are stored with the channel and follow its moderation permissions.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
         ]),
       )),
     );
@@ -433,6 +439,21 @@ class _ChatScreenState extends State<ChatScreen> {
         const Text('Vote is saved to the channel poll', style: TextStyle(color: KomnivoTheme.muted, fontSize: 8)),
       ]),
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPins();
+  }
+
+  Future<void> _loadPins() async {
+    try {
+      final pins = await KomnivoRepository.instance.messagePinIds(_channelId);
+      if (mounted) setState(() { _pinnedMessageIds..clear()..addAll(pins); });
+    } catch (_) {
+      // Channel membership/RLS controls whether the pin list is readable.
+    }
   }
 
   @override
