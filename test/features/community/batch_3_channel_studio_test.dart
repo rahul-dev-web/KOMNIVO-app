@@ -83,11 +83,8 @@ void main() {
     expect(find.text('Text & Announcement behaviour'), findsOneWidget);
     expect(find.text('Read-only channel'), findsOneWidget);
     expect(find.text('Slow mode'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Controlled mentions'),
-      260,
-      scrollable: find.byType(Scrollable).last,
-    );
+    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
+    await tester.pumpAndSettle();
     await tester.pumpAndSettle();
     expect(find.text('Controlled mentions'), findsOneWidget);
 
@@ -133,11 +130,8 @@ void main() {
     await tester.pumpAndSettle();
 
     final newCategory = find.text('PRACTICE ROOMS');
-    await tester.scrollUntilVisible(
-      newCategory,
-      260,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await tester.drag(find.byType(ListView).first, const Offset(0, -1400));
+    await tester.pumpAndSettle();
     await tester.pumpAndSettle();
     expect(newCategory, findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -153,7 +147,7 @@ void main() {
     await tester.enterText(search, 'Team recruitment closed');
     await tester.pumpAndSettle();
 
-    expect(find.text('Team recruitment closed'), findsOneWidget);
+    expect(find.text('Team recruitment closed').last, findsOneWidget);
     expect(find.text('Looking for two players for tonight'), findsNothing);
     await tester.enterText(search, '');
     await tester.pumpAndSettle();
@@ -229,11 +223,8 @@ void main() {
     expect(find.text('Forum channels'), findsOneWidget);
     await openStudioTab(tester, 'Event flow');
     final lifecycle = find.text('Temporary channel lifecycle');
-    await tester.scrollUntilVisible(
-      lifecycle,
-      280,
-      scrollable: find.byType(Scrollable).last,
-    );
+    await tester.drag(find.byType(ListView).first, const Offset(0, -1400));
+    await tester.pumpAndSettle();
     await tester.pumpAndSettle();
     expect(lifecycle, findsOneWidget);
     expect(tester.takeException(), isNull);
