@@ -4,8 +4,13 @@ import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
 
 class ForumChannelScreen extends StatefulWidget {
-  const ForumChannelScreen({super.key, required this.channel});
+  const ForumChannelScreen({
+    super.key,
+    required this.channel,
+    this.canModerate = false,
+  });
   final Map<String, dynamic> channel;
+  final bool canModerate;
 
   @override
   State<ForumChannelScreen> createState() => _ForumChannelScreenState();
@@ -138,18 +143,19 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
           const SizedBox(width: 6),
           _pill(post['tag'].toString(), KomnivoTheme.cyan),
           const Spacer(),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              setState(() => post['status'] = value);
-              showMessage(context, 'Post status preview updated. It will be persisted in the backend phase.');
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'Open', child: Text('Reopen topic')),
-              PopupMenuItem(value: 'In discussion', child: Text('Move to discussion')),
-              PopupMenuItem(value: 'Filled', child: Text('Mark filled')),
-              PopupMenuItem(value: 'Closed', child: Text('Close topic')),
-            ],
-          ),
+          if (widget.canModerate)
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                setState(() => post['status'] = value);
+                showMessage(context, 'Post status preview updated. It will be persisted in the backend phase.');
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'Open', child: Text('Reopen topic')),
+                PopupMenuItem(value: 'In discussion', child: Text('Move to discussion')),
+                PopupMenuItem(value: 'Filled', child: Text('Mark filled')),
+                PopupMenuItem(value: 'Closed', child: Text('Close topic')),
+              ],
+            ),
         ]),
         const SizedBox(height: 7),
         Text(post['title'].toString(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900)),
