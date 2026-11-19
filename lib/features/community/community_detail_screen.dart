@@ -277,33 +277,9 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     final kind = channel['kind']?.toString() ?? 'text';
     var canModerate = false;
     try {
-      final channelId = channel['id']?.toString() ?? '';
-      final eventId = channel['event_id']?.toString();
-      if (eventId != null && eventId.isNotEmpty) {
-        final checks = await Future.wait([
-          KomnivoRepository.instance.hasPermission(
-            permissionKey: 'event.manage',
-            scopeType: 'event',
-            scopeId: eventId,
-          ),
-          KomnivoRepository.instance.hasPermission(
-            permissionKey: 'event.matches.operate',
-            scopeType: 'event',
-            scopeId: eventId,
-          ),
-        ]);
-        canModerate = checks.any((value) => value);
-      } else {
-        final communityId = channel['community_id']?.toString();
-        if (communityId != null && channelId.isNotEmpty) {
-          canModerate = await KomnivoRepository.instance.hasPermission(
-            permissionKey: 'channel.manage_messages',
-            scopeType: 'community',
-            scopeId: communityId,
-            resourceId: channelId,
-          );
-        }
-      }
+      canModerate = await KomnivoRepository.instance.canManageChannelMessages(
+        channel['id'].toString(),
+      );
     } catch (_) {
       canModerate = false;
     }
