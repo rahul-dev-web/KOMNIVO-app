@@ -115,76 +115,82 @@ class _ChatScreenState extends State<ChatScreen> {
       isScrollControlled: true,
       backgroundColor: KomnivoTheme.surface,
       constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .88),
-      builder: (sheetContext) => SafeArea(
-        child: SizedBox(
-          height: MediaQuery.sizeOf(sheetContext).height * .78,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 16, 14, 10),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                const Expanded(child: Text('Message thread', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900))),
-                Text((replies.length + draftReplies.length).toString() + ' replies',
-                  style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
-                IconButton(onPressed: () => Navigator.pop(sheetContext), icon: const Icon(Icons.close, size: 18)),
-              ]),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: KomnivoTheme.surfaceRaised,
-                  borderRadius: BorderRadius.circular(13),
-                  border: const Border(left: BorderSide(color: KomnivoTheme.accent, width: 3)),
-                ),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(root['sender_id'] == _userId ? 'You · original message' : 'Community member · original message',
-                    style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 9, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 5),
-                  SelectableText(root['body']?.toString() ?? '', style: const TextStyle(fontSize: 12, height: 1.4)),
+      builder: (routeContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .78,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 16, 14, 10),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  const Expanded(child: Text('Message thread', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900))),
+                  Text((replies.length + draftReplies.length).toString() + ' replies',
+                    style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
+                  IconButton(onPressed: () => Navigator.pop(sheetContext), icon: const Icon(Icons.close, size: 18)),
                 ]),
-              ),
-              const SizedBox(height: 12),
-              const Text('Replies', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 7),
-              Expanded(
-                child: ListView(
-                  children: [
-                    if (replies.isEmpty && draftReplies.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 20),
-                        child: Text('No replies yet. Start the thread with a response.',
-                          style: TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
-                      ),
-                    ...replies.map((row) => _ThreadMessageCard(
-                      author: row['sender_id'] == _userId ? 'You' : 'Community member',
-                      body: row['body']?.toString() ?? '',
-                    )),
-                    ...draftReplies.map((row) => _ThreadMessageCard(
-                      author: 'You · preview',
-                      body: row['body']?.toString() ?? '',
-                      isPreview: true,
-                    )),
-                  ],
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: KomnivoTheme.surfaceRaised,
+                    borderRadius: BorderRadius.circular(13),
+                    border: const Border(left: BorderSide(color: KomnivoTheme.accent, width: 3)),
+                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(root['sender_id'] == _userId ? 'You · original message' : 'Community member · original message',
+                      style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 9, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 5),
+                    SelectableText(root['body']?.toString() ?? '', style: const TextStyle(fontSize: 12, height: 1.4)),
+                  ]),
                 ),
-              ),
-              _ThreadComposer(
-                enabled: !_readOnly,
-                onPreview: (text) {
-                  setState(() {
-                    draftReplies.add({
-                      'body': text,
-                      'sender_id': _userId,
-                      'created_at': DateTime.now().toIso8601String(),
+                const SizedBox(height: 12),
+                const Text('Replies', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 7),
+                Expanded(
+                  child: ListView(
+                    children: [
+                      if (replies.isEmpty && draftReplies.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Text('No replies yet. Start the thread with a response.',
+                            style: TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
+                        ),
+                      ...replies.map((row) => _ThreadMessageCard(
+                        author: row['sender_id'] == _userId ? 'You' : 'Community member',
+                        body: row['body']?.toString() ?? '',
+                      )),
+                      ...draftReplies.map((row) => _ThreadMessageCard(
+                        author: 'You · preview',
+                        body: row['body']?.toString() ?? '',
+                        isPreview: true,
+                      )),
+                    ],
+                  ),
+                ),
+                _ThreadComposer(
+                  enabled: !_readOnly,
+                  onPreview: (text) {
+                    setSheetState(() {
+                      draftReplies.add({
+                        'body': text,
+                        'sender_id': _userId,
+                        'created_at': DateTime.now().toIso8601String(),
+                      });
                     });
-                  });
-                  _threadDraftReplies[rootId] = List<Map<String, dynamic>>.from(draftReplies);
-                },
-              ),
-              const Padding(
-                padding: EdgeInsets.only(top: 5),
-                child: Text('Replies added here are UI previews only. Persistent thread writes connect in the backend phase.',
-                  style: TextStyle(color: KomnivoTheme.muted, fontSize: 8)),
-              ),
-            ]),
+                    if (mounted) {
+                      setState(() {
+                        _threadDraftReplies[rootId] = List<Map<String, dynamic>>.from(draftReplies);
+                      });
+                    }
+                  },
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(top: 5),
+                  child: Text('Replies added here are UI previews only. Persistent thread writes connect in the backend phase.',
+                    style: TextStyle(color: KomnivoTheme.muted, fontSize: 8)),
+                ),
+              ]),
+            ),
           ),
         ),
       ),
