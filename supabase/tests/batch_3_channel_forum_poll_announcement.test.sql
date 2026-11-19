@@ -102,6 +102,12 @@ begin
   if not has_function_privilege('authenticated','public.can_manage_channel_messages(uuid)','EXECUTE')
     or has_function_privilege('anon','public.can_manage_channel_messages(uuid)','EXECUTE')
   then raise exception 'Batch 3: canonical channel moderation permission RPC grants are incorrect'; end if;
+  if has_table_privilege('authenticated','public.event_channel_lifecycle_rules','INSERT')
+    or has_table_privilege('authenticated','public.event_channel_lifecycle_rules','UPDATE')
+    or has_table_privilege('authenticated','public.event_channel_lifecycle_rules','DELETE')
+  then raise exception 'Batch 3: direct lifecycle rule writes bypass the validated RPC'; end if;
+  if not has_table_privilege('authenticated','public.event_channel_lifecycle_rules','SELECT')
+  then raise exception 'Batch 3: authorised lifecycle rule reads are unavailable'; end if;
 
   if (
     select count(*) from public.event_channel_templates
