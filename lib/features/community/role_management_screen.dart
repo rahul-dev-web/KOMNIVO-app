@@ -142,6 +142,8 @@ class _RoleManagementScreenState extends State<RoleManagementScreen> {
     final position = TextEditingController(text: role?['position']?.toString() ??
         (data.rank - 10).clamp(1, 999999).toString());
     final selected = <String, String>{};
+    String? previewChannelId;
+    bool previewingDraft = false;
     if (role != null) {
       for (final item in data.permissions.where((p) => p['role_id'] == role['id'])) {
         selected[item['permission_key'].toString()] = item['allowed'] == true ? 'allow' : 'deny';
@@ -159,6 +161,19 @@ class _RoleManagementScreenState extends State<RoleManagementScreen> {
             TextField(controller: colour, maxLength: 7, decoration: const InputDecoration(labelText: 'Colour HEX', hintText: '#4A90E2')),
             TextField(controller: position, keyboardType: TextInputType.number,
               decoration: InputDecoration(labelText: 'Hierarchy position', helperText: 'Your authority rank: ${data.rank}. This role must be lower.')),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String?>(
+              value: previewChannelId,
+              decoration: const InputDecoration(labelText: 'Preview context'),
+              items: [
+                const DropdownMenuItem<String?>(value: null, child: Text('Community-wide')),
+                ...data.channels.map((channel) => DropdownMenuItem<String?>(
+                  value: channel['id'].toString(),
+                  child: Text('#${channel['name']}'),
+                )),
+              ],
+              onChanged: (value) => update(() => previewChannelId = value),
+            ),
             const SizedBox(height: 12),
             const Align(alignment: Alignment.centerLeft, child: Text('Permission rules', style: TextStyle(fontWeight: FontWeight.w900))),
             const Text('Inherit leaves the default/other roles in control. Deny blocks an action. Allow grants only what you already have.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
@@ -179,6 +194,72 @@ class _RoleManagementScreenState extends State<RoleManagementScreen> {
           ],
         ))),
         actions: [
+          TextButton.icon(
+            onPressed: previewingDraft ? null : () async {
+              final draft = <String, bool>{};
+              for (final entry in selected.entries) {
+                if (entry.value != 'inherit') draft[entry.key] = entry.value == 'allow';
+              }
+              update(() => previewingDraft = true);
+              try {
+                final rows = await _db.rpc('preview_community_role_draft_permissions', params: {
+                  'p_community_id': widget.communityId,
+                  'p_role_id': role?['id'],
+                  'p_permissions': draft,
+                  'p_channel_id': previewChannelId,
+                });
+                if (!mounted) return;
+                final preview = List<Map<String, dynamic>>.from(rows as List);
+                await showDialog<void>(
+                  context: this.context,
+                  builder: (previewContext) => AlertDialog(
+                    title: const Text('Unsaved draft preview'),
+                    content: SizedBox(
+                      width: 480,
+                      height: 420,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${preview.where((row) => row['allowed'] == true).length} of ${preview.length} actions allowed',
+                            style: const TextStyle(fontWeight: FontWeight.w900)),
+                          const SizedBox(height: 8),
+                          Expanded(child: ListView(
+                            children: preview.map((row) {
+                              final key = row['permission_key'].toString();
+                              final allowed = row['allowed'] == true;
+                              return ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: Icon(allowed ? Icons.check_circle : Icons.block,
+                                  color: allowed ? KomnivoTheme.cyan : KomnivoTheme.muted, size: 17),
+                                title: Text(permissions[key] ?? key, style: const TextStyle(fontSize: 11)),
+                                subtitle: Text(row['source']?.toString() ?? '',
+                                  style: const TextStyle(fontSize: 9, color: KomnivoTheme.muted)),
+                                trailing: Text(allowed ? 'ALLOW' : 'DENY',
+                                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900,
+                                    color: allowed ? KomnivoTheme.cyan : KomnivoTheme.muted)),
+                              );
+                            }).toList(),
+                          )),
+                        ],
+                      ),
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(previewContext), child: const Text('Close')),
+                    ],
+                  ),
+                );
+              } catch (error) {
+                if (mounted) showMessage(this.context, error.toString());
+              } finally {
+                if (mounted) update(() => previewingDraft = false);
+              }
+            },
+            icon: previewingDraft
+                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.visibility_outlined, size: 16),
+            label: const Text('Preview draft'),
+          ),
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
           FilledButton(onPressed: () {
             final pos = int.tryParse(position.text.trim());
