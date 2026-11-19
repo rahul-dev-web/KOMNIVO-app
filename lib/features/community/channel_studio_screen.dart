@@ -1842,14 +1842,19 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
             DropdownMenuItem(value: 'Event completed', child: Text('Event completed')),
             DropdownMenuItem(value: 'Event cancelled', child: Text('Event cancelled')),
           ],
-          onChanged: (value) => setState(() => _lifecycleTrigger = value ?? _lifecycleTrigger),
+          onChanged: (value) => setState(() {
+            _lifecycleTrigger = value ?? _lifecycleTrigger;
+            if (_lifecycleTrigger.startsWith('Stage')) _lifecycleScope = 'Stage';
+            else if (_lifecycleTrigger.startsWith('Match')) _lifecycleScope = 'Match';
+            else _lifecycleScope = 'Event';
+          }),
         ),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
           isExpanded: true,
           value: _lifecycleScope,
           decoration: const InputDecoration(labelText: 'Temporary channel scope'),
-          items: const ['Event', 'Stage', 'Group', 'Match'].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
+          items: const ['Event', 'Stage', 'Match'].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
           onChanged: (value) => setState(() => _lifecycleScope = value ?? _lifecycleScope),
         ),
         const SizedBox(height: 10),
@@ -1886,6 +1891,12 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         _previewRow('Reschedule', _recomputeOnReschedule ? 'Recompute access' : 'No automatic recompute'),
         _previewRow('Roster change', _recomputeOnRosterChange ? 'Recompute access' : 'No automatic recompute'),
         _previewRow('Notifications', _notifyOnLifecycle ? 'Notify affected members' : 'No notifications'),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: _saveLifecycleRule,
+          icon: const Icon(Icons.save_outlined, size: 17),
+          label: const Text('Save lifecycle rule'),
+        ),
         const Divider(height: 16),
         const Text('Official Match IDs, registration, assigned teams, credentials, results, screenshots and evidence stay in their structured records. Archiving a channel never deletes these records.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.45)),
       ]))),
