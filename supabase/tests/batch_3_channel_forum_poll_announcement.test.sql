@@ -123,7 +123,7 @@ begin
     select 1 from pg_trigger t join pg_class c on c.oid=t.tgrelid
     join pg_namespace n on n.oid=c.relnamespace
     where n.nspname='public' and c.relname='matches'
-      and t.tgname ilike '%archive%channel%' and not t.tgisinternal
+      and t.tgname='archive_event_match_channels' and not t.tgisinternal
   ) then raise exception 'Batch 3: event/stage/match channel lifecycle triggers are incomplete'; end if;
 
   select coalesce(with_check,'') into v_policy from pg_policies
