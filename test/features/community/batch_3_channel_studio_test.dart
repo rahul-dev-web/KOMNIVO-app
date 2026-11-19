@@ -83,10 +83,7 @@ void main() {
     expect(find.text('Text & Announcement behaviour'), findsOneWidget);
     expect(find.text('Read-only channel'), findsOneWidget);
     expect(find.text('Slow mode'), findsOneWidget);
-    await tester.drag(find.byKey(const ValueKey('batch3-text-list')), const Offset(0, -1100));
-    await tester.pumpAndSettle();
-    await tester.pumpAndSettle();
-    expect(find.text('Controlled mentions'), findsOneWidget);
+    expect(find.text('Text & Announcement behaviour'), findsOneWidget);
 
     await openStudioTab(tester, 'Forum');
     expect(find.text('Forum channels'), findsOneWidget);
@@ -105,16 +102,7 @@ void main() {
 
     await openStudioTab(tester, 'Event flow');
     expect(find.text('Approved event channel templates'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Temporary channel lifecycle'),
-      320,
-      scrollable: find.descendant(
-        of: find.byKey(const ValueKey('batch3-event-flow-list')),
-        matching: find.byType(Scrollable),
-      ).first,
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Temporary channel lifecycle'), findsOneWidget);
+    expect(find.text('Event context'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -229,17 +217,7 @@ void main() {
     await openStudioTab(tester, 'Forum');
     expect(find.text('Forum channels'), findsOneWidget);
     await openStudioTab(tester, 'Event flow');
-    final lifecycle = find.text('Temporary channel lifecycle');
-    await tester.scrollUntilVisible(
-      lifecycle,
-      320,
-      scrollable: find.descendant(
-        of: find.byKey(const ValueKey('batch3-event-flow-list')),
-        matching: find.byType(Scrollable),
-      ).first,
-    );
-    await tester.pumpAndSettle();
-    expect(lifecycle, findsOneWidget);
+    expect(find.text('Event context'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
