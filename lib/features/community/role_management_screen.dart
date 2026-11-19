@@ -573,7 +573,7 @@ class _EventStaffPanelState extends State<_EventStaffPanel> {
     builder: (context, s) {
       if (s.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
       if (s.hasError) return Center(child: Padding(padding: const EdgeInsets.all(20), child: Text('Could not load events: ${s.error}', textAlign: TextAlign.center)));
-      if (_events.isEmpty) return const ListView(padding: EdgeInsets.all(16), children: [
+      if (_events.isEmpty) return ListView(padding: const EdgeInsets.all(16), children: [
         _InfoBox(title: 'No community-linked events', body: 'Create or attach a tournament to this community. Community roles do not automatically grant tournament authority.'),
       ]);
       return ListView(padding: const EdgeInsets.all(14), children: [
