@@ -190,7 +190,7 @@ void main() {
       find.widgetWithText(TextField, 'Details'),
       'Available for the Saturday finals.',
     );
-    await tester.tap(find.text('Preview post'));
+    await tester.tap(find.text('Publish post'));
     await tester.pumpAndSettle();
 
     expect(find.text('Need a substitute for finals'), findsOneWidget);
