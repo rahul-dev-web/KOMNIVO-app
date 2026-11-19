@@ -308,6 +308,25 @@ class KomnivoRepository {
     return result;
   }
 
+  Future<Set<String>> messagePinIds(String channelId) async {
+    final rows = await client.from('message_pins').select('message_id')
+      .eq('channel_id', channelId);
+    return rows.map((row) => row['message_id'].toString()).toSet();
+  }
+
+  Future<void> toggleMessagePin(String channelId, String messageId) async {
+    final existing = await client.from('message_pins').select('message_id')
+      .eq('channel_id', channelId).eq('message_id', messageId).maybeSingle();
+    if (existing != null) {
+      await client.from('message_pins').delete()
+        .eq('channel_id', channelId).eq('message_id', messageId);
+    } else {
+      await client.from('message_pins').insert({
+        'channel_id': channelId, 'message_id': messageId, 'pinned_by': userId,
+      });
+    }
+  }
+
   Future<List<Map<String, dynamic>>> messageReactions(String messageId) async {
     final rows = await client.from('message_reactions')
       .select('emoji,user_id')
