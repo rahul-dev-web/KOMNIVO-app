@@ -179,7 +179,11 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   Widget _surface({required Widget child, EdgeInsets padding = const EdgeInsets.all(14), Color? color}) => Container(
     padding: padding,
     decoration: BoxDecoration(color: color ?? KomnivoTheme.surface, borderRadius: BorderRadius.circular(15), border: Border.all(color: KomnivoTheme.line)),
-    child: child,
+    child: Material(
+      type: MaterialType.transparency,
+      borderRadius: BorderRadius.circular(15),
+      child: child,
+    ),
   );
 
   Widget _pill(String label, {Color? color}) => Container(
