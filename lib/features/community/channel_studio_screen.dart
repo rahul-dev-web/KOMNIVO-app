@@ -525,6 +525,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         const Text('ROLE', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: _selectedRole,
           decoration: const InputDecoration(isDense: true),
           items: const ['Owner', 'Admin', 'Moderator', 'Organiser', 'Member'].map((role) => DropdownMenuItem(value: role, child: Text(role))).toList(),
@@ -541,6 +542,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         ),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: safeTarget.isEmpty ? null : safeTarget,
           decoration: InputDecoration(labelText: _permissionScope),
           items: targets.map((name) => DropdownMenuItem(value: name, child: Text(name))).toList(),
@@ -652,6 +654,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       _section('Text & Announcement behaviour', 'Configure read-only mode, slow mode, attachments, pins, history and mention controls.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(children: [
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: names.contains(_textChannel) ? _textChannel : null,
           decoration: const InputDecoration(labelText: 'Channel'),
           items: names.map((name) => DropdownMenuItem(value: name, child: Text('#' + name))).toList(),
@@ -681,6 +684,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(children: [
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Restrict @everyone and @here', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)), value: _restrictBroadMentions, onChanged: (value) => setState(() => _restrictBroadMentions = value)),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: _mentionPolicy,
           decoration: const InputDecoration(labelText: 'Allowed mentions'),
           items: const [
@@ -742,6 +746,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           ChoiceChip(label: Text(status), selected: _forumStatus == status, onSelected: (_) => setState(() => _forumStatus = status)),
       ])),
       Padding(padding: const EdgeInsets.fromLTRB(16, 5, 16, 0), child: DropdownButtonFormField<String>(
+          isExpanded: true,
         value: _forumTag,
         decoration: const InputDecoration(labelText: 'Filter by tag', isDense: true),
         items: const ['All tags', 'Recruitment', 'Scrims', 'Support', 'Suggestions', 'LFG'].map((tag) => DropdownMenuItem(value: tag, child: Text(tag))).toList(),
@@ -811,6 +816,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           TextField(controller: body, maxLines: 4, maxLength: 1200, decoration: const InputDecoration(labelText: 'Details')),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
+          isExpanded: true,
             value: tag,
             decoration: const InputDecoration(labelText: 'Topic tag'),
             items: const ['LFG', 'Recruitment', 'Scrims', 'Support', 'Suggestions'].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
@@ -980,6 +986,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           TextField(controller: message, maxLines: 4, decoration: const InputDecoration(labelText: 'Announcement text')),
           const SizedBox(height: 9),
           DropdownButtonFormField<String>(
+          isExpanded: true,
             value: time,
             decoration: const InputDecoration(labelText: 'Publish time · preview'),
             items: const ['Today · 6:00 PM', 'Tomorrow · 9:00 AM', 'Tomorrow · 5:30 PM'].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
@@ -1021,6 +1028,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       _section('Speaker access', 'Choose who may transmit audio or receive speaker status.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(children: [
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: _speakerPolicy,
           decoration: const InputDecoration(labelText: 'Who can speak'),
           items: const [
@@ -1033,6 +1041,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         const SizedBox(height: 10),
         if (stage) ...[
           DropdownButtonFormField<String>(
+          isExpanded: true,
             value: _speakerPromotion,
             decoration: const InputDecoration(labelText: 'Speaker promotion'),
             items: const [
@@ -1056,6 +1065,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           ),
         ],
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: _audience,
           decoration: const InputDecoration(labelText: 'Audience'),
           items: const [
@@ -1068,6 +1078,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         ),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: _roomPrivacy,
           decoration: const InputDecoration(labelText: 'Room visibility'),
           items: const [
@@ -1087,6 +1098,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
             onChanged: (value) => setState(() => _allowInvitedGuests = value),
           ),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: _roomExpiry,
           decoration: const InputDecoration(labelText: 'Temporary room lifetime'),
           items: const [
@@ -1135,6 +1147,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     final fields = <Widget>[];
     if (scope != 'Event') {
       fields.add(DropdownButtonFormField<String>(
+          isExpanded: true,
         value: _stageContext,
         decoration: const InputDecoration(labelText: 'Stage'),
         items: const [
@@ -1148,6 +1161,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     if (scope == 'Group' || scope == 'Match') {
       fields.add(const SizedBox(height: 10));
       fields.add(DropdownButtonFormField<String>(
+          isExpanded: true,
         value: _groupContext,
         decoration: const InputDecoration(labelText: 'Group'),
         items: const [
@@ -1161,6 +1175,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     if (scope == 'Match') {
       fields.add(const SizedBox(height: 10));
       fields.add(DropdownButtonFormField<String>(
+          isExpanded: true,
         value: _matchContext,
         decoration: const InputDecoration(labelText: 'Scheduled match'),
         items: const [
@@ -1191,6 +1206,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       _section('Event context', 'Select an approved event first. Template channels are communication only; match participation and credentials remain in structured event records.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: _eventContext,
           decoration: const InputDecoration(labelText: 'Event'),
           items: const [
@@ -1258,6 +1274,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       _section('Temporary channel lifecycle', 'Lock or archive temporary channels after the matching event lifecycle step.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: _lifecycleTrigger,
           decoration: const InputDecoration(labelText: 'Lifecycle trigger'),
           items: const [
@@ -1271,6 +1288,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         ),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: _lifecycleScope,
           decoration: const InputDecoration(labelText: 'Temporary channel scope'),
           items: const ['Event', 'Stage', 'Group', 'Match'].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
@@ -1278,6 +1296,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         ),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
+          isExpanded: true,
           value: _closeRule,
           decoration: const InputDecoration(labelText: 'After the lifecycle step'),
           items: const [
@@ -1433,6 +1452,7 @@ class _ChannelDraftDialogState extends State<_ChannelDraftDialog> {
       TextField(controller: _description, maxLength: 240, decoration: const InputDecoration(labelText: 'Description')),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
+          isExpanded: true,
         value: _kind,
         decoration: const InputDecoration(labelText: 'Channel type'),
         items: const [
@@ -1445,6 +1465,7 @@ class _ChannelDraftDialogState extends State<_ChannelDraftDialog> {
       ),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
+          isExpanded: true,
         value: _category,
         decoration: const InputDecoration(labelText: 'Category'),
         items: widget.categories.map((row) => DropdownMenuItem(value: row['id'].toString(), child: Text(row['name'].toString()))).toList(),
