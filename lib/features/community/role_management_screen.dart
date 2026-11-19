@@ -561,7 +561,7 @@ class _EventStaffPanelState extends State<_EventStaffPanel> {
   late Future<void> _initial;
   List<Map<String, dynamic>> _events = [], _rounds = [], _groups = [], _matches = [], _assignments = [], _catalog = [];
   String? _eventId, _scopeId;
-  String _role = 'match_operator', _scope = 'event';
+  String _role = 'support_staff', _scope = 'event';
   bool _busy = false;
   bool _canAssign = false;
 
@@ -612,14 +612,57 @@ class _EventStaffPanelState extends State<_EventStaffPanel> {
     finally { if (mounted) setState(() => _busy = false); }
   }
 
-  List<Map<String, dynamic>> get _scopes => _scope == 'stage' ? _rounds : _scope == 'group' ? _groups : _scope == 'match' ? _matches : [];
+  List<String> _allowedScopesFor(String role) {
+    if (role == 'competition_manager' || role == 'tournament_director') return ['event'];
+    if (role == 'match_operator') return ['stage', 'group', 'match'];
+    return ['event', 'stage', 'group', 'match'];
+  }
+
+  List<Map<String, dynamic>> _itemsForScope(String scope) {
+    switch (scope) {
+      case 'stage': return _rounds;
+      case 'group': return _groups;
+      case 'match': return _matches;
+      default: return [];
+    }
+  }
+
+  List<Map<String, dynamic>> get _scopes => _itemsForScope(_scope);
+
+  bool get _scopeSelectionValid =>
+      _allowedScopesFor(_role).contains(_scope) &&
+      (_scope == 'event' || _scopeId != null);
+
+  void _selectStaffRole(String? role) {
+    if (role == null) return;
+    setState(() {
+      _role = role;
+      final permitted = _allowedScopesFor(role);
+      if (!permitted.contains(_scope)) _scope = permitted.first;
+      if (_scope == 'event') {
+        _scopeId = null;
+      } else {
+        final items = _itemsForScope(_scope);
+        _scopeId = items.isEmpty ? null : items.first['id'].toString();
+      }
+    });
+  }
+
+  void _selectStaffScope(String? scope) {
+    if (scope == null) return;
+    setState(() {
+      _scope = scope;
+      final items = _itemsForScope(scope);
+      _scopeId = items.isEmpty ? null : items.first['id'].toString();
+    });
+  }
 
   String _scopeName(Map<String, dynamic> r) => r['name']?.toString() ?? r['label']?.toString() ??
     r['match_code']?.toString() ?? 'Match ${r['match_number'] ?? ''}';
 
   Future<void> _assign() async {
-    if (_eventId == null || _username.text.trim().length < 2 || (_scope != 'event' && _scopeId == null)) {
-      showMessage(context, 'Select a valid event, username and scope.');
+    if (_eventId == null || _username.text.trim().length < 2 || !_scopeSelectionValid) {
+      showMessage(context, 'The selected role requires a valid compatible event/stage/group/match scope.');
       return;
     }
     final allowed = await _db.rpc('has_permission', params: {
@@ -676,24 +719,28 @@ class _EventStaffPanelState extends State<_EventStaffPanel> {
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(value: _role, decoration: const InputDecoration(labelText: 'Staff role'),
           items: widget.labels.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
-          onChanged: !_canAssign ? null : (v) => setState(() => _role = v ?? _role)),
+          onChanged: !_canAssign ? null : _selectStaffRole),
+        if (_role == 'competition_manager' || _role == 'tournament_director')
+          const Padding(padding: EdgeInsets.only(top: 4), child: Text('This role grants event-wide management and must be assigned at event scope.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9))),
+        if (_role == 'match_operator')
+          const Padding(padding: EdgeInsets.only(top: 4), child: Text('Match Operators must be restricted to a stage, group or single match.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9))),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(value: _scope, decoration: const InputDecoration(labelText: 'Scope'),
-          items: const [
-            DropdownMenuItem(value: 'event', child: Text('Whole event')),
-            DropdownMenuItem(value: 'stage', child: Text('Stage')),
-            DropdownMenuItem(value: 'group', child: Text('Group')),
-            DropdownMenuItem(value: 'match', child: Text('Single match')),
-          ],
-          onChanged: !_canAssign ? null : (v) async { setState(() { _scope = v ?? 'event'; _scopeId = null; }); await _refreshEvent(); }),
-        if (_scope != 'event') ...[
+          items: _allowedScopesFor(_role).map((scope) => DropdownMenuItem(
+            value: scope,
+            child: Text(scope == 'event' ? 'Whole event' : scope == 'stage' ? 'Stage' : scope == 'group' ? 'Group' : 'Single match'),
+          )).toList(),
+          onChanged: !_canAssign ? null : _selectStaffScope),
+        if (_scope != 'event' && _scopes.isNotEmpty) ...[
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(value: _scopeId, decoration: InputDecoration(labelText: _scope),
             items: _scopes.map((r) => DropdownMenuItem(value: r['id'].toString(), child: Text(_scopeName(r)))).toList(),
             onChanged: (v) => setState(() => _scopeId = v)),
         ],
+        if (_scope != 'event' && _scopes.isEmpty)
+          const Padding(padding: EdgeInsets.only(top: 6), child: Text('This scope type has no available records in the selected event yet.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))),
         const SizedBox(height: 10),
-        FilledButton.icon(onPressed: _busy || !_canAssign ? null : _assign,
+        FilledButton.icon(onPressed: _busy || !_canAssign || !_scopeSelectionValid ? null : _assign,
           icon: _busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.person_add_alt_1),
           label: const Text('Assign staff')),
         const SizedBox(height: 16),
