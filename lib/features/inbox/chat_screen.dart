@@ -522,15 +522,15 @@ class _MessageBubble extends StatelessWidget {
                   }
                 }
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'reply', child: Text('Reply in thread')),
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'reply', child: Text('Reply in thread')),
                 PopupMenuItem(value: 'pin', child: Text(isPinned ? 'Unpin message' : 'Pin message')),
-                PopupMenuItem(value: 'copy', child: Text('Copy text')),
-                PopupMenuDivider(),
-                PopupMenuItem(value: 'react:👍', child: Text('👍 React')),
-                PopupMenuItem(value: 'react:❤️', child: Text('❤️ React')),
-                PopupMenuItem(value: 'react:🔥', child: Text('🔥 React')),
-                PopupMenuItem(value: 'react:😂', child: Text('😂 React')),
+                const PopupMenuItem(value: 'copy', child: Text('Copy text')),
+                const PopupMenuDivider(),
+                const PopupMenuItem(value: 'react:👍', child: Text('👍 React')),
+                const PopupMenuItem(value: 'react:❤️', child: Text('❤️ React')),
+                const PopupMenuItem(value: 'react:🔥', child: Text('🔥 React')),
+                const PopupMenuItem(value: 'react:😂', child: Text('😂 React')),
               ],
             ),
           ]),
