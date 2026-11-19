@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(35);
+select extensions.plan(39);
 select extensions.is((select count(*)::int from public.community_role_presets),4,'four built-in community presets exist');
 select extensions.is((select assignable from public.community_role_presets where preset_key='owner'),false,'Owner preset is non-delegable');
 select extensions.is((select assignable from public.community_role_presets where preset_key='admin'),true,'Admin preset is assignable under hierarchy guard');
@@ -37,6 +37,12 @@ select extensions.ok(has_table_privilege('authenticated','public.event_staff_rol
 select extensions.is((select count(distinct role_key)::int from public.event_staff_role_permissions where role_key in ('competition_manager','tournament_director','match_operator','referee','result_reviewer','dispute_reviewer','caster','support_staff')),8,'All required esports staff roles have explicit permission catalog entries');
 select extensions.ok(exists(select 1 from pg_constraint where conrelid='public.team_members'::regclass and conname='team_members_role_check' and position('spectator' in lower(pg_get_constraintdef(oid))) = 0 and position('substitute' in lower(pg_get_constraintdef(oid))) > 0),'Team membership states stay separate from event Spectator participation');
 select extensions.ok(exists(select 1 from information_schema.columns where table_schema='public' and table_name='my_competition_trust_states' and column_name='is_verified_player') and exists(select 1 from information_schema.columns where table_schema='public' and table_name='my_competition_trust_states' and column_name='is_registered_player') and exists(select 1 from information_schema.columns where table_schema='public' and table_name='my_competition_trust_states' and column_name='is_checked_in_player'),'Verified, Registered and Checked-in states are distinct backend-derived fields');
+
+
+select extensions.ok(position('caster' in lower(pg_get_functiondef('app_private.has_group_staff_scope(uuid,text[])'::regprocedure))) > 0 and position('streamer' in lower(pg_get_functiondef('app_private.has_group_staff_scope(uuid,text[])'::regprocedure))) > 0,'Caster and Streamer can view their assigned group context');
+select extensions.ok(exists(select 1 from public.event_staff_role_permissions where role_key='referee' and permission_key='event.results.review') and exists(select 1 from public.event_staff_role_permissions where role_key='referee' and permission_key='match.results.review'),'Referee catalogue documents both event-level and match-level review scopes');
+select extensions.ok(exists(select 1 from public.event_staff_role_permissions where role_key='result_reviewer' and permission_key='event.results.review') and exists(select 1 from public.event_staff_role_permissions where role_key='result_reviewer' and permission_key='match.results.review'),'Result Reviewer catalogue matches both event and match review actions');
+select extensions.ok(exists(select 1 from public.event_staff_role_permissions where role_key='dispute_reviewer' and permission_key='event.disputes.review') and exists(select 1 from public.event_staff_role_permissions where role_key='dispute_reviewer' and permission_key='match.disputes.review'),'Dispute Reviewer catalogue matches event and match dispute review');
 
 select * from extensions.finish();
 rollback;
