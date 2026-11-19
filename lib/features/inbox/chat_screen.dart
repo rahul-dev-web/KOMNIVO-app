@@ -21,6 +21,13 @@ class _ChatScreenState extends State<ChatScreen> {
   final _searchController = TextEditingController();
   bool _sending = false;
   bool _searching = false;
+  bool _readOnly = false;
+  bool _announcementPublishersOnly = false;
+  bool _allowAttachments = true;
+  bool _allowThreads = true;
+  bool _allowPins = true;
+  bool _keepHistory = true;
+  bool _canManageMessages = false;
   PlatformFile? _attachment;
   Map<String, dynamic>? _replyTo;
   final Set<String> _pinnedMessageIds = <String>{};
@@ -29,7 +36,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, List<Map<String, dynamic>>> _threadDraftReplies = <String, List<Map<String, dynamic>>>{};
   List<Map<String, dynamic>> _latestMessages = <Map<String, dynamic>>[];
 
-  bool get _readOnly => widget.channel['is_read_only'] == true;
+  bool get _composerReadOnly => (_readOnly || _announcementPublishersOnly) && !_canManageMessages;
 
   String get _channelId => widget.channel['id'] as String;
   String get _userId => Supabase.instance.client.auth.currentUser!.id;
@@ -50,7 +57,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _send() async {
     final text = _controller.text.trim();
     final attachment = _attachment;
-    if (_readOnly) {
+    if (_composerReadOnly) {
       showMessage(context, 'This channel is read-only. Only authorised publishers can post.');
       return;
     }
@@ -67,6 +74,7 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
       if (attachment != null) {
+        if (!_allowAttachments) throw Exception('Attachments are disabled in this channel.');
         await KomnivoRepository.instance.sendMessageAttachment(
           _channelId,
           attachment,
@@ -102,6 +110,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     final rootId = root['id']?.toString();
     if (rootId == null) return;
+    if (!_allowThreads) {
+      showMessage(context, 'Message threads are disabled in this channel.');
+      return;
+    }
 
     final replies = _latestMessages
         .where((row) => row['parent_message_id']?.toString() == rootId)
@@ -168,7 +180,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
                 _ThreadComposer(
-                  enabled: !_readOnly,
+                  enabled: !_composerReadOnly,
                   onPreview: (text) async {
                     try {
                       final messageId = await KomnivoRepository.instance.sendMessage(
@@ -201,6 +213,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _togglePin(Map<String, dynamic> message) async {
+    if (!_allowPins) {
+      showMessage(context, 'Pinned messages are disabled in this channel.');
+      return;
+    }
     final id = message['id']?.toString();
     if (id == null) return;
     try {
@@ -289,17 +305,8 @@ class _ChatScreenState extends State<ChatScreen> {
         question: result['question']!,
         options: [result['one']!, result['two']!],
       );
-      final optionRows = await KomnivoRepository.instance.channelPollOptions(pollId);
-      if (!mounted) return;
-      setState(() => _pollPreviews.insert(0, {
-        'id': pollId,
-        'question': result['question'],
-        'options': optionRows.map((row) => row['label'].toString()).toList(),
-        'optionIds': optionRows.map((row) => row['id'].toString()).toList(),
-        'votes': List<int>.filled(optionRows.length, 0),
-        'selected': -1,
-      }));
-      showMessage(context, 'Poll published.');
+      await _loadPolls();
+      if (mounted) showMessage(context, 'Poll published.');
     } catch (error) {
       if (mounted) showMessage(context, 'Could not publish poll: $error');
     }
@@ -358,13 +365,8 @@ class _ChatScreenState extends State<ChatScreen> {
         body: '${result['title']}: ${result['body']}',
         publishAt: publishAt,
       );
-      if (!mounted) return;
-      setState(() => _scheduledPreviews.insert(0, {
-        ...result,
-        'id': queued['id'],
-        'when': publishAt.toLocal().toString(),
-      }));
-      showMessage(context, 'Announcement queued. It will publish automatically at the selected time.');
+      await _loadScheduledAnnouncements();
+      if (mounted) showMessage(context, 'Announcement queued. It will publish automatically at the selected time.');
     } catch (error) {
       if (mounted) showMessage(context, 'Could not schedule announcement: $error');
     }
@@ -379,9 +381,9 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Text('Channel tools', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
           const SizedBox(height: 12),
-          ListTile(leading: const Icon(Icons.push_pin_outlined), title: const Text('Pinned messages'), subtitle: Text(_pinnedMessageIds.length.toString() + ' pinned in this preview'), onTap: () { Navigator.pop(sheetContext); _showPinnedMessages(); }),
-          ListTile(leading: const Icon(Icons.poll_outlined), title: const Text('Create poll'), subtitle: const Text('Collect community feedback'), onTap: () { Navigator.pop(sheetContext); _createPollPreview(); }),
-          ListTile(leading: const Icon(Icons.schedule_outlined), title: const Text('Schedule announcement'), subtitle: const Text('Choose a publish window'), onTap: () { Navigator.pop(sheetContext); _scheduleAnnouncementPreview(); }),
+          if (_allowPins) ListTile(leading: const Icon(Icons.push_pin_outlined), title: const Text('Pinned messages'), subtitle: Text(_pinnedMessageIds.length.toString() + ' pinned'), onTap: () { Navigator.pop(sheetContext); _showPinnedMessages(); }),
+          if (!_composerReadOnly) ListTile(leading: const Icon(Icons.poll_outlined), title: const Text('Create poll'), subtitle: const Text('Collect community feedback'), onTap: () { Navigator.pop(sheetContext); _createPollPreview(); }),
+          if (_canManageMessages) ListTile(leading: const Icon(Icons.schedule_outlined), title: const Text('Schedule announcement'), subtitle: const Text('Choose a publish window'), onTap: () { Navigator.pop(sheetContext); _scheduleAnnouncementPreview(); }),
         ]),
       )),
     );
@@ -396,6 +398,33 @@ class _ChatScreenState extends State<ChatScreen> {
       Icon(icon, color: KomnivoTheme.cyan, size: 18),
       const SizedBox(width: 8),
       Expanded(child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
+    ]),
+  );
+
+  Widget _scheduledAnnouncementCard(Map<String, dynamic> row) => Container(
+    width: 260,
+    margin: const EdgeInsets.only(right: 8),
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: KomnivoTheme.surface,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: KomnivoTheme.line),
+    ),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Icon(Icons.schedule_outlined, color: KomnivoTheme.cyan, size: 15),
+        const SizedBox(width: 6),
+        const Expanded(child: Text('Scheduled announcement', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800))),
+        IconButton(
+          tooltip: 'Cancel announcement',
+          visualDensity: VisualDensity.compact,
+          onPressed: () => _cancelScheduledAnnouncement(row['id'].toString()),
+          icon: const Icon(Icons.close, size: 15),
+        ),
+      ]),
+      Text(row['title'].toString(), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10)),
+      const SizedBox(height: 4),
+      Text(row['when'].toString(), style: const TextStyle(color: KomnivoTheme.muted, fontSize: 8)),
     ]),
   );
 
@@ -418,13 +447,8 @@ class _ChatScreenState extends State<ChatScreen> {
             try {
               await KomnivoRepository.instance.voteChannelPoll(pollId, [optionIds[index]]);
               if (!mounted) return;
-              setState(() {
-                final previous = poll['selected'] as int;
-                if (previous >= 0) votes[previous] = votes[previous] - 1;
-                poll['selected'] = index;
-                votes[index] = votes[index] + 1;
-              });
-              showMessage(context, 'Vote recorded.');
+              await _loadPolls();
+              if (mounted) showMessage(context, 'Vote recorded.');
             } catch (error) {
               if (mounted) showMessage(context, 'Vote failed: $error');
             }
@@ -447,7 +471,123 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _readOnly = widget.channel['is_read_only'] == true;
     _loadPins();
+    _loadChannelSettings();
+    _loadPolls();
+    _loadScheduledAnnouncements();
+  }
+
+  Future<void> _loadChannelSettings() async {
+    try {
+      final results = await Future.wait([
+        KomnivoRepository.instance.channelSettings(_channelId),
+        _resolveCanManageMessages(),
+      ]);
+      final settings = Map<String, dynamic>.from(results[0] as Map);
+      if (!mounted) return;
+      setState(() {
+        _readOnly = settings['read_only'] == true || _readOnly;
+        _announcementPublishersOnly = settings['announcement_publishers_only'] == true;
+        _allowAttachments = settings['allow_attachments'] != false;
+        _allowThreads = settings['allow_threads'] != false;
+        _allowPins = settings['allow_pins'] != false;
+        _keepHistory = settings['keep_history'] != false;
+        _canManageMessages = results[1] == true;
+      });
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not load channel behaviour settings: $error');
+    }
+  }
+
+  Future<bool> _resolveCanManageMessages() async {
+    final eventId = widget.channel['event_id']?.toString();
+    if (eventId != null && eventId.isNotEmpty) {
+      final values = await Future.wait([
+        KomnivoRepository.instance.hasPermission(
+          permissionKey: 'event.manage',
+          scopeType: 'event',
+          scopeId: eventId,
+        ),
+        KomnivoRepository.instance.hasPermission(
+          permissionKey: 'event.matches.operate',
+          scopeType: 'event',
+          scopeId: eventId,
+        ),
+      ]);
+      return values.any((value) => value);
+    }
+    final communityId = widget.channel['community_id']?.toString();
+    if (communityId == null || communityId.isEmpty) return false;
+    return KomnivoRepository.instance.hasPermission(
+      permissionKey: 'channel.manage_messages',
+      scopeType: 'community',
+      scopeId: communityId,
+      resourceId: _channelId,
+    );
+  }
+
+  Future<void> _loadPolls() async {
+    try {
+      final rows = await KomnivoRepository.instance.channelPollFeed(_channelId);
+      final grouped = <String, List<Map<String, dynamic>>>{};
+      for (final raw in rows) {
+        final row = Map<String, dynamic>.from(raw);
+        final id = row['poll_id']?.toString();
+        if (id == null) continue;
+        (grouped[id] ??= <Map<String, dynamic>>[]).add(row);
+      }
+      final polls = grouped.entries.map((entry) {
+        final options = entry.value;
+        final first = options.first;
+        final selectedIndex = options.indexWhere((row) => row['selected_by_me'] == true);
+        return <String, dynamic>{
+          'id': entry.key,
+          'question': first['question']?.toString() ?? '',
+          'options': options.map((row) => row['option_label'].toString()).toList(),
+          'optionIds': options.map((row) => row['option_id'].toString()).toList(),
+          'votes': options.map((row) => (row['vote_count'] as num?)?.toInt() ?? 0).toList(),
+          'selected': selectedIndex,
+          'allowMultiple': first['allow_multiple'] == true,
+          'closesAt': first['closes_at'],
+        };
+      }).toList();
+      if (mounted) setState(() {
+        _pollPreviews
+          ..clear()
+          ..addAll(polls);
+      });
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not load channel polls: $error');
+    }
+  }
+
+  Future<void> _loadScheduledAnnouncements() async {
+    try {
+      final rows = await KomnivoRepository.instance.scheduledChannelAnnouncements(_channelId);
+      if (!mounted) return;
+      setState(() {
+        _scheduledPreviews
+          ..clear()
+          ..addAll(rows.map((row) => <String, dynamic>{
+            ...row,
+            'title': row['body']?.toString() ?? 'Scheduled announcement',
+            'when': DateTime.tryParse(row['publish_at']?.toString() ?? '')?.toLocal().toString() ?? 'Scheduled',
+          }));
+      });
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not load scheduled announcements: $error');
+    }
+  }
+
+  Future<void> _cancelScheduledAnnouncement(String announcementId) async {
+    try {
+      await KomnivoRepository.instance.cancelChannelAnnouncement(announcementId);
+      await _loadScheduledAnnouncements();
+      if (mounted) showMessage(context, 'Scheduled announcement cancelled.');
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not cancel announcement: $error');
+    }
   }
 
   Future<void> _loadPins() async {
@@ -489,6 +629,24 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
       body: Column(children: [
+        if (_readOnly || !_allowAttachments || !_allowThreads || !_allowPins || !_keepHistory)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: KomnivoTheme.surfaceRaised,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: KomnivoTheme.line),
+            ),
+            child: Wrap(spacing: 10, runSpacing: 5, children: [
+              if (_readOnly) const Text('READ ONLY', style: TextStyle(color: KomnivoTheme.danger, fontSize: 9, fontWeight: FontWeight.w800)),
+              if (!_allowAttachments) const Text('Attachments off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+              if (!_allowThreads) const Text('Threads off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+              if (!_allowPins) const Text('Pins off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+              if (!_keepHistory) const Text('History limited to recent messages', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+            ]),
+          ),
         if (_searching)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
@@ -522,7 +680,7 @@ class _ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.fromLTRB(12, 7, 12, 0),
               children: [
                 ..._pollPreviews.map(_pollPreviewCard),
-                ..._scheduledPreviews.map((row) => _previewToolCard(Icons.schedule, 'Scheduled · ' + row['title'].toString() + ' · ' + row['when'].toString())),
+                ..._scheduledPreviews.map(_scheduledAnnouncementCard),
                 if (_pinnedMessageIds.isNotEmpty) _previewToolCard(Icons.push_pin_outlined, _pinnedMessageIds.length.toString() + ' pinned messages'),
               ],
             ),
@@ -571,6 +729,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     onReply: () => _reply(message),
                     onOpenThread: () => _openThread(message),
                     onPin: () => _togglePin(message),
+                    allowThreads: _allowThreads,
+                    allowPins: _allowPins,
                   );
                 },
               );
@@ -624,13 +784,13 @@ class _ChatScreenState extends State<ChatScreen> {
               Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 IconButton(
                   tooltip: 'Attach image or PDF',
-                  onPressed: _sending || _readOnly ? null : _pickAttachment,
+                  onPressed: _sending || _composerReadOnly || !_allowAttachments ? null : _pickAttachment,
                   icon: const Icon(Icons.attach_file, color: KomnivoTheme.cyan),
                 ),
                 Expanded(
                   child: TextField(
                     controller: _controller,
-                    enabled: !_readOnly,
+                    enabled: !_composerReadOnly,
                     minLines: 1,
                     maxLines: 5,
                     textCapitalization: TextCapitalization.sentences,
@@ -648,7 +808,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const SizedBox(width: 8),
                 IconButton.filled(
-                  onPressed: _sending || _readOnly ? null : _send,
+                  onPressed: _sending || _composerReadOnly ? null : _send,
                   icon: _sending
                       ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.send_rounded),
@@ -673,6 +833,8 @@ class _MessageBubble extends StatelessWidget {
     required this.onPin,
     required this.isPinned,
     required this.replyCount,
+    this.allowThreads = true,
+    this.allowPins = true,
   });
   final Map<String, dynamic> message;
   final bool mine;
@@ -681,6 +843,8 @@ class _MessageBubble extends StatelessWidget {
   final VoidCallback onPin;
   final bool isPinned;
   final int replyCount;
+  final bool allowThreads;
+  final bool allowPins;
 
   @override
   Widget build(BuildContext context) {
@@ -728,9 +892,9 @@ class _MessageBubble extends StatelessWidget {
                 }
               },
               itemBuilder: (_) => [
-                const PopupMenuItem(value: 'thread', child: Text('Open thread')),
+                if (allowThreads) const PopupMenuItem(value: 'thread', child: Text('Open thread')),
                 const PopupMenuItem(value: 'reply', child: Text('Reply in composer')),
-                PopupMenuItem(value: 'pin', child: Text(isPinned ? 'Unpin message' : 'Pin message')),
+                if (allowPins) PopupMenuItem(value: 'pin', child: Text(isPinned ? 'Unpin message' : 'Pin message')),
                 const PopupMenuItem(value: 'copy', child: Text('Copy text')),
                 const PopupMenuDivider(),
                 const PopupMenuItem(value: 'react:👍', child: Text('👍 React')),
@@ -749,7 +913,7 @@ class _MessageBubble extends StatelessWidget {
           const SizedBox(height: 7),
           _MessageAttachmentList(messageId: message['id'] as String),
           _MessageReactionBar(messageId: message['id'] as String),
-          Align(
+          if (allowThreads) Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
               onPressed: onOpenThread,
