@@ -274,6 +274,10 @@ class KomnivoRepository {
     PlatformFile file, {
     String? parentMessageId,
   }) async {
+    final settings = await channelSettings(channelId);
+    if (settings['allow_attachments'] == false) {
+      throw Exception('Attachments are disabled in this channel.');
+    }
     final contentType = _contentTypeFor(file.extension);
     final bytes = await file.readAsBytes();
     if (bytes.isEmpty) throw Exception('The selected attachment is empty.');
