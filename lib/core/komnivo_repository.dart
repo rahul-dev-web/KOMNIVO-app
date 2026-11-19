@@ -242,11 +242,25 @@ class KomnivoRepository {
     return Map<String, dynamic>.from(row);
   }
 
-  Future<List<Map<String, dynamic>>> channels({String? communityId}) async {
+  Future<List<Map<String, dynamic>>> channels({
+    String? communityId,
+    bool includeArchivedChannels = false,
+    bool includeArchivedCategories = false,
+  }) async {
     var query = client.from('channels').select();
     if (communityId != null) query = query.eq('community_id', communityId);
-    final rows = await query.order('created_at').limit(50);
-    return List<Map<String, dynamic>>.from(rows);
+    if (!includeArchivedChannels) query = query.isFilter('archived_at', null);
+    final rows = List<Map<String, dynamic>>.from(
+      await query.order('created_at').limit(100),
+    );
+    if (communityId == null || includeArchivedCategories) return rows;
+    final archivedRows = await client.from('channel_categories').select('id')
+      .eq('community_id', communityId).not('archived_at', 'is', null);
+    final archivedIds = archivedRows.map((row) => row['id'].toString()).toSet();
+    if (archivedIds.isEmpty) return rows;
+    return rows.where((row) =>
+      row['category_id'] == null || !archivedIds.contains(row['category_id'].toString())
+    ).toList();
   }
 
   Future<String> uploadCommunityLogo({
