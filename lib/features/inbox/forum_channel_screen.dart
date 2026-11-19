@@ -256,6 +256,10 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
       builder: (_) => const _ForumPostDraftDialog(),
     );
     if (result == null || (result['title'] ?? '').length < 3) return;
+    if ((result['body'] ?? '').trim().isEmpty) {
+      showMessage(context, 'Add a few details before publishing the topic.');
+      return;
+    }
     if (widget.initialPosts.isNotEmpty) {
       setState(() => _posts.insert(0, {
         'title': result['title']!, 'body': result['body'] ?? '', 'tag': result['tag'] ?? 'LFG',
@@ -359,6 +363,10 @@ class _ForumPostDraftDialogState extends State<_ForumPostDraftDialog> {
   void _submit() {
     if (_title.text.trim().length < 3) {
       showMessage(context, 'Enter a topic title with at least 3 characters.');
+      return;
+    }
+    if (_body.text.trim().isEmpty) {
+      showMessage(context, 'Add a few details before publishing the topic.');
       return;
     }
     Navigator.pop(context, {
