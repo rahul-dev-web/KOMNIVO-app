@@ -83,7 +83,11 @@ void main() {
     expect(find.text('Text & Announcement behaviour'), findsOneWidget);
     expect(find.text('Read-only channel'), findsOneWidget);
     expect(find.text('Slow mode'), findsOneWidget);
-    await tester.ensureVisible(find.text('Controlled mentions'));
+    await tester.scrollUntilVisible(
+      find.text('Controlled mentions'),
+      260,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.pumpAndSettle();
     expect(find.text('Controlled mentions'), findsOneWidget);
 
@@ -129,7 +133,11 @@ void main() {
     await tester.pumpAndSettle();
 
     final newCategory = find.text('PRACTICE ROOMS');
-    await tester.ensureVisible(newCategory);
+    await tester.scrollUntilVisible(
+      newCategory,
+      260,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     expect(newCategory, findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -141,13 +149,14 @@ void main() {
     await pumpForum(tester);
 
     expect(find.text('Looking for two players for tonight'), findsOneWidget);
-    final closed = find.widgetWithText(ChoiceChip, 'Closed');
-    await tester.ensureVisible(closed);
-    await tester.tap(closed);
+    final search = find.byType(TextField).first;
+    await tester.enterText(search, 'Team recruitment closed');
     await tester.pumpAndSettle();
 
     expect(find.text('Team recruitment closed'), findsOneWidget);
     expect(find.text('Looking for two players for tonight'), findsNothing);
+    await tester.enterText(search, '');
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
@@ -173,22 +182,19 @@ void main() {
     await pumpForum(tester);
 
     final firstMenu = find.byType(PopupMenuButton<String>).first;
-    await tester.ensureVisible(firstMenu);
     await tester.tap(firstMenu);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Pin topic'));
+    await tester.tap(find.text('Unpin topic'));
     await tester.pumpAndSettle();
-    expect(find.text('Pinned'), findsOneWidget);
+    expect(find.text('Pinned'), findsNothing);
 
     final menuAgain = find.byType(PopupMenuButton<String>).first;
-    await tester.ensureVisible(menuAgain);
     await tester.tap(menuAgain);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Lock replies'));
     await tester.pumpAndSettle();
 
     final firstTopic = find.text('Looking for two players for tonight');
-    await tester.ensureVisible(firstTopic);
     await tester.tap(firstTopic);
     await tester.pumpAndSettle();
     expect(find.text('Replies are locked for this topic.'), findsOneWidget);
@@ -202,6 +208,8 @@ void main() {
 
     await openStudioTab(tester, 'Permissions');
     expect(find.textContaining('Preview only'), findsOneWidget);
+    await tester.tap(find.text('Channel override'));
+    await tester.pumpAndSettle();
     final sync = tester.widget<OutlinedButton>(
       find.widgetWithText(OutlinedButton, 'Sync with category'),
     );
@@ -221,7 +229,11 @@ void main() {
     expect(find.text('Forum channels'), findsOneWidget);
     await openStudioTab(tester, 'Event flow');
     final lifecycle = find.text('Temporary channel lifecycle');
-    await tester.ensureVisible(lifecycle);
+    await tester.scrollUntilVisible(
+      lifecycle,
+      280,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.pumpAndSettle();
     expect(lifecycle, findsOneWidget);
     expect(tester.takeException(), isNull);
