@@ -65,6 +65,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
     setState(() => _sending = true);
     final parentId = _replyTo?['id'] as String?;
+    if (parentId != null && !_allowThreads) {
+      showMessage(context, 'Message threads are disabled in this channel.');
+      return;
+    }
     try {
       if (text.isNotEmpty) {
         await KomnivoRepository.instance.sendMessage(
@@ -606,7 +610,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
       body: Column(children: [
-        if (_readOnly || !_allowAttachments || !_allowThreads || !_allowPins || !_keepHistory)
+        if ((_readOnly && !_canManageMessages) || (_announcementPublishersOnly && !_canManageMessages) || !_allowAttachments || !_allowThreads || !_allowPins || !_keepHistory)
           Container(
             width: double.infinity,
             margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -617,7 +621,8 @@ class _ChatScreenState extends State<ChatScreen> {
               border: Border.all(color: KomnivoTheme.line),
             ),
             child: Wrap(spacing: 10, runSpacing: 5, children: [
-              if (_readOnly) const Text('READ ONLY', style: TextStyle(color: KomnivoTheme.danger, fontSize: 9, fontWeight: FontWeight.w800)),
+              if (_readOnly && !_canManageMessages) const Text('READ ONLY', style: TextStyle(color: KomnivoTheme.danger, fontSize: 9, fontWeight: FontWeight.w800)),
+              if (_announcementPublishersOnly && !_canManageMessages) const Text('PUBLISHERS ONLY', style: TextStyle(color: KomnivoTheme.danger, fontSize: 9, fontWeight: FontWeight.w800)),
               if (!_allowAttachments) const Text('Attachments off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
               if (!_allowThreads) const Text('Threads off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
               if (!_allowPins) const Text('Pins off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
@@ -858,7 +863,7 @@ class _MessageBubble extends StatelessWidget {
               },
               itemBuilder: (_) => [
                 if (allowThreads) const PopupMenuItem(value: 'thread', child: Text('Open thread')),
-                const PopupMenuItem(value: 'reply', child: Text('Reply in composer')),
+                if (allowThreads) const PopupMenuItem(value: 'reply', child: Text('Reply in composer')),
                 if (allowPins) PopupMenuItem(value: 'pin', child: Text(isPinned ? 'Unpin message' : 'Pin message')),
                 const PopupMenuItem(value: 'copy', child: Text('Copy text')),
                 const PopupMenuDivider(),
