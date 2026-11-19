@@ -411,7 +411,7 @@ class _ForumPostDraftDialogState extends State<_ForumPostDraftDialog> {
     ),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-      FilledButton(onPressed: _submit, child: const Text('Preview post')),
+      FilledButton(onPressed: _submit, child: const Text('Publish post')),
     ],
   );
 }
