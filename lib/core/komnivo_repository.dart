@@ -440,6 +440,12 @@ class KomnivoRepository {
     });
   }
 
+  Future<Map<String, dynamic>> channelSettings(String channelId) async {
+    final row = await client.from('channel_settings').select()
+      .eq('channel_id', channelId).maybeSingle();
+    return row == null ? <String, dynamic>{} : Map<String, dynamic>.from(row);
+  }
+
   Future<Map<String, dynamic>> saveChannelSettings({
     required String channelId, required String communityId,
     required Map<String, dynamic> settings,
