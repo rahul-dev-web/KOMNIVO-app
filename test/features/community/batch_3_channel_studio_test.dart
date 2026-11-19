@@ -15,6 +15,7 @@ void main() {
         home: const ChannelStudioScreen(
           communityId: 'community-ui-test',
           communityName: 'UI Test Community',
+          canManagePermissions: true,
         ),
       ),
     );
@@ -107,6 +108,7 @@ void main() {
         theme: KomnivoTheme.dark,
         home: const ForumChannelScreen(
           channel: {'id': 'forum-ui-test', 'name': 'looking-for-team'},
+          canModerate: true,
         ),
       ),
     );
