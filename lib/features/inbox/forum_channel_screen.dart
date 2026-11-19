@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/komnivo_theme.dart';
+import '../../core/komnivo_repository.dart';
 import '../../core/ui.dart';
 
 class ForumChannelScreen extends StatefulWidget {
@@ -20,17 +21,46 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
   String _query = '';
   String _status = 'All';
   String _tag = 'All tags';
-  late final List<Map<String, dynamic>> _posts;
+  List<Map<String, dynamic>> _posts = <Map<String, dynamic>>[];
+  bool _loading = true;
+  bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _posts = [
-      {'title': 'Looking for two players for tonight', 'body': 'Need two reliable players for a squad. Share your role and availability.', 'tag': 'Recruitment', 'status': 'Open', 'author': 'RDX_Ace', 'replies': 8, 'time': '12 min ago', 'pinned': true, 'locked': false},
-      {'title': 'Scrim schedule discussion', 'body': 'Can we agree on a practice window for this weekend?', 'tag': 'Scrims', 'status': 'In discussion', 'author': 'Nova', 'replies': 14, 'time': '38 min ago', 'pinned': false, 'locked': false},
-      {'title': 'Support with voice setup', 'body': 'Microphone permissions are not appearing on my device.', 'tag': 'Support', 'status': 'Filled', 'author': 'Kairo', 'replies': 3, 'time': 'Yesterday', 'pinned': false, 'locked': false},
-      {'title': 'Team recruitment closed', 'body': 'The roster is complete. Thanks to everyone who responded.', 'tag': 'Recruitment', 'status': 'Closed', 'author': 'IGL_Lead', 'replies': 6, 'time': 'Yesterday', 'pinned': false, 'locked': true},
-    ];
+    _loadPosts();
+  }
+
+  Future<void> _loadPosts() async {
+    try {
+      final rows = await KomnivoRepository.instance.forumPosts(widget.channel['id'].toString());
+      final mapped = rows.map((row) => <String, dynamic>{
+        ...row,
+        'author': row['author_id']?.toString() == KomnivoRepository.instance.userId
+            ? 'You' : 'Member',
+        'replies': 0,
+        'time': _timeLabel(row['created_at']?.toString()),
+        'pinned': row['is_pinned'] == true,
+        'locked': row['is_locked'] == true,
+      }).toList();
+      if (mounted) setState(() { _posts = mapped; _loading = false; });
+    } catch (error) {
+      if (mounted) {
+        setState(() => _loading = false);
+        showMessage(context, 'Could not load forum posts: $error');
+      }
+    }
+  }
+
+  String _timeLabel(String? value) {
+    if (value == null) return 'Recently';
+    final date = DateTime.tryParse(value)?.toLocal();
+    if (date == null) return 'Recently';
+    final difference = DateTime.now().difference(date);
+    if (difference.inMinutes < 1) return 'Just now';
+    if (difference.inHours < 1) return '${difference.inMinutes} min ago';
+    if (difference.inDays < 1) return '${difference.inHours} hr ago';
+    return '${difference.inDays} d ago';
   }
 
   String get _name => widget.channel['name']?.toString() ?? 'forum';
@@ -118,7 +148,9 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
           ),
         ),
         Expanded(
-          child: rows.isEmpty
+          child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : rows.isEmpty
             ? const EmptyState(title: 'No matching topics', message: 'Try another filter or start a new post.', icon: Icons.forum_outlined)
             : ListView.builder(
                 padding: const EdgeInsets.fromLTRB(14, 2, 14, 90),
@@ -153,19 +185,22 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
           const Spacer(),
           if (widget.canModerate)
             PopupMenuButton<String>(
-              onSelected: (value) {
-                setState(() {
-                  if (value == 'pin') {
-                    post['pinned'] = post['pinned'] != true;
-                  } else if (value == 'lock') {
-                    post['locked'] = post['locked'] != true;
-                  } else {
-                    post['status'] = value;
-                    if (value == 'Closed') post['locked'] = true;
-                    if (value == 'Open') post['locked'] = false;
-                  }
-                });
-                showMessage(context, 'Forum moderation preview updated. Persistent actions connect in the backend phase.');
+              onSelected: (value) async {
+                final id = post['id']?.toString();
+                if (id == null) return;
+                final nextStatus = const ['Open','In discussion','Filled','Closed'].contains(value)
+                    ? value : post['status'].toString();
+                final nextLocked = value == 'lock' ? post['locked'] != true
+                    : value == 'Closed' ? true : value == 'Open' ? false : null;
+                final nextPinned = value == 'pin' ? post['pinned'] != true : null;
+                try {
+                  await KomnivoRepository.instance.moderateForumPost(
+                    postId: id, status: nextStatus, locked: nextLocked, pinned: nextPinned,
+                  );
+                  await _loadPosts();
+                } catch (error) {
+                  if (mounted) showMessage(context, 'Moderation failed: $error');
+                }
               },
               itemBuilder: (_) => [
                 PopupMenuItem(value: 'pin', child: Text(post['pinned'] == true ? 'Unpin topic' : 'Pin topic')),
@@ -206,18 +241,28 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
       builder: (_) => const _ForumPostDraftDialog(),
     );
     if (result == null || (result['title'] ?? '').length < 3) return;
-    setState(() => _posts.insert(0, {
-      'title': result['title']!,
-      'body': result['body'] ?? '',
-      'tag': result['tag'] ?? 'LFG',
-      'status': 'Open',
-      'author': 'You',
-      'replies': 0,
-      'time': 'Just now',
-      'pinned': false,
-      'locked': false,
-    }));
-    showMessage(context, 'Post preview added. Publishing will be connected in the backend phase.');
+    final communityId = widget.channel['community_id']?.toString();
+    if (communityId == null || communityId.isEmpty) {
+      showMessage(context, 'This forum is not linked to a community.');
+      return;
+    }
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await KomnivoRepository.instance.createForumPost(
+        channelId: widget.channel['id'].toString(),
+        communityId: communityId,
+        title: result['title']!,
+        body: result['body'] ?? '',
+        tag: result['tag'] ?? 'LFG',
+      );
+      await _loadPosts();
+      if (mounted) showMessage(context, 'Forum post published.');
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not publish post: $error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _openPost(Map<String, dynamic> post) async {
