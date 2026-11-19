@@ -313,19 +313,18 @@ void main() {
     expect(tester.widget<SwitchListTile>(readOnly).value, isFalse);
     await tester.tap(readOnly);
     await tester.pumpAndSettle();
+
+    // Toggle both controls while they are in the same visible settings panel;
+    // then scroll to the preview, which is intentionally lower in the feed.
+    final slowMode = find.widgetWithText(SwitchListTile, 'Slow mode');
+    await tester.tap(slowMode);
+    await tester.pumpAndSettle();
+    expect(find.byType(Slider), findsOneWidget);
+
     await scrollStudioListUntilVisible(
       tester, 'batch3-text-list', find.text('READ ONLY'),
     );
     expect(find.text('READ ONLY'), findsOneWidget);
-
-    final slowMode = find.widgetWithText(SwitchListTile, 'Slow mode');
-    await tester.ensureVisible(slowMode);
-    await tester.tap(slowMode);
-    await tester.pumpAndSettle();
-    expect(find.byType(Slider), findsOneWidget);
-    await scrollStudioListUntilVisible(
-      tester, 'batch3-text-list', find.textContaining('Slow mode:'),
-    );
     expect(find.textContaining('Slow mode:'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -360,7 +359,9 @@ void main() {
     await openStudioTab(tester, 'Event flow');
 
     expect(find.text('Approved event channel templates'), findsOneWidget);
-    await tester.ensureVisible(find.text('Results & disputes'));
+    await scrollStudioListUntilVisible(
+      tester, 'batch3-event-flow-list', find.text('Results & disputes'),
+    );
     await tester.tap(find.text('Results & disputes'));
     await tester.pumpAndSettle();
     await scrollStudioListUntilVisible(
