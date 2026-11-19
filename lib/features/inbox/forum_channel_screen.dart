@@ -9,9 +9,11 @@ class ForumChannelScreen extends StatefulWidget {
     super.key,
     required this.channel,
     this.canModerate = false,
+    this.initialPosts = const [],
   });
   final Map<String, dynamic> channel;
   final bool canModerate;
+  final List<Map<String, dynamic>> initialPosts;
 
   @override
   State<ForumChannelScreen> createState() => _ForumChannelScreenState();
@@ -28,7 +30,12 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
   @override
   void initState() {
     super.initState();
-    _loadPosts();
+    if (widget.initialPosts.isNotEmpty) {
+      _posts = widget.initialPosts.map((row) => Map<String, dynamic>.from(row)).toList();
+      _loading = false;
+    } else {
+      _loadPosts();
+    }
   }
 
   Future<void> _loadPosts() async {
@@ -187,6 +194,14 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
             PopupMenuButton<String>(
               onSelected: (value) async {
                 final id = post['id']?.toString();
+                if (widget.initialPosts.isNotEmpty) {
+                  setState(() {
+                    if (value == 'pin') post['pinned'] = post['pinned'] != true;
+                    else if (value == 'lock') post['locked'] = post['locked'] != true;
+                    else { post['status'] = value; if (value == 'Closed') post['locked'] = true; if (value == 'Open') post['locked'] = false; }
+                  });
+                  return;
+                }
                 if (id == null) return;
                 final nextStatus = const ['Open','In discussion','Filled','Closed'].contains(value)
                     ? value : post['status'].toString();
@@ -241,6 +256,13 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
       builder: (_) => const _ForumPostDraftDialog(),
     );
     if (result == null || (result['title'] ?? '').length < 3) return;
+    if (widget.initialPosts.isNotEmpty) {
+      setState(() => _posts.insert(0, {
+        'title': result['title']!, 'body': result['body'] ?? '', 'tag': result['tag'] ?? 'LFG',
+        'status': 'Open', 'author': 'You', 'replies': 0, 'time': 'Just now', 'pinned': false, 'locked': false,
+      }));
+      return;
+    }
     final communityId = widget.channel['community_id']?.toString();
     if (communityId == null || communityId.isEmpty) {
       showMessage(context, 'This forum is not linked to a community.');
