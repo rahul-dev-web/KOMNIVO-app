@@ -654,10 +654,11 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   }
 
   Future<void> _loadTextSettings() async {
-    final row = _channels.where((channel) =>
+    final matches = _channels.where((channel) =>
       (channel['kind'] == 'text' || channel['kind'] == 'announcement') &&
-      channel['id'] != null).firstOrNull;
-    if (row == null) return;
+      channel['id'] != null).toList();
+    if (matches.isEmpty) return;
+    final row = matches.first;
     try {
       final settings = await KomnivoRepository.instance.channelSettings(row['id'].toString());
       if (!mounted || settings.isEmpty) return;
@@ -682,7 +683,8 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   }
 
   Future<void> _saveTextSettings() async {
-    final channel = _channels.where((row) => row['name'] == _textChannel).firstOrNull;
+    final matches = _channels.where((row) => row['name'] == _textChannel).toList();
+    final channel = matches.isEmpty ? null : matches.first;
     final channelId = channel?['id']?.toString();
     if (channelId == null || channelId.startsWith('ch-')) {
       _previewNotice();
