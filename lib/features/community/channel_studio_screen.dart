@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/komnivo_theme.dart';
+import '../../core/komnivo_repository.dart';
 import '../../core/ui.dart';
 
 class ChannelStudioScreen extends StatefulWidget {
@@ -102,14 +103,24 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       {'id': 'cat-competitive', 'name': 'Competitive'},
       {'id': 'cat-voice', 'name': 'Voice rooms'},
     ];
-    _channels = [
+    if (widget.channels.isNotEmpty) {
+      _channels = widget.channels.map((row) => <String, dynamic>{
+        ...row,
+        'category': row['category_id']?.toString() ?? 'cat-community',
+        'private': row['is_private'] == true,
+        'temporary': row['match_id'] != null,
+      }).toList();
+    } else {
+      _channels = [
       {'id': 'ch-announcements', 'name': 'announcements', 'description': 'Official news and organiser updates', 'kind': 'announcement', 'category': 'cat-announcements', 'private': false, 'temporary': false},
       {'id': 'ch-general', 'name': 'general', 'description': 'Everyday community conversation', 'kind': 'text', 'category': 'cat-community', 'private': false, 'temporary': false},
       {'id': 'ch-help', 'name': 'help-and-support', 'description': 'Ask questions and get help', 'kind': 'forum', 'category': 'cat-community', 'private': false, 'temporary': false},
       {'id': 'ch-lfg', 'name': 'looking-for-team', 'description': 'Find teammates and substitutes', 'kind': 'forum', 'category': 'cat-competitive', 'private': false, 'temporary': false},
       {'id': 'ch-match', 'name': 'match-room-01', 'description': 'Temporary communication for one scheduled match', 'kind': 'text', 'category': 'cat-competitive', 'private': true, 'temporary': true},
       {'id': 'ch-voice', 'name': 'squad-lounge', 'description': 'Community voice conversation', 'kind': 'voice', 'category': 'cat-voice', 'private': false, 'temporary': false},
-    ];
+      ];
+    }
+    _loadTextSettings();
     _posts = [
       {'title': 'Looking for two players for tonight', 'body': 'Need two reliable players for a squad. Share your role and availability.', 'tag': 'Recruitment', 'status': 'Open', 'author': 'RDX_Ace', 'replies': 8, 'time': '12 min ago'},
       {'title': 'Scrim schedule discussion', 'body': 'Can we agree on a practice window for this weekend?', 'tag': 'Scrims', 'status': 'In discussion', 'author': 'Nova', 'replies': 14, 'time': '38 min ago'},
@@ -642,6 +653,66 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     _previewNotice();
   }
 
+  Future<void> _loadTextSettings() async {
+    final row = _channels.where((channel) =>
+      (channel['kind'] == 'text' || channel['kind'] == 'announcement') &&
+      channel['id'] != null).firstOrNull;
+    if (row == null) return;
+    try {
+      final settings = await KomnivoRepository.instance.channelSettings(row['id'].toString());
+      if (!mounted || settings.isEmpty) return;
+      setState(() {
+        _textChannel = row['name'].toString();
+        _readOnly = settings['read_only'] == true;
+        _slowSeconds = (settings['slow_mode_seconds'] as num?)?.toDouble() ?? 0;
+        _slowMode = _slowSeconds > 0;
+        _attachments = settings['allow_attachments'] != false;
+        _links = settings['allow_links'] != false;
+        _threadsAllowed = settings['allow_threads'] != false;
+        _pins = settings['allow_pins'] != false;
+        _history = settings['keep_history'] != false;
+        _restrictBroadMentions = settings['allow_everyone_mention'] != true;
+        _mentionPolicy = settings['allow_user_mentions'] == true
+          ? 'Members and roles'
+          : settings['allow_role_mentions'] == true ? 'Role mentions only' : 'No broad mentions';
+      });
+    } catch (_) {
+      // The settings screen remains usable if the channel has no saved row yet.
+    }
+  }
+
+  Future<void> _saveTextSettings() async {
+    final channel = _channels.where((row) => row['name'] == _textChannel).firstOrNull;
+    final channelId = channel?['id']?.toString();
+    if (channelId == null || channelId.startsWith('ch-')) {
+      _previewNotice();
+      return;
+    }
+    try {
+      await KomnivoRepository.instance.saveChannelSettings(
+        channelId: channelId,
+        communityId: widget.communityId,
+        settings: {
+          'read_only': _readOnly,
+          'slow_mode_seconds': _slowMode ? _slowSeconds.round() : 0,
+          'allow_attachments': _attachments,
+          'allow_links': _links,
+          'allow_embeds': _links,
+          'allow_threads': _threadsAllowed,
+          'allow_pins': _pins,
+          'keep_history': _history,
+          'allow_everyone_mention': !_restrictBroadMentions,
+          'allow_role_mentions': _mentionPolicy == 'Role mentions only' || _mentionPolicy == 'Members and roles',
+          'allow_user_mentions': _mentionPolicy == 'Members and roles',
+          'announcement_publishers_only': channel?['kind'] == 'announcement',
+        },
+      );
+      if (mounted) showMessage(context, 'Channel behaviour settings saved.');
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not save channel settings: $error');
+    }
+  }
+
   Widget _textTab() {
     final rows = _channels.where((row) => row['kind'] == 'text' || row['kind'] == 'announcement').toList();
     final names = rows.map((row) => row['name'].toString()).toList();
@@ -726,6 +797,14 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.45),
         ),
       ]))),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+        child: FilledButton.icon(
+          onPressed: _saveTextSettings,
+          icon: const Icon(Icons.save_outlined, size: 16),
+          label: const Text('Save channel settings'),
+        ),
+      ),
     ]);
   }
 
