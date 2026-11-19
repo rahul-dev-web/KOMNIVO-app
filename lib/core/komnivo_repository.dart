@@ -357,6 +357,38 @@ class KomnivoRepository {
   }
 
 
+  Future<List<Map<String, dynamic>>> channelCategories(String communityId) async {
+    final rows = await client.from('channel_categories').select()
+      .eq('community_id', communityId).order('position');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<Map<String, dynamic>> createChannelCategory({
+    required String communityId, required String name, required int position,
+  }) async {
+    final row = await client.from('channel_categories').insert({
+      'community_id': communityId, 'name': name.trim(),
+      'created_by': userId, 'position': position,
+    }).select().single();
+    return Map<String, dynamic>.from(row);
+  }
+
+  Future<void> updateChannelCategory({
+    required String categoryId, String? name, int? position, bool? archived,
+  }) async {
+    final updates = <String, dynamic>{};
+    if (name != null) updates['name'] = name.trim();
+    if (position != null) updates['position'] = position;
+    if (archived != null) updates['archived_at'] = archived
+      ? DateTime.now().toUtc().toIso8601String() : null;
+    if (updates.isEmpty) return;
+    await client.from('channel_categories').update(updates).eq('id', categoryId);
+  }
+
+  Future<void> assignChannelCategory(String channelId, String? categoryId) async {
+    await client.from('channels').update({'category_id': categoryId}).eq('id', channelId);
+  }
+
   Future<List<Map<String, dynamic>>> forumPosts(String channelId) async {
     final rows = await client.from('forum_posts').select()
       .eq('channel_id', channelId).order('is_pinned', ascending: false)
