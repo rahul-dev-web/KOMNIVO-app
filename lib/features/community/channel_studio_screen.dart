@@ -346,9 +346,10 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         );
       }
       final action = trigger == 'started' ? 'lock' : completionAction;
+      final keepOpenForManualClose = _closeRule == 'Keep open until organiser closes it';
       final enabled = trigger == 'started'
         ? _lockAtStart
-        : _archiveOnComplete && _closeRule != 'Keep open until organiser closes it';
+        : !keepOpenForManualClose && (completionAction == 'lock' || _archiveOnComplete);
       await KomnivoRepository.instance.saveEventChannelLifecycleRule(
         eventId: eventId, scopeType: scope, scopeId: scopeId,
         trigger: trigger, action: action, onlyTemporary: _temporaryOnly,
