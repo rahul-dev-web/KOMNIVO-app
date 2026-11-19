@@ -1,9 +1,12 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(14);
+select extensions.plan(17);
 select extensions.is((select count(*)::int from public.community_role_presets),4,'four built-in community presets exist');
 select extensions.is((select assignable from public.community_role_presets where preset_key='owner'),false,'Owner preset is non-delegable');
 select extensions.is((select assignable from public.community_role_presets where preset_key='admin'),true,'Admin preset is assignable under hierarchy guard');
+select extensions.ok(not ((select permissions from public.community_role_presets where preset_key='admin') ? 'community.manage_settings'),'Admin preset cannot change owner-only community settings');
+select extensions.ok(not ((select permissions from public.community_role_presets where preset_key='admin') ? 'community.manage_permissions'),'Admin preset cannot delegate permission grants');
+select extensions.ok(exists(select 1 from pg_trigger where tgname='community_role_preset_assignment_guard' and not tgisinternal),'Owner preset assignment is guarded in the database');
 select extensions.is((select count(*)::int from public.community_role_presets where preset_key in ('admin','moderator','organiser')),3,'Admin Moderator Organiser are separate presets');
 select extensions.ok(exists(select 1 from information_schema.columns where table_schema='public' and table_name='community_roles' and column_name='archived_at'),'custom roles support archival');
 select extensions.ok(to_regclass('public.community_role_history') is not null,'role assignment history table exists');
