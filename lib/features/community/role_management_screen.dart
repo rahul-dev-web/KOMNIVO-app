@@ -416,7 +416,7 @@ class _RoleManagementScreenState extends State<RoleManagementScreen> {
         trailing: IconButton(tooltip: 'Assign roles', onPressed: _busy ? null : () => _assign(data, m), icon: const Icon(Icons.manage_accounts_outlined)),
       ));
     }),
-    const _InfoBox(title: 'Team and Event are separate', body: 'Team Captain, Team Member and Substitute remain in team_members. Spectator, registration approval and match check-in remain event participation states; this editor never writes those records.'),
+    const _InfoBox(title: 'Team and Event are separate', body: 'Team Captain, Team Member and Substitute remain in team_members. Event spectators are recorded separately through event_follows; registration approval and match check-in remain event states. None of these records grants Community authority.'),
   ]);
 
   @override
