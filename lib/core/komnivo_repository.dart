@@ -367,6 +367,54 @@ class KomnivoRepository {
   }
 
 
+  Future<List<Map<String, dynamic>>> communityRoles(String communityId) async {
+    final rows = await client.from('community_roles').select('id,name')
+      .eq('community_id', communityId).order('position', ascending: false);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<List<Map<String, dynamic>>> categoryPermissionOverrides(String communityId) async {
+    final rows = await client.from('category_permission_overrides').select()
+      .eq('community_id', communityId);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<List<Map<String, dynamic>>> channelPermissionOverrides(String communityId) async {
+    final rows = await client.from('channel_permission_overrides').select()
+      .eq('community_id', communityId);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> setCategoryPermissionOverride({
+    required String communityId, required String categoryId, required String roleId,
+    required String permissionKey, required String effect,
+  }) async {
+    final query = client.from('category_permission_overrides');
+    if (effect == 'Inherit') {
+      await query.delete().eq('category_id', categoryId).eq('role_id', roleId).eq('permission_key', permissionKey);
+    } else {
+      await query.upsert({
+        'community_id': communityId, 'category_id': categoryId, 'role_id': roleId,
+        'permission_key': permissionKey, 'effect': effect.toLowerCase(), 'updated_by': userId,
+      }, onConflict: 'category_id,role_id,permission_key');
+    }
+  }
+
+  Future<void> setChannelPermissionOverride({
+    required String communityId, required String channelId, required String roleId,
+    required String permissionKey, required String effect,
+  }) async {
+    final query = client.from('channel_permission_overrides');
+    if (effect == 'Inherit') {
+      await query.delete().eq('channel_id', channelId).eq('role_id', roleId).eq('permission_key', permissionKey);
+    } else {
+      await query.upsert({
+        'community_id': communityId, 'channel_id': channelId, 'role_id': roleId,
+        'permission_key': permissionKey, 'effect': effect.toLowerCase(), 'updated_by': userId,
+      }, onConflict: 'channel_id,role_id,permission_key');
+    }
+  }
+
   Future<List<Map<String, dynamic>>> channelCategories(String communityId) async {
     final rows = await client.from('channel_categories').select()
       .eq('community_id', communityId).order('position');
