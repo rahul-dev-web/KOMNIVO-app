@@ -126,7 +126,7 @@ begin
       and t.tgname ilike '%archive%channel%' and not t.tgisinternal
   ) then raise exception 'Batch 3: event/stage/match channel lifecycle triggers are incomplete'; end if;
 
-  select coalesce(qual,'') into v_policy from pg_policies
+  select coalesce(with_check,'') into v_policy from pg_policies
     where schemaname='public' and tablename='scheduled_channel_announcements'
       and policyname='scheduled_announcements_create';
   if v_policy is null or position('can_manage_channel_messages' in v_policy)=0
