@@ -45,14 +45,14 @@ create policy scheduled_announcements_read on public.scheduled_channel_announcem
 for select to authenticated
 using (
   app_private.can_view_channel_resource(channel_id)
-  and (created_by=auth.uid() or app_private.can_manage_channel_messages(channel_id))
+  and (created_by=auth.uid() or public.can_manage_channel_messages(channel_id))
 );
 
 drop policy if exists scheduled_announcements_update on public.scheduled_channel_announcements;
 create policy scheduled_announcements_update on public.scheduled_channel_announcements
 for update to authenticated
-using (created_by=auth.uid() or app_private.can_manage_channel_messages(channel_id))
-with check (created_by=auth.uid() or app_private.can_manage_channel_messages(channel_id));
+using (created_by=auth.uid() or public.can_manage_channel_messages(channel_id))
+with check (created_by=auth.uid() or public.can_manage_channel_messages(channel_id));
 
 create or replace function app_private.guard_batch3_announcement_update()
 returns trigger language plpgsql security definer set search_path = ''
@@ -70,7 +70,7 @@ begin
   if old.status <> 'scheduled' then raise exception 'Only scheduled announcements can be changed'; end if;
   if new.status not in ('scheduled','cancelled') then raise exception 'Only the scheduler can publish announcements'; end if;
   if new.publish_at <= now() and new.status='scheduled' then raise exception 'Publish time must be in the future'; end if;
-  if new.created_by <> auth.uid() and not app_private.can_manage_channel_messages(old.channel_id)
+  if new.created_by <> auth.uid() and not public.can_manage_channel_messages(old.channel_id)
   then raise exception 'You cannot update this announcement'; end if;
   return new;
 end;
@@ -84,7 +84,7 @@ begin
   select * into v_row from public.scheduled_channel_announcements where id=p_announcement_id for update;
   if not found then return false; end if;
   if v_row.created_by <> auth.uid()
-    and not app_private.can_manage_channel_messages(v_row.channel_id)
+    and not public.can_manage_channel_messages(v_row.channel_id)
   then raise exception 'You cannot cancel this announcement'; end if;
   if v_row.status <> 'scheduled' then return false; end if;
   update public.scheduled_channel_announcements set status='cancelled',updated_at=now() where id=p_announcement_id;
