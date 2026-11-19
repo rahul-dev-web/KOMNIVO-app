@@ -134,6 +134,92 @@ class KomnivoRepository {
     });
   }
 
+
+  Future<List<Map<String, dynamic>>> communityEvents(String communityId) async {
+    final rows = await client.from('events')
+      .select('id,name,status,starts_at')
+      .eq('community_id', communityId)
+      .inFilter('status', ['draft','published','registration_open','registration_closed','live'])
+      .order('starts_at');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<List<Map<String, dynamic>>> eventStages(String eventId) async {
+    final rows = await client.from('event_rounds')
+      .select('id,name,status,round_number')
+      .eq('event_id', eventId)
+      .inFilter('status', ['draft','published','live'])
+      .order('round_number');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<List<Map<String, dynamic>>> eventGroups(String stageId) async {
+    final rows = await client.from('event_groups')
+      .select('id,label,round_id,sort_order')
+      .eq('round_id', stageId)
+      .order('sort_order');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<List<Map<String, dynamic>>> eventMatches(
+    String eventId, {String? stageId, String? groupId}
+  ) async {
+    var query = client.from('matches')
+      .select('id,match_number,match_code,status,stage_id,group_id,starts_at')
+      .eq('event_id', eventId)
+      .not('status', 'in', '(completed,cancelled)');
+    if (stageId != null) query = query.eq('stage_id', stageId);
+    if (groupId != null) query = query.eq('group_id', groupId);
+    final rows = await query.order('match_number');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<List<Map<String, dynamic>>> eventChannelTemplates() async {
+    final rows = await client.from('event_channel_templates')
+      .select('template_key,name,scope_type,description,channels')
+      .eq('enabled', true).order('name');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<Map<String, dynamic>> createEventCommunicationChannels({
+    required String eventId,
+    required String templateKey,
+    String? stageId,
+    String? groupId,
+    String? matchId,
+  }) async {
+    final result = await client.rpc('create_event_communication_channels', params: {
+      'p_event_id': eventId,
+      'p_template_key': templateKey,
+      'p_stage_id': stageId,
+      'p_group_id': groupId,
+      'p_match_id': matchId,
+    });
+    if (result is! Map) throw Exception('Event channels could not be created.');
+    return Map<String, dynamic>.from(result);
+  }
+
+  Future<String> saveEventChannelLifecycleRule({
+    required String eventId,
+    required String scopeType,
+    String? scopeId,
+    required String trigger,
+    required String action,
+    required bool onlyTemporary,
+    required bool enabled,
+  }) async {
+    final result = await client.rpc('save_event_channel_lifecycle_rule', params: {
+      'p_event_id': eventId,
+      'p_scope_type': scopeType.toLowerCase(),
+      'p_scope_id': scopeId,
+      'p_trigger': trigger,
+      'p_action': action,
+      'p_only_temporary': onlyTemporary,
+      'p_enabled': enabled,
+    });
+    return result.toString();
+  }
+
   Future<List<Map<String, dynamic>>> teams() async {
     final rows = await client.from('teams').select('*, games(name, code), team_members(count)')
       .order('created_at', ascending: false).limit(30);
