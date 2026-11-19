@@ -195,30 +195,20 @@ class _RoleManagementScreenState extends State<RoleManagementScreen> {
     );
     if (save == true && mounted) {
       await _perform(() async {
-        final values = <String, dynamic>{
-          'community_id': widget.communityId,
-          'name': name.text.trim(),
-          'description': description.text.trim(),
-          'colour': colour.text.trim().toUpperCase(),
-          'position': int.parse(position.text.trim()),
-        };
-        final saved = role == null
-            ? await _db.from('community_roles').insert(values).select().single()
-            : await _db.from('community_roles').update({
-                'name': values['name'], 'description': values['description'],
-                'colour': values['colour'], 'position': values['position'],
-              }).eq('community_id', widget.communityId).eq('id', role['id']).select().single();
-        final id = saved['id'].toString();
+        final permissionMap = <String, bool>{};
         for (final key in permissions.keys) {
           final state = selected[key] ?? 'inherit';
-          if (state == 'inherit') {
-            await _db.from('role_permissions').delete().eq('role_id', id).eq('permission_key', key);
-          } else {
-            await _db.from('role_permissions').upsert({
-              'role_id': id, 'permission_key': key, 'allowed': state == 'allow',
-            }, onConflict: 'role_id,permission_key');
-          }
+          if (state != 'inherit') permissionMap[key] = state == 'allow';
         }
+        await _db.rpc('save_community_role', params: {
+          'p_community_id': widget.communityId,
+          'p_role_id': role?['id'],
+          'p_name': name.text.trim(),
+          'p_description': description.text.trim(),
+          'p_colour': colour.text.trim().toUpperCase(),
+          'p_position': int.parse(position.text.trim()),
+          'p_permissions': permissionMap,
+        });
       }, 'Role saved.');
     }
     name.dispose(); description.dispose(); colour.dispose(); position.dispose();
@@ -275,16 +265,11 @@ class _RoleManagementScreenState extends State<RoleManagementScreen> {
       )));
     if (save != true || !mounted) return;
     await _perform(() async {
-      for (final id in current.difference(selected)) {
-        await _db.from('community_member_roles').delete()
-            .eq('community_id', widget.communityId).eq('user_id', userId).eq('role_id', id);
-      }
-      for (final id in selected.difference(current)) {
-        await _db.from('community_member_roles').insert({
-          'community_id': widget.communityId, 'user_id': userId, 'role_id': id,
-          'assigned_by': _db.auth.currentUser!.id,
-        });
-      }
+      await _db.rpc('replace_community_member_roles', params: {
+        'p_community_id': widget.communityId,
+        'p_user_id': userId,
+        'p_role_ids': selected.toList(),
+      });
     }, 'Member roles updated.');
   }
 
