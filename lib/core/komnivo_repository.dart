@@ -211,6 +211,8 @@ class KomnivoRepository {
     required String name,
     required String description,
     required String kind,
+    String? categoryId,
+    bool isPrivate = false,
   }) async {
     final normalizedName = name.trim().toLowerCase().replaceAll(RegExp('[^a-z0-9]+'), '-');
     final row = await client.from('channels').insert({
@@ -218,7 +220,8 @@ class KomnivoRepository {
       'name': normalizedName,
       'description': description.trim(),
       'kind': kind,
-      'is_private': false,
+      'category_id': categoryId,
+      'is_private': isPrivate,
       'created_by': userId,
     }).select().single();
     return Map<String, dynamic>.from(row);
@@ -228,12 +231,19 @@ class KomnivoRepository {
     required String channelId,
     required String name,
     required String description,
+    String? kind,
+    String? categoryId,
+    bool? isPrivate,
   }) async {
     final normalizedName = name.trim().toLowerCase().replaceAll(RegExp('[^a-z0-9]+'), '-');
-    final row = await client.from('channels').update({
+    final updates = <String, dynamic>{
       'name': normalizedName,
       'description': description.trim(),
-    }).eq('id', channelId).select().single();
+    };
+    if (kind != null) updates['kind'] = kind;
+    if (categoryId != null) updates['category_id'] = categoryId;
+    if (isPrivate != null) updates['is_private'] = isPrivate;
+    final row = await client.from('channels').update(updates).eq('id', channelId).select().single();
     return Map<String, dynamic>.from(row);
   }
   Future<List<Map<String, dynamic>>> messages(String channelId) async {
