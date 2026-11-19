@@ -29,7 +29,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   @override
   void initState() {
     super.initState();
-    _connect();
+    // Joining is an explicit user action. The microphone permission prompt
+    // must never appear simply because the user opened a channel page.
   }
 
   String _friendlyError(Object error) {
@@ -180,6 +181,8 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                 ),
               ),
               const SizedBox(height: 22),
+              const Text('VOICE ROOM · TWO-WAY AUDIO', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+              const SizedBox(height: 8),
               Text(
                 widget.channelName,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
@@ -190,7 +193,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                     ? 'Requesting microphone and connecting…'
                     : _connected
                         ? 'Connected · microphone is live'
-                        : _error ?? 'Not connected',
+                        : _error ?? 'Ready to join · microphone permission is requested only after you tap Join',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: KomnivoTheme.muted),
               ),
@@ -202,6 +205,12 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   style: const TextStyle(color: Color(0xFFFF8193), fontSize: 12),
                 ),
               ],
+              const SizedBox(height: 13),
+              const Text(
+                'Members with access can join and speak. This is a voice conversation, not a Stage broadcast. Your microphone stays off until you choose to join.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.45),
+              ),
               const SizedBox(height: 28),
               if (_connecting)
                 const CircularProgressIndicator()
@@ -225,7 +234,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
                   FilledButton.icon(
                     onPressed: _connect,
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Try again'),
+                    label: Text(_error == null ? 'Join voice room' : 'Try again'),
                   ),
                   if (_permissionPermanentlyDenied && !kIsWeb) ...[
                     const SizedBox(height: 8),
