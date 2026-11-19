@@ -484,7 +484,6 @@ class _ForumPostDetailSheetState extends State<_ForumPostDetailSheet> {
                 author: row['author_id']?.toString() == KomnivoRepository.instance.userId ? 'You' : 'Member',
                 body: row['body']?.toString() ?? '',
               )),
-            ,
             const SizedBox(height: 10),
             if (_locked)
               const Padding(
