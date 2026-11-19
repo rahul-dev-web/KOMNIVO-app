@@ -92,8 +92,16 @@ void main() {
 
     await openStudioTab(tester, 'Engage');
     expect(find.text('Threads & replies'), findsOneWidget);
-    expect(find.text('Scheduled announcements'), findsOneWidget);
     expect(find.text('Polls'), findsOneWidget);
+    // The engagement surface is intentionally a vertical feed. Scroll the
+    // lazy list before asserting the lower scheduled-announcement section.
+    await tester.scrollUntilVisible(
+      find.text('Scheduled announcements'),
+      320,
+      scrollable: find.byKey(const ValueKey('batch3-engagement-list')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Scheduled announcements'), findsOneWidget);
 
     await openStudioTab(tester, 'Voice / Stage');
     expect(find.text('Voice and Stage are different surfaces'), findsOneWidget);
@@ -203,6 +211,134 @@ void main() {
       find.widgetWithText(OutlinedButton, 'Sync with category'),
     );
     expect(sync.onPressed, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Channel categories support collapse, rename, reorder, archive and restore',
+      (tester) async {
+    addTearDown(() => resetView(tester));
+    await pumpStudio(tester);
+
+    final announcementCard = find.byKey(const ValueKey('cat-announcements'));
+    expect(announcementCard, findsOneWidget);
+    expect(find.text('announcements'), findsOneWidget);
+
+    await tester.tap(find.text('ANNOUNCEMENTS'));
+    await tester.pumpAndSettle();
+    expect(find.text('announcements'), findsNothing);
+    await tester.tap(find.text('ANNOUNCEMENTS'));
+    await tester.pumpAndSettle();
+    expect(find.text('announcements'), findsOneWidget);
+
+    await tester.tap(find.descendant(
+      of: announcementCard,
+      matching: find.byTooltip('Move down'),
+    ));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('ANNOUNCEMENTS'));
+    await tester.ensureVisible(find.text('COMMUNITY'));
+    expect(
+      tester.getTopLeft(find.text('COMMUNITY')).dy,
+      lessThan(tester.getTopLeft(find.text('ANNOUNCEMENTS')).dy),
+    );
+
+    await tester.tap(find.descendant(
+      of: announcementCard,
+      matching: find.byType(PopupMenuButton<String>),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rename category'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Official Updates');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(find.text('OFFICIAL UPDATES'), findsOneWidget);
+
+    await tester.tap(find.descendant(
+      of: announcementCard,
+      matching: find.byType(PopupMenuButton<String>),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Archive category'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Archive'));
+    await tester.pumpAndSettle();
+    expect(find.text('OFFICIAL UPDATES'), findsNothing);
+
+    await tester.tap(find.text('Show archived'));
+    await tester.pumpAndSettle();
+    expect(find.text('OFFICIAL UPDATES'), findsOneWidget);
+
+    await tester.tap(find.descendant(
+      of: announcementCard,
+      matching: find.byType(PopupMenuButton<String>),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Restore category'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Restore'));
+    await tester.pumpAndSettle();
+    expect(find.text('OFFICIAL UPDATES'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Text channel controls update the visible behaviour preview',
+      (tester) async {
+    addTearDown(() => resetView(tester));
+    await pumpStudio(tester);
+    await openStudioTab(tester, 'Text');
+
+    final readOnly = find.widgetWithText(SwitchListTile, 'Read-only channel');
+    expect(tester.widget<SwitchListTile>(readOnly).value, isFalse);
+    await tester.tap(readOnly);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('READ ONLY'));
+    expect(find.text('READ ONLY'), findsOneWidget);
+
+    final slowMode = find.widgetWithText(SwitchListTile, 'Slow mode');
+    await tester.ensureVisible(slowMode);
+    await tester.tap(slowMode);
+    await tester.pumpAndSettle();
+    expect(find.byType(Slider), findsOneWidget);
+    expect(find.textContaining('Slow mode:'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Stage configuration exposes speaker, audience and room lifecycle controls',
+      (tester) async {
+    addTearDown(() => resetView(tester));
+    await pumpStudio(tester);
+    await openStudioTab(tester, 'Voice / Stage');
+    await tester.tap(find.text('Stage broadcast'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Speaker promotion'));
+    expect(find.text('Speaker promotion'), findsOneWidget);
+    expect(find.text('Allow listeners to request the speaker role'), findsOneWidget);
+    expect(find.text('Enable audience text chat'), findsOneWidget);
+    expect(find.text('Audience'), findsOneWidget);
+    expect(find.text('Room visibility'), findsOneWidget);
+    await tester.ensureVisible(find.text('Temporary room lifetime'));
+    expect(find.text('Temporary room lifetime'), findsOneWidget);
+    expect(find.text('Access preview'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Event templates generate a preview without publishing channels',
+      (tester) async {
+    addTearDown(() => resetView(tester));
+    await pumpStudio(tester);
+    await openStudioTab(tester, 'Event flow');
+
+    expect(find.text('Approved event channel templates'), findsOneWidget);
+    await tester.tap(find.text('Results & disputes'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Generate local preview'));
+    await tester.tap(find.text('Generate local preview'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Preview ready · nothing has been published or created.'));
+    expect(find.text('Preview ready · nothing has been published or created.'), findsOneWidget);
+    expect(find.textContaining('NO PARTICIPANT OR CREDENTIAL AUTHORITY'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
