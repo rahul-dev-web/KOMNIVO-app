@@ -484,10 +484,7 @@ class _ForumPostDetailSheetState extends State<_ForumPostDetailSheet> {
                 author: row['author_id']?.toString() == KomnivoRepository.instance.userId ? 'You' : 'Member',
                 body: row['body']?.toString() ?? '',
               )),
-            else ...[
-              const _Reply(author: 'Nova', body: 'I can join after 7 PM.'),
-              const _Reply(author: 'RDX_Ace', body: 'Share your preferred role and availability.'),
-            ],
+            ,
             const SizedBox(height: 10),
             if (_locked)
               const Padding(
