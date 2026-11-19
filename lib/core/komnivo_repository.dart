@@ -207,6 +207,7 @@ class KomnivoRepository {
     required String action,
     required bool onlyTemporary,
     required bool enabled,
+    bool notifyAffected = true,
   }) async {
     final result = await client.rpc('save_event_channel_lifecycle_rule', params: {
       'p_event_id': eventId,
@@ -216,6 +217,7 @@ class KomnivoRepository {
       'p_action': action,
       'p_only_temporary': onlyTemporary,
       'p_enabled': enabled,
+      'p_notify_affected': notifyAffected,
     });
     return result.toString();
   }
