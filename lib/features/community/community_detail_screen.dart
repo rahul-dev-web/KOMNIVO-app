@@ -37,7 +37,6 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   bool _canManageStructure = false;
   bool _canManageRoles = false;
   bool _canManagePermissions = false;
-  bool _canManageMembers = false;
   bool _permissionsLoading = true;
 
   String get _communityId => _community['id'] as String;
@@ -66,11 +65,6 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
           scopeType: 'community',
           scopeId: communityId,
         ),
-        KomnivoRepository.instance.hasPermission(
-          permissionKey: 'community.manage_members',
-          scopeType: 'community',
-          scopeId: communityId,
-        ),
       ]);
       if (!mounted || communityId != _communityId) return;
       setState(() {
@@ -78,7 +72,6 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
         _canManageStructure = permissions[1];
         _canManageRoles = permissions[2];
         _canManagePermissions = permissions[3];
-        _canManageMembers = permissions[4];
         _permissionsLoading = false;
       });
     } catch (_) {
@@ -88,7 +81,6 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
         _canManageStructure = false;
         _canManageRoles = false;
         _canManagePermissions = false;
-        _canManageMembers = false;
         _permissionsLoading = false;
       });
     }
