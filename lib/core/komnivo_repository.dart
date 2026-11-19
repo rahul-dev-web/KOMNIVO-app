@@ -551,6 +551,13 @@ class KomnivoRepository {
     return Map<String, dynamic>.from(row);
   }
 
+  Future<Set<String>> collapsedCategoryIds(List<String> categoryIds) async {
+    if (categoryIds.isEmpty) return <String>{};
+    final rows = await client.from('channel_category_preferences').select('category_id')
+      .eq('user_id', userId).eq('is_collapsed', true).inFilter('category_id', categoryIds);
+    return rows.map((row) => row['category_id'].toString()).toSet();
+  }
+
   Future<void> setCategoryCollapsed(String categoryId, bool collapsed) async {
     await client.from('channel_category_preferences').upsert({
       'category_id': categoryId, 'user_id': userId, 'is_collapsed': collapsed,
