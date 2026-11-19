@@ -37,7 +37,7 @@ create policy scheduled_announcements_create on public.scheduled_channel_announc
 for insert to authenticated
 with check (
   created_by=auth.uid()
-  and app_private.can_manage_channel_messages(channel_id)
+  and public.can_manage_channel_messages(channel_id)
 );
 
 drop policy if exists scheduled_announcements_read on public.scheduled_channel_announcements;
