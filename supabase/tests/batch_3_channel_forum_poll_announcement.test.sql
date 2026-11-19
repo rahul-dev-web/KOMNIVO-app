@@ -132,6 +132,17 @@ begin
       and t.tgname='archive_event_match_channels' and not t.tgisinternal
   ) then raise exception 'Batch 3: event/stage/match channel lifecycle triggers are incomplete'; end if;
 
+  if not exists (
+    select 1 from pg_trigger t join pg_class c on c.oid=t.tgrelid
+    join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname='public' and c.relname='matches'
+      and t.tgname='create_event_match_channel' and not t.tgisinternal
+  ) then raise exception 'Batch 3: event group-room creation trigger is missing'; end if;
+
+  if not exists(select 1 from pg_indexes where schemaname='public' and tablename='channels' and indexname='channels_one_event_group_room')
+    or not exists(select 1 from pg_indexes where schemaname='public' and tablename='channel_categories' and indexname='channel_categories_one_event_group')
+  then raise exception 'Batch 3: one-room-per-group uniqueness indexes are missing'; end if;
+
   select coalesce(with_check,'') into v_policy from pg_policies
     where schemaname='public' and tablename='scheduled_channel_announcements'
       and policyname='scheduled_announcements_create';
