@@ -10,6 +10,8 @@ import 'community_logo.dart';
 import '../inbox/chat_screen.dart';
 import '../inbox/voice_room_screen.dart';
 import 'role_management_screen.dart';
+import 'channel_studio_screen.dart';
+import '../inbox/forum_channel_screen.dart';
 
 class CommunityDetailScreen extends StatefulWidget {
   const CommunityDetailScreen({
@@ -229,6 +231,25 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     }
   }
 
+  Future<void> _openChannelStudio(List<Map<String, dynamic>> channels) async {
+    if (!await _verifyPermission('community.manage_structure')) {
+      if (mounted) showMessage(context, 'You do not have permission to manage channel structure.');
+      await _loadPermissions();
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => ChannelStudioScreen(
+          communityId: _communityId,
+          communityName: _community['name']?.toString() ?? 'Community',
+          channels: channels,
+        ),
+      ),
+    );
+    if (mounted) _reloadChannels();
+  }
+
   void _openChannel(Map<String, dynamic> channel) {
     final kind = channel['kind']?.toString() ?? 'text';
     final Widget page = kind == 'voice'
@@ -236,7 +257,9 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
             channelId: channel['id'] as String,
             channelName: channel['name']?.toString() ?? 'Voice room',
           )
-        : ChatScreen(channel: channel);
+        : kind == 'forum'
+            ? ForumChannelScreen(channel: channel)
+            : ChatScreen(channel: channel);
     Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => page));
   }
 
@@ -267,13 +290,16 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     final kind = channel['kind']?.toString() ?? 'text';
     final name = channel['name']?.toString() ?? 'channel';
     final isVoice = kind == 'voice';
+    final isForum = kind == 'forum';
     final isAnnouncement = kind == 'announcement' || name == 'announcements';
     final icon = isVoice
         ? Icons.volume_up_outlined
-        : isAnnouncement
-            ? Icons.campaign_outlined
-            : Icons.tag;
-    final tint = isVoice ? KomnivoTheme.cyan : KomnivoTheme.muted;
+        : isForum
+            ? Icons.forum_outlined
+            : isAnnouncement
+                ? Icons.campaign_outlined
+                : Icons.tag;
+    final tint = isVoice ? KomnivoTheme.cyan : isForum ? KomnivoTheme.accent : isAnnouncement ? KomnivoTheme.cyan : KomnivoTheme.muted;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 3),
@@ -443,6 +469,17 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
             ),
           if (!_permissionsLoading && _canManageStructure)
             IconButton(
+              tooltip: 'Channel Studio',
+              onPressed: () async {
+                final rows = await _channelsFuture;
+                if (mounted) await _openChannelStudio(rows);
+              },
+              icon: const Icon(Icons.dashboard_customize_outlined),
+              constraints: compact ? const BoxConstraints.tightFor(width: 34, height: 48) : const BoxConstraints(),
+              padding: EdgeInsets.zero,
+            ),
+          if (!_permissionsLoading && _canManageStructure)
+            IconButton(
               tooltip: 'Create channel',
               onPressed: _addChannel,
               icon: const Icon(Icons.add_circle_outline),
@@ -583,6 +620,16 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                               onPressed: _editCommunity,
                               icon: const Icon(Icons.tune, size: 16),
                               label: const Text('Manage server'),
+                              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 38), padding: const EdgeInsets.symmetric(horizontal: 12)),
+                            ),
+                          if (_canManageStructure)
+                            OutlinedButton.icon(
+                              onPressed: () async {
+                                final rows = await _channelsFuture;
+                                if (mounted) await _openChannelStudio(rows);
+                              },
+                              icon: const Icon(Icons.dashboard_customize_outlined, size: 16),
+                              label: const Text('Channel Studio'),
                               style: OutlinedButton.styleFrom(minimumSize: const Size(0, 38), padding: const EdgeInsets.symmetric(horizontal: 12)),
                             ),
                           if (_canManageRoles)
@@ -926,6 +973,14 @@ class _AddChannelDialogState extends State<_AddChannelDialog> {
                     DropdownMenuItem(
                       value: 'text',
                       child: Row(children: [Icon(Icons.tag, size: 17), SizedBox(width: 8), Text('Text channel')]),
+                    ),
+                    DropdownMenuItem(
+                      value: 'announcement',
+                      child: Row(children: [Icon(Icons.campaign_outlined, size: 17), SizedBox(width: 8), Text('Announcement channel')]),
+                    ),
+                    DropdownMenuItem(
+                      value: 'forum',
+                      child: Row(children: [Icon(Icons.forum_outlined, size: 17), SizedBox(width: 8), Text('Forum channel')]),
                     ),
                     DropdownMenuItem(
                       value: 'voice',
