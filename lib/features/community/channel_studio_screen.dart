@@ -1907,8 +1907,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         _previewRow('Target scope', _lifecycleScope),
         _previewRow('Action', _closeRule),
         _previewRow('Temporary only', _temporaryOnly ? 'Yes · persistent channels excluded' : 'No · review before applying'),
-        _previewRow('Reschedule', _recomputeOnReschedule ? 'Recompute access' : 'No automatic recompute'),
-        _previewRow('Roster change', _recomputeOnRosterChange ? 'Recompute access' : 'No automatic recompute'),
+        _previewRow('Audience refresh', 'Live · current event/stage/group/match permissions are checked on every request'),
         _previewRow('Notifications', _notifyOnLifecycle ? 'Notify affected members' : 'No notifications'),
         const SizedBox(height: 10),
         FilledButton.icon(
