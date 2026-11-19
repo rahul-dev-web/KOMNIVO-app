@@ -401,6 +401,12 @@ class KomnivoRepository {
     return result.toString();
   }
 
+  Future<List<Map<String, dynamic>>> channelPollOptions(String pollId) async {
+    final rows = await client.from('channel_poll_options').select()
+      .eq('poll_id', pollId).order('position');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
   Future<int> voteChannelPoll(String pollId, List<String> optionIds) async {
     final result = await client.rpc('vote_channel_poll', params: {
       'p_poll_id': pollId,
