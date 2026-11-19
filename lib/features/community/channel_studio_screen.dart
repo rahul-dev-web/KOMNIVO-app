@@ -60,6 +60,12 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   String _audience = 'All permitted members';
   String _roomPrivacy = 'Community members';
   String _roomExpiry = 'When the host ends it';
+  String _speakerPromotion = 'Host approval required';
+  String _eventContext = 'Current event · preview';
+  String _stageContext = 'Configured stage';
+  String _groupContext = 'Configured group';
+  String _matchContext = 'Selected match';
+  String _lifecycleTrigger = 'Match completed';
   String _templateName = 'Match room';
   String _lifecycleScope = 'Match';
   String _closeRule = 'Archive after event completion';
@@ -80,6 +86,12 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   bool _generatedPreview = false;
   bool _preserveRecords = true;
   bool _preserveEvidence = true;
+  bool _allowSpeakerRequests = true;
+  bool _allowStageChat = false;
+  bool _allowInvitedGuests = true;
+  bool _recomputeOnReschedule = true;
+  bool _recomputeOnRosterChange = true;
+  bool _notifyOnLifecycle = true;
 
   @override
   void initState() {
@@ -1019,6 +1031,30 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           onChanged: (value) => setState(() => _speakerPolicy = value ?? _speakerPolicy),
         ),
         const SizedBox(height: 10),
+        if (stage) ...[
+          DropdownButtonFormField<String>(
+            value: _speakerPromotion,
+            decoration: const InputDecoration(labelText: 'Speaker promotion'),
+            items: const [
+              DropdownMenuItem(value: 'Host approval required', child: Text('Host approval required')),
+              DropdownMenuItem(value: 'Moderator approval', child: Text('Moderator approval')),
+              DropdownMenuItem(value: 'Organiser only', child: Text('Organiser only')),
+            ],
+            onChanged: (value) => setState(() => _speakerPromotion = value ?? _speakerPromotion),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Allow listeners to request the speaker role', style: TextStyle(fontSize: 11)),
+            value: _allowSpeakerRequests,
+            onChanged: (value) => setState(() => _allowSpeakerRequests = value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Enable audience text chat', style: TextStyle(fontSize: 11)),
+            value: _allowStageChat,
+            onChanged: (value) => setState(() => _allowStageChat = value),
+          ),
+        ],
         DropdownButtonFormField<String>(
           value: _audience,
           decoration: const InputDecoration(labelText: 'Audience'),
@@ -1043,6 +1079,13 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           onChanged: (value) => setState(() => _roomPrivacy = value ?? _roomPrivacy),
         ),
         const SizedBox(height: 10),
+        if (_roomPrivacy == 'Private invited room')
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Allow invited guests', style: TextStyle(fontSize: 11)),
+            value: _allowInvitedGuests,
+            onChanged: (value) => setState(() => _allowInvitedGuests = value),
+          ),
         DropdownButtonFormField<String>(
           value: _roomExpiry,
           decoration: const InputDecoration(labelText: 'Temporary room lifetime'),
@@ -1058,8 +1101,12 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       _section('Access preview', 'The same privacy boundary is checked before someone enters.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _previewRow('Speakers', _speakerPolicy),
+        if (stage) _previewRow('Promotion', _speakerPromotion),
+        if (stage) _previewRow('Speaker requests', _allowSpeakerRequests ? 'Allowed · approval still required' : 'Disabled'),
+        if (stage) _previewRow('Audience chat', _allowStageChat ? 'Enabled · separately moderated' : 'Disabled'),
         _previewRow('Audience', _audience),
         _previewRow('Room access', _roomPrivacy),
+        if (_roomPrivacy == 'Private invited room') _previewRow('Guest access', _allowInvitedGuests ? 'Invited guests allowed' : 'Members only'),
         _previewRow('Room expiry', _roomExpiry),
         const Divider(height: 18),
         const Text('No Stage channel is created by this preview. Stage-specific publishing and speaker promotion are a separate product surface.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.45)),
@@ -1075,9 +1122,87 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     ]),
   );
 
+  String _scopeTargetLabel(String scope) {
+    switch (scope) {
+      case 'Stage': return _stageContext;
+      case 'Group': return _stageContext + ' · ' + _groupContext;
+      case 'Match': return _stageContext + ' · ' + _groupContext + ' · ' + _matchContext;
+      default: return 'Entire event';
+    }
+  }
+
+  Widget _scopeContextSelector(String scope) {
+    final fields = <Widget>[];
+    if (scope != 'Event') {
+      fields.add(DropdownButtonFormField<String>(
+        value: _stageContext,
+        decoration: const InputDecoration(labelText: 'Stage'),
+        items: const [
+          DropdownMenuItem(value: 'Configured stage', child: Text('Select configured stage')),
+          DropdownMenuItem(value: 'Qualifier stage', child: Text('Qualifier stage · preview')),
+          DropdownMenuItem(value: 'Final stage', child: Text('Final stage · preview')),
+        ],
+        onChanged: (value) => setState(() { _stageContext = value ?? _stageContext; _generatedPreview = false; }),
+      ));
+    }
+    if (scope == 'Group' || scope == 'Match') {
+      fields.add(const SizedBox(height: 10));
+      fields.add(DropdownButtonFormField<String>(
+        value: _groupContext,
+        decoration: const InputDecoration(labelText: 'Group'),
+        items: const [
+          DropdownMenuItem(value: 'Configured group', child: Text('Select configured group')),
+          DropdownMenuItem(value: 'Group A', child: Text('Group A · preview')),
+          DropdownMenuItem(value: 'Group B', child: Text('Group B · preview')),
+        ],
+        onChanged: (value) => setState(() { _groupContext = value ?? _groupContext; _generatedPreview = false; }),
+      ));
+    }
+    if (scope == 'Match') {
+      fields.add(const SizedBox(height: 10));
+      fields.add(DropdownButtonFormField<String>(
+        value: _matchContext,
+        decoration: const InputDecoration(labelText: 'Scheduled match'),
+        items: const [
+          DropdownMenuItem(value: 'Selected match', child: Text('Select scheduled match')),
+          DropdownMenuItem(value: 'Match 01', child: Text('Match 01 · preview')),
+          DropdownMenuItem(value: 'Match 02', child: Text('Match 02 · preview')),
+        ],
+        onChanged: (value) => setState(() { _matchContext = value ?? _matchContext; _generatedPreview = false; }),
+      ));
+    }
+    if (fields.isEmpty) {
+      return const Row(children: [
+        Icon(Icons.public, color: KomnivoTheme.cyan, size: 18),
+        SizedBox(width: 8),
+        Expanded(child: Text('Event-wide template · access is limited to the selected event audience.', style: TextStyle(fontSize: 10, color: KomnivoTheme.muted))),
+      ]);
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      ...fields,
+      const SizedBox(height: 8),
+      const Text('Selection is a local preview; real scope IDs are chosen from approved event records.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+    ]);
+  }
+
   Widget _eventFlowTab() {
     final template = _templates.firstWhere((row) => row['name'] == _templateName);
     return ListView(padding: const EdgeInsets.only(bottom: 28), children: [
+      _section('Event context', 'Select an approved event first. Template channels are communication only; match participation and credentials remain in structured event records.'),
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        DropdownButtonFormField<String>(
+          value: _eventContext,
+          decoration: const InputDecoration(labelText: 'Event'),
+          items: const [
+            DropdownMenuItem(value: 'Current event · preview', child: Text('Current event · preview')),
+            DropdownMenuItem(value: 'Community scrim · preview', child: Text('Community scrim · preview')),
+            DropdownMenuItem(value: 'Championship event · preview', child: Text('Championship event · preview')),
+          ],
+          onChanged: (value) => setState(() { _eventContext = value ?? _eventContext; _generatedPreview = false; }),
+        ),
+        const SizedBox(height: 8),
+        const Text('Preview context only · a real Event ID, stage, group and match will be selected from approved records in the backend phase.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.4)),
+      ]))),
       _section('Approved event channel templates', 'Create communication surfaces only from a configured template and a specific scope.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Column(children: _templates.map((row) {
         final selected = row['name'] == _templateName;
@@ -1102,11 +1227,15 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           ),
         );
       }).toList())),
+      _section('Template scope target', 'Target selection follows the approved template scope.'),
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: _scopeContextSelector(template['scope'].toString()))),
       Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 0), child: _surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('TEMPLATE PREVIEW', style: TextStyle(fontSize: 9, letterSpacing: 1, color: KomnivoTheme.muted, fontWeight: FontWeight.w900)),
         const SizedBox(height: 8),
         Text(template['name'].toString(), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
+        _previewRow('Event', _eventContext),
         _previewRow('Scope', template['scope'].toString()),
+        _previewRow('Target', _scopeTargetLabel(template['scope'].toString())),
         _previewRow('Audience', template['audience'].toString()),
         const Divider(height: 18),
         ...(template['channels'] as List).map((name) => Padding(
@@ -1120,10 +1249,27 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         )),
         const SizedBox(height: 10),
         FilledButton.icon(onPressed: () => setState(() => _generatedPreview = true), icon: const Icon(Icons.preview_outlined, size: 17), label: const Text('Generate local preview')),
-        if (_generatedPreview) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Preview ready · nothing has been published or created.', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 9))),
+        if (_generatedPreview) ...[
+          const Padding(padding: EdgeInsets.only(top: 8), child: Text('Preview ready · nothing has been published or created.', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 9))),
+          const SizedBox(height: 8),
+          _pill('COMMUNICATION ONLY · NO PARTICIPANT OR CREDENTIAL AUTHORITY', color: const Color(0xFF54C9A5)),
+        ],
       ]))),
       _section('Temporary channel lifecycle', 'Lock or archive temporary channels after the matching event lifecycle step.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        DropdownButtonFormField<String>(
+          value: _lifecycleTrigger,
+          decoration: const InputDecoration(labelText: 'Lifecycle trigger'),
+          items: const [
+            DropdownMenuItem(value: 'Stage started', child: Text('Stage started')),
+            DropdownMenuItem(value: 'Match started', child: Text('Match started')),
+            DropdownMenuItem(value: 'Match completed', child: Text('Match completed')),
+            DropdownMenuItem(value: 'Event completed', child: Text('Event completed')),
+            DropdownMenuItem(value: 'Event cancelled', child: Text('Event cancelled')),
+          ],
+          onChanged: (value) => setState(() => _lifecycleTrigger = value ?? _lifecycleTrigger),
+        ),
+        const SizedBox(height: 10),
         DropdownButtonFormField<String>(
           value: _lifecycleScope,
           decoration: const InputDecoration(labelText: 'Temporary channel scope'),
@@ -1145,11 +1291,26 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Lock at match/stage start', style: TextStyle(fontSize: 11)), subtitle: const Text('Stops new conversation while existing records remain visible.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)), value: _lockAtStart, onChanged: (value) => setState(() => _lockAtStart = value)),
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Archive after completion', style: TextStyle(fontSize: 11)), value: _archiveOnComplete, onChanged: (value) => setState(() => _archiveOnComplete = value)),
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Apply only to temporary event channels', style: TextStyle(fontSize: 11)), value: _temporaryOnly, onChanged: (value) => setState(() => _temporaryOnly = value)),
+        SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Recompute access after a reschedule', style: TextStyle(fontSize: 11)), subtitle: const Text('Invalidate old time/scope context and refresh assigned access.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)), value: _recomputeOnReschedule, onChanged: (value) => setState(() => _recomputeOnReschedule = value)),
+        SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Recompute access after roster changes', style: TextStyle(fontSize: 11)), value: _recomputeOnRosterChange, onChanged: (value) => setState(() => _recomputeOnRosterChange = value)),
+        SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Notify affected participants', style: TextStyle(fontSize: 11)), value: _notifyOnLifecycle, onChanged: (value) => setState(() => _notifyOnLifecycle = value)),
         const Divider(height: 1),
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Preserve official match records', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)), subtitle: const Text('Match IDs, participants, results and standings are not channel data.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)), value: _preserveRecords, onChanged: null),
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Preserve evidence and audit history', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)), subtitle: const Text('Screenshots, evidence and review records stay available after channel archive.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)), value: _preserveEvidence, onChanged: null),
         const SizedBox(height: 7),
         _pill('Official records are never deleted with a channel', color: const Color(0xFF54C9A5)),
+      ]))),
+      _section('Lifecycle preview', 'See the selected trigger and access correction rules before they are saved.'),
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _previewRow('Trigger', _lifecycleTrigger),
+        _previewRow('Target scope', _lifecycleScope),
+        _previewRow('Action', _closeRule),
+        _previewRow('Temporary only', _temporaryOnly ? 'Yes · persistent channels excluded' : 'No · review before applying'),
+        _previewRow('Reschedule', _recomputeOnReschedule ? 'Recompute access' : 'No automatic recompute'),
+        _previewRow('Roster change', _recomputeOnRosterChange ? 'Recompute access' : 'No automatic recompute'),
+        _previewRow('Notifications', _notifyOnLifecycle ? 'Notify affected members' : 'No notifications'),
+        const Divider(height: 16),
+        const Text('Official Match IDs, registration, assigned teams, credentials, results, screenshots and evidence stay in their structured records. Archiving a channel never deletes these records.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.45)),
       ]))),
       _section('Example lifecycle map', 'Channel access follows the configured event stage, not the other way around.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: const Column(children: [
