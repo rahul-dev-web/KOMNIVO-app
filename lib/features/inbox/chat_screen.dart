@@ -492,7 +492,9 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() {
         _readOnly = settings['read_only'] == true || _readOnly;
-        _announcementPublishersOnly = settings['announcement_publishers_only'] == true;
+        _announcementPublishersOnly = settings.containsKey('announcement_publishers_only')
+          ? settings['announcement_publishers_only'] == true
+          : widget.channel['kind'] == 'announcement';
         _allowAttachments = settings['allow_attachments'] != false;
         _allowThreads = settings['allow_threads'] != false;
         _allowPins = settings['allow_pins'] != false;
