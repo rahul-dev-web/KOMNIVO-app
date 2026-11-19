@@ -322,18 +322,22 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
 
   Widget _channelRow(Map<String, dynamic> channel) {
     final type = channel['kind']?.toString() ?? 'text';
-    return ListTile(
-      dense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 1),
-      leading: Icon(_typeIcon(type), size: 17, color: _typeColor(type)),
-      title: Text(channel['name'].toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-      subtitle: Text(channel['description'].toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: KomnivoTheme.muted)),
-      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (channel['private'] == true) const Icon(Icons.lock_outline, size: 14, color: KomnivoTheme.muted),
-        if (channel['temporary'] == true) const Padding(padding: EdgeInsets.only(left: 5), child: Icon(Icons.timer_outlined, size: 14, color: KomnivoTheme.cyan)),
-        IconButton(tooltip: 'Edit channel', onPressed: () => _editChannel(channel), icon: const Icon(Icons.tune, size: 17)),
-      ]),
-      onTap: () => _editChannel(channel),
+    return Material(
+      color: KomnivoTheme.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: ListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 1),
+        leading: Icon(_typeIcon(type), size: 17, color: _typeColor(type)),
+        title: Text(channel['name'].toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+        subtitle: Text(channel['description'].toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: KomnivoTheme.muted)),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (channel['private'] == true) const Icon(Icons.lock_outline, size: 14, color: KomnivoTheme.muted),
+          if (channel['temporary'] == true) const Padding(padding: EdgeInsets.only(left: 5), child: Icon(Icons.timer_outlined, size: 14, color: KomnivoTheme.cyan)),
+          IconButton(tooltip: 'Edit channel', onPressed: () => _editChannel(channel), icon: const Icon(Icons.tune, size: 17)),
+        ]),
+        onTap: () => _editChannel(channel),
+      ),
     );
   }
 
@@ -364,38 +368,30 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   }
 
   Future<void> _createCategory() async {
-    final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Create category'),
-        content: TextField(controller: controller, autofocus: true, maxLength: 50, decoration: const InputDecoration(labelText: 'Category name')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Create')),
-        ],
+      builder: (_) => const _CategoryNameDialog(
+        title: 'Create category',
+        actionLabel: 'Create',
       ),
     );
-    controller.dispose();
     if (name == null || name.length < 2) return;
-    setState(() => _categories.add({'id': 'cat-' + DateTime.now().microsecondsSinceEpoch.toString(), 'name': name}));
+    setState(() => _categories.add({
+      'id': 'cat-' + DateTime.now().microsecondsSinceEpoch.toString(),
+      'name': name,
+    }));
     _previewNotice();
   }
 
   Future<void> _renameCategory(Map<String, dynamic> category) async {
-    final controller = TextEditingController(text: category['name'].toString());
     final name = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Rename category'),
-        content: TextField(controller: controller, autofocus: true, maxLength: 50, decoration: const InputDecoration(labelText: 'Name')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Save')),
-        ],
+      builder: (_) => _CategoryNameDialog(
+        title: 'Rename category',
+        actionLabel: 'Save',
+        initialName: category['name'].toString(),
       ),
     );
-    controller.dispose();
     if (name == null || name.length < 2) return;
     setState(() => category['name'] = name);
     _previewNotice();
@@ -1093,6 +1089,70 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       ]))),
     ]);
   }
+}
+
+class _CategoryNameDialog extends StatefulWidget {
+  const _CategoryNameDialog({
+    required this.title,
+    required this.actionLabel,
+    this.initialName = '',
+  });
+
+  final String title;
+  final String actionLabel;
+  final String initialName;
+
+  @override
+  State<_CategoryNameDialog> createState() => _CategoryNameDialogState();
+}
+
+class _CategoryNameDialogState extends State<_CategoryNameDialog> {
+  late final TextEditingController _name;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.initialName);
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: SizedBox(
+      width: 360,
+      child: TextField(
+        controller: _name,
+        autofocus: true,
+        maxLength: 50,
+        textCapitalization: TextCapitalization.words,
+        decoration: const InputDecoration(labelText: 'Category name'),
+        onSubmitted: (value) {
+          if (value.trim().length >= 2) {
+            Navigator.pop(context, value.trim());
+          }
+        },
+      ),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+      FilledButton(
+        onPressed: () {
+          if (_name.text.trim().length < 2) {
+            showMessage(context, 'Enter at least 2 characters.');
+            return;
+          }
+          Navigator.pop(context, _name.text.trim());
+        },
+        child: Text(widget.actionLabel),
+      ),
+    ],
+  );
 }
 
 class _ChannelDraftDialog extends StatefulWidget {
