@@ -26,6 +26,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final Set<String> _pinnedMessageIds = <String>{};
   final List<Map<String, dynamic>> _pollPreviews = <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> _scheduledPreviews = <Map<String, dynamic>>[];
+  final Map<String, List<Map<String, dynamic>>> _threadDraftReplies = <String, List<Map<String, dynamic>>>{};
   List<Map<String, dynamic>> _latestMessages = <Map<String, dynamic>>[];
 
   bool get _readOnly => widget.channel['is_read_only'] == true;
@@ -86,6 +87,108 @@ class _ChatScreenState extends State<ChatScreen> {
       _replyTo = message;
       _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
     });
+  }
+
+  Future<void> _openThread(Map<String, dynamic> selectedMessage) async {
+    final parentId = selectedMessage['parent_message_id']?.toString();
+    Map<String, dynamic> root = selectedMessage;
+    if (parentId != null) {
+      for (final row in _latestMessages) {
+        if (row['id']?.toString() == parentId) {
+          root = row;
+          break;
+        }
+      }
+    }
+    final rootId = root['id']?.toString();
+    if (rootId == null) return;
+
+    final replies = _latestMessages
+        .where((row) => row['parent_message_id']?.toString() == rootId)
+        .toList();
+    final draftReplies = List<Map<String, dynamic>>.from(
+      _threadDraftReplies[rootId] ?? const <Map<String, dynamic>>[],
+    );
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: KomnivoTheme.surface,
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .88),
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * .78,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 16, 14, 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Expanded(child: Text('Message thread', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900))),
+                Text((replies.length + draftReplies.length).toString() + ' replies',
+                  style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
+                IconButton(onPressed: () => Navigator.pop(sheetContext), icon: const Icon(Icons.close, size: 18)),
+              ]),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: KomnivoTheme.surfaceRaised,
+                  borderRadius: BorderRadius.circular(13),
+                  border: const Border(left: BorderSide(color: KomnivoTheme.accent, width: 3)),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(root['sender_id'] == _userId ? 'You · original message' : 'Community member · original message',
+                    style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 9, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 5),
+                  SelectableText(root['body']?.toString() ?? '', style: const TextStyle(fontSize: 12, height: 1.4)),
+                ]),
+              ),
+              const SizedBox(height: 12),
+              const Text('Replies', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 7),
+              Expanded(
+                child: ListView(
+                  children: [
+                    if (replies.isEmpty && draftReplies.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 20),
+                        child: Text('No replies yet. Start the thread with a response.',
+                          style: TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
+                      ),
+                    ...replies.map((row) => _ThreadMessageCard(
+                      author: row['sender_id'] == _userId ? 'You' : 'Community member',
+                      body: row['body']?.toString() ?? '',
+                    )),
+                    ...draftReplies.map((row) => _ThreadMessageCard(
+                      author: 'You · preview',
+                      body: row['body']?.toString() ?? '',
+                      isPreview: true,
+                    )),
+                  ],
+                ),
+              ),
+              _ThreadComposer(
+                enabled: !_readOnly,
+                onPreview: (text) {
+                  setState(() {
+                    draftReplies.add({
+                      'body': text,
+                      'sender_id': _userId,
+                      'created_at': DateTime.now().toIso8601String(),
+                    });
+                  });
+                  _threadDraftReplies[rootId] = List<Map<String, dynamic>>.from(draftReplies);
+                },
+              ),
+              const Padding(
+                padding: EdgeInsets.only(top: 5),
+                child: Text('Replies added here are UI previews only. Persistent thread writes connect in the backend phase.',
+                  style: TextStyle(color: KomnivoTheme.muted, fontSize: 8)),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
   }
 
   void _togglePin(Map<String, dynamic> message) {
@@ -365,11 +468,17 @@ class _ChatScreenState extends State<ChatScreen> {
                 itemBuilder: (context, index) {
                   final message = messages[index];
                   final mine = message['sender_id'] == _userId;
+                  final messageId = message['id']?.toString() ?? '';
+                  final replyCount = allMessages.where(
+                    (row) => row['parent_message_id']?.toString() == messageId,
+                  ).length + (_threadDraftReplies[messageId]?.length ?? 0);
                   return _MessageBubble(
                     message: message,
                     mine: mine,
-                    isPinned: _pinnedMessageIds.contains(message['id']?.toString()),
+                    isPinned: _pinnedMessageIds.contains(messageId),
+                    replyCount: replyCount,
                     onReply: () => _reply(message),
+                    onOpenThread: () => _openThread(message),
                     onPin: () => _togglePin(message),
                   );
                 },
@@ -469,14 +578,18 @@ class _MessageBubble extends StatelessWidget {
     required this.message,
     required this.mine,
     required this.onReply,
+    required this.onOpenThread,
     required this.onPin,
     required this.isPinned,
+    required this.replyCount,
   });
   final Map<String, dynamic> message;
   final bool mine;
   final VoidCallback onReply;
+  final VoidCallback onOpenThread;
   final VoidCallback onPin;
   final bool isPinned;
+  final int replyCount;
 
   @override
   Widget build(BuildContext context) {
@@ -506,6 +619,7 @@ class _MessageBubble extends StatelessWidget {
               icon: const Icon(Icons.more_horiz, color: KomnivoTheme.muted),
               onSelected: (value) async {
                 if (value == 'reply') onReply();
+                if (value == 'thread') onOpenThread();
                 if (value == 'pin') onPin();
                 if (value == 'copy') {
                   await Clipboard.setData(ClipboardData(text: body));
@@ -523,7 +637,8 @@ class _MessageBubble extends StatelessWidget {
                 }
               },
               itemBuilder: (_) => [
-                const PopupMenuItem(value: 'reply', child: Text('Reply in thread')),
+                const PopupMenuItem(value: 'thread', child: Text('Open thread')),
+                const PopupMenuItem(value: 'reply', child: Text('Reply in composer')),
                 PopupMenuItem(value: 'pin', child: Text(isPinned ? 'Unpin message' : 'Pin message')),
                 const PopupMenuItem(value: 'copy', child: Text('Copy text')),
                 const PopupMenuDivider(),
@@ -543,10 +658,101 @@ class _MessageBubble extends StatelessWidget {
           const SizedBox(height: 7),
           _MessageAttachmentList(messageId: message['id'] as String),
           _MessageReactionBar(messageId: message['id'] as String),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: onOpenThread,
+              icon: const Icon(Icons.forum_outlined, size: 13),
+              label: Text(replyCount == 0 ? 'Open thread' : replyCount.toString() + ' replies',
+                style: const TextStyle(fontSize: 9)),
+              style: TextButton.styleFrom(
+                foregroundColor: KomnivoTheme.muted,
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
         ]),
       ),
     );
   }
+}
+
+class _ThreadMessageCard extends StatelessWidget {
+  const _ThreadMessageCard({
+    required this.author,
+    required this.body,
+    this.isPreview = false,
+  });
+
+  final String author;
+  final String body;
+  final bool isPreview;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(bottom: 7),
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: isPreview ? KomnivoTheme.surfaceRaised : KomnivoTheme.surface,
+      borderRadius: BorderRadius.circular(11),
+      border: Border.all(color: isPreview ? KomnivoTheme.accent.withValues(alpha: .4) : KomnivoTheme.line),
+    ),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(author, style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 9, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 4),
+      Text(body, style: const TextStyle(fontSize: 11, height: 1.4)),
+    ]),
+  );
+}
+
+class _ThreadComposer extends StatefulWidget {
+  const _ThreadComposer({required this.enabled, required this.onPreview});
+
+  final bool enabled;
+  final ValueChanged<String> onPreview;
+
+  @override
+  State<_ThreadComposer> createState() => _ThreadComposerState();
+}
+
+class _ThreadComposerState extends State<_ThreadComposer> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final text = _controller.text.trim();
+    if (!widget.enabled || text.isEmpty) return;
+    widget.onPreview(text);
+    _controller.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) => Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+    Expanded(
+      child: TextField(
+        controller: _controller,
+        enabled: widget.enabled,
+        minLines: 1,
+        maxLines: 3,
+        decoration: const InputDecoration(
+          hintText: 'Reply to this thread…',
+          isDense: true,
+        ),
+        onSubmitted: (_) => _submit(),
+      ),
+    ),
+    const SizedBox(width: 8),
+    IconButton.filled(
+      onPressed: widget.enabled ? _submit : null,
+      icon: const Icon(Icons.send_rounded, size: 17),
+    ),
+  ]);
 }
 
 class _MessageAttachmentList extends StatefulWidget {
