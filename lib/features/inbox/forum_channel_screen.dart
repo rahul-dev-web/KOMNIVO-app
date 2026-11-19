@@ -288,19 +288,34 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
   }
 
   Future<void> _openPost(Map<String, dynamic> post) async {
-    final preview = await showModalBottomSheet<bool>(
+    final postId = post['id']?.toString();
+    var replies = <Map<String, dynamic>>[];
+    if (postId != null) {
+      try { replies = await KomnivoRepository.instance.forumReplies(postId); }
+      catch (error) { if (mounted) showMessage(context, 'Could not load replies: $error'); }
+    }
+    final replyText = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       backgroundColor: KomnivoTheme.surface,
       constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .88),
       builder: (_) => _ForumPostDetailSheet(
         post: post,
+        replies: replies,
         statusColor: _statusColor(post['status'].toString()),
       ),
     );
-    if (preview == true && mounted) {
-      setState(() => post['replies'] = (post['replies'] as int? ?? 0) + 1);
-      showMessage(context, 'Reply preview added. It has not been published.');
+    if (replyText == null || replyText.trim().isEmpty || !mounted) return;
+    try {
+      if (postId != null && widget.initialPosts.isEmpty) {
+        await KomnivoRepository.instance.createForumReply(postId, replyText);
+        await _loadPosts();
+        if (mounted) showMessage(context, 'Reply published.');
+      } else {
+        setState(() => post['replies'] = (post['replies'] as int? ?? 0) + 1);
+      }
+    } catch (error) {
+      if (mounted) showMessage(context, 'Reply could not be published: $error');
     }
   }
 
@@ -396,10 +411,12 @@ class _ForumPostDraftDialogState extends State<_ForumPostDraftDialog> {
 class _ForumPostDetailSheet extends StatefulWidget {
   const _ForumPostDetailSheet({
     required this.post,
+    required this.replies,
     required this.statusColor,
   });
 
   final Map<String, dynamic> post;
+  final List<Map<String, dynamic>> replies;
   final Color statusColor;
 
   @override
@@ -460,8 +477,17 @@ class _ForumPostDetailSheetState extends State<_ForumPostDetailSheet> {
             const Divider(),
             Text('Replies · ${widget.post['replies'] ?? 0}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
             const SizedBox(height: 8),
-            const _Reply(author: 'Nova', body: 'I can join after 7 PM.'),
-            const _Reply(author: 'RDX_Ace', body: 'Share your preferred role and availability.'),
+            if (widget.replies.isEmpty && (widget.post['replies'] as int? ?? 0) == 0)
+              const Text('No replies yet.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))
+            else if (widget.replies.isNotEmpty)
+              ...widget.replies.map((row) => _Reply(
+                author: row['author_id']?.toString() == KomnivoRepository.instance.userId ? 'You' : 'Member',
+                body: row['body']?.toString() ?? '',
+              )),
+            else ...[
+              const _Reply(author: 'Nova', body: 'I can join after 7 PM.'),
+              const _Reply(author: 'RDX_Ace', body: 'Share your preferred role and availability.'),
+            ],
             const SizedBox(height: 10),
             if (_locked)
               const Padding(
@@ -488,9 +514,9 @@ class _ForumPostDetailSheetState extends State<_ForumPostDetailSheet> {
                       showMessage(context, 'Write a reply before previewing it.');
                       return;
                     }
-                    Navigator.pop(context, true);
+                    Navigator.pop(context, _reply.text.trim());
                   },
-                  child: const Text('Preview reply'),
+                  child: const Text('Publish reply'),
                 ),
               ),
             ],
