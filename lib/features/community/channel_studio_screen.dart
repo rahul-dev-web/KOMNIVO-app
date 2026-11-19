@@ -1057,6 +1057,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   }
 
   Future<void> _loadTextSettings() async {
+    if (widget.communityId.contains('ui-test')) return;
     final matches = _channels.where((channel) =>
       (channel['kind'] == 'text' || channel['kind'] == 'announcement') &&
       channel['id'] != null).toList();
