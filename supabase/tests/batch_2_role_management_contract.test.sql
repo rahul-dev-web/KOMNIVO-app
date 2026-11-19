@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(39);
+select extensions.plan(40);
 select extensions.is((select count(*)::int from public.community_role_presets),4,'four built-in community presets exist');
 select extensions.is((select assignable from public.community_role_presets where preset_key='owner'),false,'Owner preset is non-delegable');
 select extensions.is((select assignable from public.community_role_presets where preset_key='admin'),true,'Admin preset is assignable under hierarchy guard');
@@ -43,6 +43,8 @@ select extensions.ok(position('''caster'',' in lower(pg_get_functiondef('app_pri
 select extensions.ok(exists(select 1 from public.event_staff_role_permissions where role_key='referee' and permission_key='event.results.review') and exists(select 1 from public.event_staff_role_permissions where role_key='referee' and permission_key='match.results.review'),'Referee catalogue documents both event-level and match-level review scopes');
 select extensions.ok(exists(select 1 from public.event_staff_role_permissions where role_key='result_reviewer' and permission_key='event.results.review') and exists(select 1 from public.event_staff_role_permissions where role_key='result_reviewer' and permission_key='match.results.review'),'Result Reviewer catalogue matches both event and match review actions');
 select extensions.ok(exists(select 1 from public.event_staff_role_permissions where role_key='dispute_reviewer' and permission_key='event.disputes.review') and exists(select 1 from public.event_staff_role_permissions where role_key='dispute_reviewer' and permission_key='match.disputes.review'),'Dispute Reviewer catalogue matches event and match dispute review');
+
+select extensions.ok(position('community.manage_roles' in lower(pg_get_functiondef('public.preview_community_role_permissions(uuid,uuid,uuid,uuid)'::regprocedure))) > 0,'Delegated role managers can preview another member without receiving permission-delegation authority');
 
 select * from extensions.finish();
 rollback;
