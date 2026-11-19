@@ -381,6 +381,40 @@ class KomnivoRepository {
     });
   }
 
+
+  Future<String> createChannelPoll({
+    required String channelId,
+    required String communityId,
+    required String question,
+    required List<String> options,
+    bool allowMultiple = false,
+    DateTime? closesAt,
+  }) async {
+    final result = await client.rpc('create_channel_poll', params: {
+      'p_channel_id': channelId,
+      'p_community_id': communityId,
+      'p_question': question.trim(),
+      'p_options': options,
+      'p_allow_multiple': allowMultiple,
+      'p_closes_at': closesAt?.toUtc().toIso8601String(),
+    });
+    return result.toString();
+  }
+
+  Future<int> voteChannelPoll(String pollId, List<String> optionIds) async {
+    final result = await client.rpc('vote_channel_poll', params: {
+      'p_poll_id': pollId,
+      'p_option_ids': optionIds,
+    });
+    return result as int;
+  }
+
+  Future<void> cancelChannelAnnouncement(String announcementId) async {
+    await client.rpc('cancel_channel_announcement', params: {
+      'p_announcement_id': announcementId,
+    });
+  }
+
   Future<Map<String, dynamic>> saveChannelSettings({
     required String channelId, required String communityId,
     required Map<String, dynamic> settings,
