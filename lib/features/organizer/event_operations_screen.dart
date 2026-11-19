@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
+import '../community/role_management_screen.dart';
 
 class EventOperationsScreen extends StatefulWidget {
   const EventOperationsScreen({super.key, required this.event});
@@ -358,6 +359,17 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     final eventName = widget.event['name']?.toString() ?? 'Event';
     return Scaffold(
       appBar: AppBar(title: Text(eventName), actions: [
+        IconButton(
+          tooltip: 'Event staff and scopes',
+          onPressed: () => Navigator.push<void>(
+            context,
+            MaterialPageRoute(builder: (_) => EventStaffManagementScreen(
+              eventId: widget.event['id'].toString(),
+              eventName: eventName,
+            )),
+          ),
+          icon: const Icon(Icons.badge_outlined),
+        ),
         IconButton(onPressed: _reload, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
       ]),
       body: FutureBuilder<_EventData>(
