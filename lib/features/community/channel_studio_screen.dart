@@ -1671,19 +1671,36 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     return ListView(key: const ValueKey('batch3-event-flow-list'), padding: const EdgeInsets.only(bottom: 28), children: [
       _section('Event context', 'Select an approved event first. Template channels are communication only; match participation and credentials remain in structured event records.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        DropdownButtonFormField<String>(
-          isExpanded: true,
-          value: _eventContext,
-          decoration: const InputDecoration(labelText: 'Event'),
-          items: const [
-            DropdownMenuItem(value: 'Current event · preview', child: Text('Current event · preview')),
-            DropdownMenuItem(value: 'Community scrim · preview', child: Text('Community scrim · preview')),
-            DropdownMenuItem(value: 'Championship event · preview', child: Text('Championship event · preview')),
-          ],
-          onChanged: (value) => setState(() { _eventContext = value ?? _eventContext; _generatedPreview = false; }),
-        ),
+        if (_eventOptions.isNotEmpty)
+          DropdownButtonFormField<String>(
+            isExpanded: true,
+            value: _selectedEventId,
+            decoration: const InputDecoration(labelText: 'Event'),
+            items: _eventOptions.map((row) => DropdownMenuItem(
+              value: row['id'].toString(),
+              child: Text(row['name'].toString(), overflow: TextOverflow.ellipsis),
+            )).toList(),
+            onChanged: (value) async {
+              if (value == null) return;
+              final matches = _eventOptions.where((row) => row['id'].toString() == value).toList();
+              setState(() {
+                _selectedEventId = value;
+                _eventContext = matches.isEmpty ? 'Selected event' : matches.first['name'].toString();
+                _generatedPreview = false;
+              });
+              await _loadEventScopes(value);
+            },
+          )
+        else
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 7),
+            child: Text('No eligible community events are available. Create or publish an event before generating communication channels.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.4)),
+          ),
         const SizedBox(height: 8),
-        const Text('Preview context only · a real Event ID, stage, group and match will be selected from approved records in the backend phase.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.4)),
+        Text(_selectedEventId == null
+          ? 'Template generation is disabled until a real event is selected.'
+          : 'Selected from saved event records. Template rooms never control registration, participation or credentials.',
+          style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.4)),
       ]))),
       _section('Approved event channel templates', 'Create communication surfaces only from a configured template and a specific scope.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Column(children: _templates.map((row) {
@@ -1731,6 +1748,15 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         )),
         const SizedBox(height: 10),
         FilledButton.icon(onPressed: () => setState(() => _generatedPreview = true), icon: const Icon(Icons.preview_outlined, size: 17), label: const Text('Generate local preview')),
+        if (_selectedEventId != null && _approvedTemplateKeys.contains(template['template_key'].toString()))
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: OutlinedButton.icon(
+              onPressed: () => _createEventTemplate(template),
+              icon: const Icon(Icons.add_to_photos_outlined, size: 17),
+              label: const Text('Create approved communication channels'),
+            ),
+          ),
         if (_generatedPreview) ...[
           const Padding(padding: EdgeInsets.only(top: 8), child: Text('Preview ready · nothing has been published or created.', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 9))),
           const SizedBox(height: 8),
