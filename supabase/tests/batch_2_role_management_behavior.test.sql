@@ -326,8 +326,7 @@ select extensions.ok(
  'Client cannot seed verification lock timestamps'
 );
 select extensions.throws_ok(
- $update public.game_accounts set ownership_status='verified'
-   where id='64000000-0000-4000-8000-000000000001'$,
+ 'UPDATE public.game_accounts SET ownership_status=''verified'' WHERE id=''64000000-0000-4000-8000-000000000001''',
  'P0001',
  'Game account ownership and verification state can only be changed by the verification workflow',
  'Client cannot promote its linked game account to Verified Player'
