@@ -39,6 +39,15 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   late final List<Map<String, dynamic>> _polls;
   late final List<Map<String, dynamic>> _scheduled;
   late final List<Map<String, dynamic>> _templates;
+  final List<Map<String, dynamic>> _eventOptions = [];
+  final List<Map<String, dynamic>> _stageOptions = [];
+  final List<Map<String, dynamic>> _groupOptions = [];
+  final List<Map<String, dynamic>> _matchOptions = [];
+  final Set<String> _approvedTemplateKeys = {};
+  String? _selectedEventId;
+  String? _selectedStageId;
+  String? _selectedGroupId;
+  String? _selectedMatchId;
 
   final Set<String> _collapsed = {};
   final Set<String> _archived = {};
@@ -120,6 +129,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     }
     _loadTextSettings();
     _loadCategories().then((_) => _loadPermissionOverrides());
+    _loadEventData();
     _posts = [
       {'title': 'Looking for two players for tonight', 'body': 'Need two reliable players for a squad. Share your role and availability.', 'tag': 'Recruitment', 'status': 'Open', 'author': 'RDX_Ace', 'replies': 8, 'time': '12 min ago'},
       {'title': 'Scrim schedule discussion', 'body': 'Can we agree on a practice window for this weekend?', 'tag': 'Scrims', 'status': 'In discussion', 'author': 'Nova', 'replies': 14, 'time': '38 min ago'},
@@ -137,10 +147,10 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       {'title': 'Weekend scrim reminder', 'channel': '#announcements', 'when': 'Tomorrow · 5:30 PM', 'status': 'Scheduled'},
     ];
     _templates = [
-      {'name': 'Match room', 'scope': 'Match', 'channels': ['match-chat', 'match-voice'], 'audience': 'Assigned teams + match staff', 'detail': 'Temporary, private and match-scoped'},
-      {'name': 'Stage briefing', 'scope': 'Stage', 'channels': ['stage-announcements', 'stage-questions'], 'audience': 'Stage participants + stage staff', 'detail': 'Briefing and questions for one stage'},
-      {'name': 'Group coordination', 'scope': 'Group', 'channels': ['group-chat'], 'audience': 'Teams assigned to the group', 'detail': 'Only the selected group can access it'},
-      {'name': 'Results & disputes', 'scope': 'Event', 'channels': ['results-updates', 'dispute-help'], 'audience': 'Event participants + authorised reviewers', 'detail': 'Communication only; official results remain in tournament records'},
+      {'name': 'Match room', 'template_key': 'match_room', 'scope': 'Match', 'channels': ['match-chat', 'match-voice'], 'audience': 'Assigned teams + match staff', 'detail': 'Temporary, private and match-scoped'},
+      {'name': 'Stage briefing', 'template_key': 'stage_briefing', 'scope': 'Stage', 'channels': ['stage-announcements', 'stage-questions'], 'audience': 'Stage participants + stage staff', 'detail': 'Briefing and questions for one stage'},
+      {'name': 'Group coordination', 'template_key': 'group_coordination', 'scope': 'Group', 'channels': ['group-room'], 'audience': 'Teams assigned to the group', 'detail': 'Reuses the existing private group room'},
+      {'name': 'Results & disputes', 'template_key': 'results_disputes', 'scope': 'Event', 'channels': ['results-updates', 'dispute-help'], 'audience': 'Event participants + authorised reviewers', 'detail': 'Communication only; official results remain in tournament records'},
     ];
     if (widget.channels.isNotEmpty) {
       // Keep existing server category IDs visible in the studio even before
@@ -164,6 +174,177 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           'private': row['is_private'] == true,
           'temporary': row['is_temporary'] == true,
         }));
+    }
+  }
+
+  Future<void> _loadEventData() async {
+    if (widget.communityId.contains('ui-test')) return;
+    try {
+      final results = await Future.wait([
+        KomnivoRepository.instance.communityEvents(widget.communityId),
+        KomnivoRepository.instance.eventChannelTemplates(),
+      ]);
+      final events = results[0];
+      final templates = results[1];
+      if (!mounted) return;
+      setState(() {
+        _eventOptions
+          ..clear()
+          ..addAll(events);
+        _approvedTemplateKeys
+          ..clear()
+          ..addAll(templates.map((row) => row['template_key'].toString()));
+        final allowed = _templates.where((row) =>
+          _approvedTemplateKeys.contains(row['template_key'].toString())).toList();
+        if (allowed.isNotEmpty) {
+          _templates.removeWhere((row) => !_approvedTemplateKeys.contains(row['template_key'].toString()));
+          if (!_templates.any((row) => row['name'] == _templateName)) {
+            _templateName = _templates.first['name'].toString();
+          }
+        }
+        if (events.isNotEmpty) {
+          _selectedEventId = events.first['id'].toString();
+          _eventContext = events.first['name'].toString();
+        }
+      });
+      if (_selectedEventId != null) await _loadEventScopes(_selectedEventId!);
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not load approved event templates: $error');
+    }
+  }
+
+  Future<void> _loadEventScopes(String eventId) async {
+    try {
+      final stages = await KomnivoRepository.instance.eventStages(eventId);
+      final nextStageId = stages.isEmpty ? null : stages.first['id'].toString();
+      final groups = nextStageId == null
+        ? <Map<String, dynamic>>[]
+        : await KomnivoRepository.instance.eventGroups(nextStageId);
+      final matches = await KomnivoRepository.instance.eventMatches(
+        eventId, stageId: nextStageId,
+      );
+      if (!mounted || _selectedEventId != eventId) return;
+      setState(() {
+        _stageOptions..clear()..addAll(stages);
+        _selectedStageId = nextStageId;
+        _groupOptions..clear()..addAll(groups);
+        _selectedGroupId = groups.isEmpty ? null : groups.first['id'].toString();
+        _matchOptions..clear()..addAll(matches);
+        _selectedMatchId = matches.isEmpty ? null : matches.first['id'].toString();
+      });
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not load event scope records: $error');
+    }
+  }
+
+  Future<void> _loadGroupsForStage(String stageId) async {
+    final eventId = _selectedEventId;
+    if (eventId == null) return;
+    try {
+      final groups = await KomnivoRepository.instance.eventGroups(stageId);
+      final matches = await KomnivoRepository.instance.eventMatches(eventId, stageId: stageId);
+      if (!mounted || _selectedStageId != stageId) return;
+      setState(() {
+        _groupOptions..clear()..addAll(groups);
+        _selectedGroupId = groups.isEmpty ? null : groups.first['id'].toString();
+        _matchOptions..clear()..addAll(matches);
+        _selectedMatchId = matches.isEmpty ? null : matches.first['id'].toString();
+        _generatedPreview = false;
+      });
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not load stage scope: $error');
+    }
+  }
+
+  Future<void> _loadMatchesForGroup(String groupId) async {
+    final eventId = _selectedEventId;
+    final stageId = _selectedStageId;
+    if (eventId == null) return;
+    try {
+      final matches = await KomnivoRepository.instance.eventMatches(
+        eventId, stageId: stageId, groupId: groupId,
+      );
+      if (!mounted || _selectedGroupId != groupId) return;
+      setState(() {
+        _matchOptions..clear()..addAll(matches);
+        _selectedMatchId = matches.isEmpty ? null : matches.first['id'].toString();
+        _generatedPreview = false;
+      });
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not load group matches: $error');
+    }
+  }
+
+  Future<void> _createEventTemplate(Map<String, dynamic> template) async {
+    final eventId = _selectedEventId;
+    if (eventId == null) {
+      showMessage(context, 'Select a real community event first.');
+      return;
+    }
+    final scope = template['scope'].toString();
+    if (scope == 'Stage' && _selectedStageId == null ||
+        scope == 'Group' && _selectedGroupId == null ||
+        scope == 'Match' && _selectedMatchId == null) {
+      showMessage(context, 'Select the configured $scope record first.');
+      return;
+    }
+    try {
+      final result = await KomnivoRepository.instance.createEventCommunicationChannels(
+        eventId: eventId,
+        templateKey: template['template_key'].toString(),
+        stageId: scope == 'Stage' ? _selectedStageId : scope == 'Match' ? _selectedStageId : null,
+        groupId: scope == 'Group' ? _selectedGroupId : scope == 'Match' ? _selectedGroupId : null,
+        matchId: scope == 'Match' ? _selectedMatchId : null,
+      );
+      if (!mounted) return;
+      final created = result['created'] == true;
+      showMessage(
+        context,
+        created
+          ? 'Approved event channels created and scoped. Match records and credentials remain separate.'
+          : 'This approved template already exists for the selected scope.',
+      );
+    } catch (error) {
+      if (mounted) showMessage(context, 'Event template could not be created: $error');
+    }
+  }
+
+  Future<void> _saveLifecycleRule() async {
+    final eventId = _selectedEventId;
+    if (eventId == null) {
+      showMessage(context, 'Select a real event before saving lifecycle rules.');
+      return;
+    }
+    final scope = _lifecycleScope.toLowerCase();
+    final scopeId = scope == 'event' ? null
+      : scope == 'stage' ? _selectedStageId
+      : scope == 'match' ? _selectedMatchId : null;
+    if (scope != 'event' && scopeId == null) {
+      showMessage(context, 'Select a real $scope record before saving this rule.');
+      return;
+    }
+    final trigger = _lifecycleTrigger.contains('started') ? 'started'
+      : _lifecycleTrigger.contains('cancelled') ? 'cancelled' : 'completed';
+    if (scope == 'stage' && trigger == 'cancelled') {
+      showMessage(context, 'Stages cannot be cancelled in the event lifecycle.');
+      return;
+    }
+    final completionAction = _closeRule.startsWith('Lock') ? 'lock' : 'archive';
+    try {
+      if (_lockAtStart) {
+        await KomnivoRepository.instance.saveEventChannelLifecycleRule(
+          eventId: eventId, scopeType: scope, scopeId: scopeId,
+          trigger: 'started', action: 'lock', onlyTemporary: _temporaryOnly, enabled: true,
+        );
+      }
+      await KomnivoRepository.instance.saveEventChannelLifecycleRule(
+        eventId: eventId, scopeType: scope, scopeId: scopeId,
+        trigger: trigger, action: completionAction, onlyTemporary: _temporaryOnly,
+        enabled: _archiveOnComplete && _closeRule != 'Keep open until organiser closes it',
+      );
+      if (mounted) showMessage(context, 'Lifecycle rule saved. Future status changes will lock or archive the configured temporary channels.');
+    } catch (error) {
+      if (mounted) showMessage(context, 'Lifecycle rule could not be saved: $error');
     }
   }
 
