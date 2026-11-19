@@ -686,9 +686,24 @@ class _TrustHistoryPanel extends StatelessWidget {
         const Text('Role and assignment history', style: TextStyle(fontWeight: FontWeight.w900)),
         if (!canRead) const Text('Audit history is restricted to authorised community owners.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))
         else if (rows.isEmpty) const Text('No role changes recorded.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))
-        else ...rows.map((r) => ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: const Icon(Icons.history, size: 16),
+        else ...rows.map((r) => ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          leading: const Icon(Icons.history, size: 16, color: KomnivoTheme.muted),
           title: Text(r['action'].toString(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-          subtitle: Text('Actor ${r['actor_user_id'] ?? 'system'} · Subject ${r['subject_user_id'] ?? 'role'} · ${r['created_at']}', style: const TextStyle(fontSize: 8, color: KomnivoTheme.muted)))),
+          subtitle: Text('Actor ${r['actor_user_id'] ?? 'system'} · Subject ${r['subject_user_id'] ?? 'role'} · ${r['created_at']}', style: const TextStyle(fontSize: 8, color: KomnivoTheme.muted)),
+          children: [
+            Align(alignment: Alignment.centerLeft, child: Padding(
+              padding: const EdgeInsets.only(left: 40, right: 8, bottom: 10),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('BEFORE', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: KomnivoTheme.muted)),
+                SelectableText(r['before_state']?.toString() ?? '—', style: const TextStyle(fontSize: 9)),
+                const SizedBox(height: 6),
+                const Text('AFTER', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: KomnivoTheme.muted)),
+                SelectableText(r['after_state']?.toString() ?? '—', style: const TextStyle(fontSize: 9)),
+              ]),
+            )),
+          ],
+        )),
         const _InfoBox(title: 'Not user-editable', body: 'Verified Player is derived from game ownership verification; Registered Player from approved event registration; Checked-in Player from a ready match check-in. No controls here can self-assign these statuses.'),
       ]);
     },
