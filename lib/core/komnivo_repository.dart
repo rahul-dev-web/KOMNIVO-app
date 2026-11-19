@@ -630,6 +630,22 @@ class KomnivoRepository {
     return result as int;
   }
 
+  Future<List<Map<String, dynamic>>> channelPollFeed(String channelId) async {
+    final rows = await client.rpc('channel_poll_feed', params: {
+      'p_channel_id': channelId,
+    });
+    return List<Map<String, dynamic>>.from(rows as List);
+  }
+
+  Future<List<Map<String, dynamic>>> scheduledChannelAnnouncements(String channelId) async {
+    final rows = await client.from('scheduled_channel_announcements')
+      .select('id,body,publish_at,status,created_by')
+      .eq('channel_id', channelId)
+      .eq('status', 'scheduled')
+      .order('publish_at');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
   Future<void> cancelChannelAnnouncement(String announcementId) async {
     await client.rpc('cancel_channel_announcement', params: {
       'p_announcement_id': announcementId,
