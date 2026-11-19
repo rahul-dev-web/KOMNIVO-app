@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(47);
+select extensions.plan(48);
 select extensions.is((select count(*)::int from public.community_role_presets),4,'four built-in community presets exist');
 select extensions.is((select assignable from public.community_role_presets where preset_key='owner'),false,'Owner preset is non-delegable');
 select extensions.is((select assignable from public.community_role_presets where preset_key='admin'),true,'Admin preset is assignable under hierarchy guard');
@@ -59,6 +59,13 @@ select extensions.ok(position('direct.permission_key=cpo.permission_key' in lowe
 
 select extensions.ok(exists(select 1 from pg_constraint where conrelid='public.community_members'::regclass and conname='community_members_role_check' and position('spectator' in lower(pg_get_constraintdef(oid)))=0),'Spectator is not a Community membership authority or base role');
 select extensions.ok(exists(select 1 from pg_policies where schemaname='public' and tablename='event_follows' and policyname='event_follows_self' and cmd='ALL' and qual ilike '%auth.uid%'),'Spectator event-follow state is stored separately with self-only access');
+
+select extensions.ok(
+ has_table_privilege('authenticated','public.community_role_history','select')
+ and not has_table_privilege('anon','public.community_role_history','select')
+ and (select relrowsecurity from pg_class where oid='public.community_role_history'::regclass),
+ 'Role history table grant is authenticated-only and protected by RLS'
+);
 
 select * from extensions.finish();
 rollback;
