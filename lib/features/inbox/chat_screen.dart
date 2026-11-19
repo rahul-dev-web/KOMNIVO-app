@@ -23,6 +23,12 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _searching = false;
   PlatformFile? _attachment;
   Map<String, dynamic>? _replyTo;
+  final Set<String> _pinnedMessageIds = <String>{};
+  final List<Map<String, dynamic>> _pollPreviews = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> _scheduledPreviews = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _latestMessages = <Map<String, dynamic>>[];
+
+  bool get _readOnly => widget.channel['is_read_only'] == true;
 
   String get _channelId => widget.channel['id'] as String;
   String get _userId => Supabase.instance.client.auth.currentUser!.id;
@@ -43,6 +49,10 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _send() async {
     final text = _controller.text.trim();
     final attachment = _attachment;
+    if (_readOnly) {
+      showMessage(context, 'This channel is read-only. Only authorised publishers can post.');
+      return;
+    }
     if (_sending || (text.isEmpty && attachment == null)) return;
 
     setState(() => _sending = true);
@@ -78,6 +88,183 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _togglePin(Map<String, dynamic> message) {
+    final id = message['id']?.toString();
+    if (id == null) return;
+    setState(() {
+      if (_pinnedMessageIds.contains(id)) { _pinnedMessageIds.remove(id); }
+      else { _pinnedMessageIds.add(id); }
+    });
+    showMessage(context, _pinnedMessageIds.contains(id)
+      ? 'Pinned in this preview. Persistent pins connect in the backend phase.'
+      : 'Pin removed from this preview.');
+  }
+
+  Future<void> _showPinnedMessages() async {
+    final rows = _latestMessages.where((row) => _pinnedMessageIds.contains(row['id']?.toString())).toList();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: KomnivoTheme.surface,
+      builder: (sheetContext) => SafeArea(child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Expanded(child: Text('Pinned messages', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900))),
+            Text(rows.length.toString(), style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
+          ]),
+          const SizedBox(height: 12),
+          if (rows.isEmpty)
+            const Text('No pinned messages in this preview yet. Use a message menu to pin an important update.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4))
+          else
+            ...rows.map((row) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.push_pin_outlined, color: KomnivoTheme.cyan),
+              title: Text((row['body'] ?? '').toString(), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+              trailing: IconButton(onPressed: () {
+                setState(() => _pinnedMessageIds.remove(row['id'].toString()));
+                Navigator.pop(sheetContext);
+              }, icon: const Icon(Icons.close, size: 17)),
+            )),
+          const SizedBox(height: 6),
+          const Text('Pin state is local to this UI preview; durable pins will connect after the migration phase.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+        ]),
+      )),
+    );
+  }
+
+  Future<void> _createPollPreview() async {
+    final question = TextEditingController();
+    final optionOne = TextEditingController();
+    final optionTwo = TextEditingController();
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Create channel poll'),
+        content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: question, autofocus: true, maxLength: 160, decoration: const InputDecoration(labelText: 'Question')),
+          TextField(controller: optionOne, maxLength: 70, decoration: const InputDecoration(labelText: 'Option 1')),
+          TextField(controller: optionTwo, maxLength: 70, decoration: const InputDecoration(labelText: 'Option 2')),
+          const SizedBox(height: 6),
+          const Text('Poll votes are community feedback, never official tournament results.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, {
+            'question': question.text.trim(),
+            'one': optionOne.text.trim(),
+            'two': optionTwo.text.trim(),
+          }), child: const Text('Preview poll')),
+        ],
+      ),
+    );
+    question.dispose(); optionOne.dispose(); optionTwo.dispose();
+    if (result == null || (result['question'] ?? '').isEmpty || (result['one'] ?? '').isEmpty || (result['two'] ?? '').isEmpty) return;
+    setState(() => _pollPreviews.insert(0, {
+      'question': result['question'],
+      'options': [result['one'], result['two']],
+      'votes': [0, 0],
+      'selected': -1,
+    }));
+    showMessage(context, 'Poll preview added. It has not been published.');
+  }
+
+  Future<void> _scheduleAnnouncementPreview() async {
+    final title = TextEditingController();
+    final body = TextEditingController();
+    String when = 'Tomorrow · 5:30 PM';
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+        title: const Text('Schedule announcement'),
+        content: SizedBox(width: 430, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: title, maxLength: 100, decoration: const InputDecoration(labelText: 'Announcement title')),
+          TextField(controller: body, maxLines: 3, maxLength: 1200, decoration: const InputDecoration(labelText: 'Message')),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: when,
+            decoration: const InputDecoration(labelText: 'Publish time · preview'),
+            items: const ['Today · 6:00 PM', 'Tomorrow · 9:00 AM', 'Tomorrow · 5:30 PM'].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
+            onChanged: (value) => setDialogState(() => when = value ?? when),
+          ),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, {
+            'title': title.text.trim(),
+            'body': body.text.trim(),
+            'when': when,
+          }), child: const Text('Preview schedule')),
+        ],
+      )),
+    );
+    title.dispose(); body.dispose();
+    if (result == null || (result['title'] ?? '').isEmpty || (result['body'] ?? '').isEmpty) return;
+    setState(() => _scheduledPreviews.insert(0, result));
+    showMessage(context, 'Scheduled announcement preview added. Nothing has been queued on the server.');
+  }
+
+  void _showChannelTools() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: KomnivoTheme.surface,
+      builder: (sheetContext) => SafeArea(child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Channel tools', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 12),
+          ListTile(leading: const Icon(Icons.push_pin_outlined), title: const Text('Pinned messages'), subtitle: Text(_pinnedMessageIds.length.toString() + ' pinned in this preview'), onTap: () { Navigator.pop(sheetContext); _showPinnedMessages(); }),
+          ListTile(leading: const Icon(Icons.poll_outlined), title: const Text('Create poll'), subtitle: const Text('Collect community feedback'), onTap: () { Navigator.pop(sheetContext); _createPollPreview(); }),
+          ListTile(leading: const Icon(Icons.schedule_outlined), title: const Text('Schedule announcement'), subtitle: const Text('Choose a publish window'), onTap: () { Navigator.pop(sheetContext); _scheduleAnnouncementPreview(); }),
+        ]),
+      )),
+    );
+  }
+
+  Widget _previewToolCard(IconData icon, String title) => Container(
+    width: 230,
+    margin: const EdgeInsets.only(right: 8),
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(color: KomnivoTheme.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: KomnivoTheme.line)),
+    child: Row(children: [
+      Icon(icon, color: KomnivoTheme.cyan, size: 18),
+      const SizedBox(width: 8),
+      Expanded(child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700))),
+    ]),
+  );
+
+  Widget _pollPreviewCard(Map<String, dynamic> poll) {
+    final options = (poll['options'] as List).cast<String>();
+    final votes = (poll['votes'] as List).cast<int>();
+    return Container(
+      width: 250,
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: KomnivoTheme.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: KomnivoTheme.line)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(poll['question'].toString(), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 5),
+        ...List.generate(options.length, (index) => InkWell(
+          onTap: () => setState(() {
+            final previous = poll['selected'] as int;
+            if (previous >= 0) votes[previous] = votes[previous] - 1;
+            poll['selected'] = index;
+            votes[index] = votes[index] + 1;
+          }),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(children: [
+              Icon(poll['selected'] == index ? Icons.radio_button_checked : Icons.radio_button_unchecked, size: 13, color: KomnivoTheme.cyan),
+              const SizedBox(width: 5),
+              Expanded(child: Text(options[index], style: const TextStyle(fontSize: 9))),
+              Text(votes[index].toString(), style: const TextStyle(color: KomnivoTheme.muted, fontSize: 8)),
+            ]),
+          ),
+        )),
+        const Text('Preview vote · not published', style: TextStyle(color: KomnivoTheme.muted, fontSize: 8)),
+      ]),
+    );
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -96,6 +283,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(child: Text(channelName, overflow: TextOverflow.ellipsis)),
         ]),
         actions: [
+          IconButton(tooltip: 'Channel tools', onPressed: _showChannelTools, icon: const Icon(Icons.more_vert)),
           IconButton(
             tooltip: _searching ? 'Close search' : 'Search messages',
             onPressed: () => setState(() {
@@ -120,6 +308,31 @@ class _ChatScreenState extends State<ChatScreen> {
               onChanged: (_) => setState(() {}),
             ),
           ),
+        if (_readOnly)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: KomnivoTheme.surfaceRaised, borderRadius: BorderRadius.circular(11), border: Border.all(color: KomnivoTheme.line)),
+            child: const Row(children: [
+              Icon(Icons.lock_outline, color: KomnivoTheme.cyan, size: 16),
+              SizedBox(width: 8),
+              Expanded(child: Text('Read-only channel · only authorised publishers can post.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))),
+            ]),
+          ),
+        if (_pollPreviews.isNotEmpty || _scheduledPreviews.isNotEmpty || _pinnedMessageIds.isNotEmpty)
+          SizedBox(
+            height: 116,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(12, 7, 12, 0),
+              children: [
+                ..._pollPreviews.map(_pollPreviewCard),
+                ..._scheduledPreviews.map((row) => _previewToolCard(Icons.schedule, 'Scheduled · ' + row['title'].toString() + ' · ' + row['when'].toString())),
+                if (_pinnedMessageIds.isNotEmpty) _previewToolCard(Icons.push_pin_outlined, _pinnedMessageIds.length.toString() + ' pinned messages'),
+              ],
+            ),
+          ),
         Expanded(
           child: StreamBuilder<List<Map<String, dynamic>>>(
             stream: KomnivoRepository.instance.messageStream(_channelId),
@@ -129,6 +342,7 @@ class _ChatScreenState extends State<ChatScreen> {
               }
               final query = _searchController.text.trim().toLowerCase();
               final allMessages = snapshot.data ?? [];
+              _latestMessages = List<Map<String, dynamic>>.from(allMessages);
               final messages = query.isEmpty
                   ? allMessages
                   : allMessages.where((message) => (message['body'] ?? '').toString().toLowerCase().contains(query)).toList();
@@ -154,7 +368,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   return _MessageBubble(
                     message: message,
                     mine: mine,
+                    isPinned: _pinnedMessageIds.contains(message['id']?.toString()),
                     onReply: () => _reply(message),
+                    onPin: () => _togglePin(message),
                   );
                 },
               );
@@ -208,12 +424,13 @@ class _ChatScreenState extends State<ChatScreen> {
               Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 IconButton(
                   tooltip: 'Attach image or PDF',
-                  onPressed: _sending ? null : _pickAttachment,
+                  onPressed: _sending || _readOnly ? null : _pickAttachment,
                   icon: const Icon(Icons.attach_file, color: KomnivoTheme.cyan),
                 ),
                 Expanded(
                   child: TextField(
                     controller: _controller,
+                    enabled: !_readOnly,
                     minLines: 1,
                     maxLines: 5,
                     textCapitalization: TextCapitalization.sentences,
@@ -231,7 +448,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const SizedBox(width: 8),
                 IconButton.filled(
-                  onPressed: _sending ? null : _send,
+                  onPressed: _sending || _readOnly ? null : _send,
                   icon: _sending
                       ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.send_rounded),
@@ -252,10 +469,14 @@ class _MessageBubble extends StatelessWidget {
     required this.message,
     required this.mine,
     required this.onReply,
+    required this.onPin,
+    required this.isPinned,
   });
   final Map<String, dynamic> message;
   final bool mine;
   final VoidCallback onReply;
+  final VoidCallback onPin;
+  final bool isPinned;
 
   @override
   Widget build(BuildContext context) {
@@ -274,6 +495,7 @@ class _MessageBubble extends StatelessWidget {
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(mainAxisSize: MainAxisSize.min, children: [
+            if (isPinned) const Padding(padding: EdgeInsets.only(right: 5), child: Icon(Icons.push_pin, size: 12, color: KomnivoTheme.cyan)),
             Flexible(child: Text(sender, style: const TextStyle(color: KomnivoTheme.cyan, fontWeight: FontWeight.w800, fontSize: 11))),
             const SizedBox(width: 8),
             PopupMenuButton<String>(
@@ -284,6 +506,7 @@ class _MessageBubble extends StatelessWidget {
               icon: const Icon(Icons.more_horiz, color: KomnivoTheme.muted),
               onSelected: (value) async {
                 if (value == 'reply') onReply();
+                if (value == 'pin') onPin();
                 if (value == 'copy') {
                   await Clipboard.setData(ClipboardData(text: body));
                   if (context.mounted) showMessage(context, 'Message copied.');
@@ -300,7 +523,8 @@ class _MessageBubble extends StatelessWidget {
                 }
               },
               itemBuilder: (_) => const [
-                PopupMenuItem(value: 'reply', child: Text('Reply')),
+                PopupMenuItem(value: 'reply', child: Text('Reply in thread')),
+                PopupMenuItem(value: 'pin', child: Text(isPinned ? 'Unpin message' : 'Pin message')),
                 PopupMenuItem(value: 'copy', child: Text('Copy text')),
                 PopupMenuDivider(),
                 PopupMenuItem(value: 'react:👍', child: Text('👍 React')),
