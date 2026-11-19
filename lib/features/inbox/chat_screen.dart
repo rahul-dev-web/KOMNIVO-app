@@ -217,8 +217,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _togglePin(Map<String, dynamic> message) async {
-    if (!_allowPins) {
-      showMessage(context, 'Pinned messages are disabled in this channel.');
+    if (!_allowPins || !_canManageMessages) {
+      showMessage(context, 'You do not have permission to manage pinned messages in this channel.');
       return;
     }
     final id = message['id']?.toString();
@@ -258,10 +258,10 @@ class _ChatScreenState extends State<ChatScreen> {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.push_pin_outlined, color: KomnivoTheme.cyan),
               title: Text((row['body'] ?? '').toString(), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
-              trailing: IconButton(onPressed: () async {
+              trailing: _canManageMessages ? IconButton(onPressed: () async {
                 Navigator.pop(sheetContext);
                 await _togglePin(row);
-              }, icon: const Icon(Icons.close, size: 17)),
+              }, icon: const Icon(Icons.close, size: 17)) : null,
             )),
           const SizedBox(height: 6),
           const Text('Pins are stored with the channel and follow its moderation permissions.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
@@ -291,7 +291,7 @@ class _ChatScreenState extends State<ChatScreen> {
             'question': question.text.trim(),
             'one': optionOne.text.trim(),
             'two': optionTwo.text.trim(),
-          }), child: const Text('Preview poll')),
+          }), child: const Text('Publish poll')),
         ],
       ),
     );
@@ -341,7 +341,7 @@ class _ChatScreenState extends State<ChatScreen> {
             'title': title.text.trim(),
             'body': body.text.trim(),
             'when': when,
-          }), child: const Text('Preview schedule')),
+          }), child: const Text('Schedule announcement')),
         ],
       )),
     );
@@ -700,7 +700,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     onOpenThread: () => _openThread(message),
                     onPin: () => _togglePin(message),
                     allowThreads: _allowThreads,
-                    allowPins: _allowPins,
+                    allowPins: _allowPins && _canManageMessages,
                   );
                 },
               );
