@@ -21,6 +21,13 @@ class KomnivoRepository {
 
   /// Ask the database's canonical permission resolver. The UI uses this only
   /// to decide which controls to show; RLS and privileged RPCs enforce access.
+  Future<bool> canManageChannelMessages(String channelId) async {
+    final result = await client.rpc('can_manage_channel_messages', params: {
+      'p_channel_id': channelId,
+    });
+    return result == true;
+  }
+
   Future<bool> hasPermission({
     required String permissionKey,
     required String scopeType,
