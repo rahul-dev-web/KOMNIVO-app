@@ -220,8 +220,9 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       final groups = nextStageId == null
         ? <Map<String, dynamic>>[]
         : await KomnivoRepository.instance.eventGroups(nextStageId);
+      final groupId = groups.isEmpty ? null : groups.first['id'].toString();
       final matches = await KomnivoRepository.instance.eventMatches(
-        eventId, stageId: nextStageId,
+        eventId, stageId: nextStageId, groupId: groupId,
       );
       if (!mounted || _selectedEventId != eventId) return;
       setState(() {
@@ -242,7 +243,10 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     if (eventId == null) return;
     try {
       final groups = await KomnivoRepository.instance.eventGroups(stageId);
-      final matches = await KomnivoRepository.instance.eventMatches(eventId, stageId: stageId);
+      final groupId = groups.isEmpty ? null : groups.first['id'].toString();
+      final matches = await KomnivoRepository.instance.eventMatches(
+        eventId, stageId: stageId, groupId: groupId,
+      );
       if (!mounted || _selectedStageId != stageId) return;
       setState(() {
         _groupOptions..clear()..addAll(groups);
@@ -326,23 +330,28 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     final trigger = _lifecycleTrigger.contains('started') ? 'started'
       : _lifecycleTrigger.contains('cancelled') ? 'cancelled' : 'completed';
     if (scope == 'stage' && trigger == 'cancelled') {
-      showMessage(context, 'Stages cannot be cancelled in the event lifecycle.');
+      showMessage(context, 'Stages do not have a cancelled status.');
       return;
     }
     final completionAction = _closeRule.startsWith('Lock') ? 'lock' : 'archive';
     try {
-      if (_lockAtStart) {
+      if (_lockAtStart && trigger != 'started') {
         await KomnivoRepository.instance.saveEventChannelLifecycleRule(
           eventId: eventId, scopeType: scope, scopeId: scopeId,
-          trigger: 'started', action: 'lock', onlyTemporary: _temporaryOnly, enabled: true,
+          trigger: 'started', action: 'lock', onlyTemporary: _temporaryOnly,
+          enabled: true, notifyAffected: _notifyOnLifecycle,
         );
       }
+      final action = trigger == 'started' ? 'lock' : completionAction;
+      final enabled = trigger == 'started'
+        ? _lockAtStart
+        : _archiveOnComplete && _closeRule != 'Keep open until organiser closes it';
       await KomnivoRepository.instance.saveEventChannelLifecycleRule(
         eventId: eventId, scopeType: scope, scopeId: scopeId,
-        trigger: trigger, action: completionAction, onlyTemporary: _temporaryOnly,
-        enabled: _archiveOnComplete && _closeRule != 'Keep open until organiser closes it',
+        trigger: trigger, action: action, onlyTemporary: _temporaryOnly,
+        enabled: enabled, notifyAffected: _notifyOnLifecycle,
       );
-      if (mounted) showMessage(context, 'Lifecycle rule saved. Future status changes will lock or archive the configured temporary channels.');
+      if (mounted) showMessage(context, 'Lifecycle rule saved. Future status transitions will lock or archive the selected channels and notify affected members.');
     } catch (error) {
       if (mounted) showMessage(context, 'Lifecycle rule could not be saved: $error');
     }
