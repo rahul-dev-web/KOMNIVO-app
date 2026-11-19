@@ -6,7 +6,7 @@ import 'package:komnivo/features/community/channel_studio_screen.dart';
 import 'package:komnivo/features/inbox/forum_channel_screen.dart';
 
 void main() {
-  Future<void> pumpStudio(WidgetTester tester) async {
+  Future<void> pumpStudio(WidgetTester tester, {bool canManagePermissions = true}) async {
     tester.view.physicalSize = const Size(430, 900);
     tester.view.devicePixelRatio = 1;
     await tester.pumpWidget(
@@ -15,7 +15,7 @@ void main() {
         home: const ChannelStudioScreen(
           communityId: 'community-ui-test',
           communityName: 'UI Test Community',
-          canManagePermissions: true,
+          canManagePermissions: canManagePermissions,
         ),
       ),
     );
@@ -115,7 +115,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Looking for two players for tonight'), findsOneWidget);
-    await tester.tap(find.text('Closed').first);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Closed'));
     await tester.pumpAndSettle();
     expect(find.text('Team recruitment closed'), findsOneWidget);
     expect(find.text('Looking for two players for tonight'), findsNothing);
@@ -136,5 +136,46 @@ void main() {
 
     expect(find.text('Need a substitute for finals'), findsOneWidget);
     expect(tester.takeException(), isNull);
+
+  testWidgets('Channel Studio permission editor is read-only without delegation authority',
+      (tester) async {
+    addTearDown(() => resetView(tester));
+    await pumpStudio(tester, canManagePermissions: false);
+
+    await openStudioTab(tester, 'Permissions');
+    expect(find.textContaining('Preview only'), findsOneWidget);
+    final sync = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'Sync with category'),
+    );
+    expect(sync.onPressed, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Channel Studio remains usable at desktop width',
+      (tester) async {
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() => resetView(tester));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: KomnivoTheme.dark,
+        home: const ChannelStudioScreen(
+          communityId: 'desktop-ui-test',
+          communityName: 'Desktop UI Test',
+          canManagePermissions: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Channel structure'), findsOneWidget);
+    await openStudioTab(tester, 'Permissions');
+    expect(find.text('Permission inheritance'), findsOneWidget);
+    await openStudioTab(tester, 'Forum');
+    expect(find.text('Forum channels'), findsOneWidget);
+    await openStudioTab(tester, 'Event flow');
+    expect(find.text('Temporary channel lifecycle'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   });
 }
