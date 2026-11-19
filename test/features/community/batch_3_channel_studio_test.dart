@@ -6,13 +6,17 @@ import 'package:komnivo/features/community/channel_studio_screen.dart';
 import 'package:komnivo/features/inbox/forum_channel_screen.dart';
 
 void main() {
-  Future<void> pumpStudio(WidgetTester tester, {bool canManagePermissions = true}) async {
-    tester.view.physicalSize = const Size(430, 900);
+  Future<void> pumpStudio(
+    WidgetTester tester, {
+    Size size = const Size(430, 900),
+    bool canManagePermissions = true,
+  }) async {
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     await tester.pumpWidget(
       MaterialApp(
         theme: KomnivoTheme.dark,
-        home: const ChannelStudioScreen(
+        home: ChannelStudioScreen(
           communityId: 'community-ui-test',
           communityName: 'UI Test Community',
           canManagePermissions: canManagePermissions,
@@ -29,6 +33,27 @@ void main() {
     );
     await tester.ensureVisible(tab);
     await tester.tap(tab);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> pumpForum(
+    WidgetTester tester, {
+    bool canModerate = true,
+  }) async {
+    tester.view.physicalSize = const Size(430, 900);
+    tester.view.devicePixelRatio = 1;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: KomnivoTheme.dark,
+        home: ForumChannelScreen(
+          channel: const {
+            'id': 'forum-ui-test',
+            'name': 'looking-for-team',
+          },
+          canModerate: canModerate,
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -58,6 +83,8 @@ void main() {
     expect(find.text('Text & Announcement behaviour'), findsOneWidget);
     expect(find.text('Read-only channel'), findsOneWidget);
     expect(find.text('Slow mode'), findsOneWidget);
+    await tester.ensureVisible(find.text('Controlled mentions'));
+    await tester.pumpAndSettle();
     expect(find.text('Controlled mentions'), findsOneWidget);
 
     await openStudioTab(tester, 'Forum');
@@ -77,6 +104,8 @@ void main() {
 
     await openStudioTab(tester, 'Event flow');
     expect(find.text('Approved event channel templates'), findsOneWidget);
+    await tester.ensureVisible(find.text('Temporary channel lifecycle'));
+    await tester.pumpAndSettle();
     expect(find.text('Temporary channel lifecycle'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -86,37 +115,37 @@ void main() {
     addTearDown(() => resetView(tester));
     await pumpStudio(tester);
 
-    await tester.tap(find.text('Category').first);
+    final createCategory = find.text('Category').first;
+    await tester.ensureVisible(createCategory);
+    await tester.tap(createCategory);
     await tester.pumpAndSettle();
     expect(find.text('Create category'), findsOneWidget);
 
-    await tester.enterText(find.byType(TextField).last, 'Practice Rooms');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Category name'),
+      'Practice Rooms',
+    );
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
 
-    expect(find.text('PRACTICE ROOMS'), findsOneWidget);
+    final newCategory = find.text('PRACTICE ROOMS');
+    await tester.ensureVisible(newCategory);
+    await tester.pumpAndSettle();
+    expect(newCategory, findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('Forum channel filters topics and previews a new post',
       (tester) async {
-    tester.view.physicalSize = const Size(430, 900);
-    tester.view.devicePixelRatio = 1;
     addTearDown(() => resetView(tester));
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: KomnivoTheme.dark,
-        home: const ForumChannelScreen(
-          channel: {'id': 'forum-ui-test', 'name': 'looking-for-team'},
-          canModerate: true,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await pumpForum(tester);
 
     expect(find.text('Looking for two players for tonight'), findsOneWidget);
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Closed'));
+    final closed = find.widgetWithText(ChoiceChip, 'Closed');
+    await tester.ensureVisible(closed);
+    await tester.tap(closed);
     await tester.pumpAndSettle();
+
     expect(find.text('Team recruitment closed'), findsOneWidget);
     expect(find.text('Looking for two players for tonight'), findsNothing);
 
@@ -136,6 +165,35 @@ void main() {
 
     expect(find.text('Need a substitute for finals'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Forum moderator can pin and lock a topic',
+      (tester) async {
+    addTearDown(() => resetView(tester));
+    await pumpForum(tester);
+
+    final firstMenu = find.byType(PopupMenuButton<String>).first;
+    await tester.ensureVisible(firstMenu);
+    await tester.tap(firstMenu);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pin topic'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pinned'), findsOneWidget);
+
+    final menuAgain = find.byType(PopupMenuButton<String>).first;
+    await tester.ensureVisible(menuAgain);
+    await tester.tap(menuAgain);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lock replies'));
+    await tester.pumpAndSettle();
+
+    final firstTopic = find.text('Looking for two players for tonight');
+    await tester.ensureVisible(firstTopic);
+    await tester.tap(firstTopic);
+    await tester.pumpAndSettle();
+    expect(find.text('Replies are locked for this topic.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('Channel Studio permission editor is read-only without delegation authority',
       (tester) async {
@@ -153,20 +211,8 @@ void main() {
 
   testWidgets('Channel Studio remains usable at desktop width',
       (tester) async {
-    tester.view.physicalSize = const Size(1440, 1000);
-    tester.view.devicePixelRatio = 1;
     addTearDown(() => resetView(tester));
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: KomnivoTheme.dark,
-        home: const ChannelStudioScreen(
-          communityId: 'desktop-ui-test',
-          communityName: 'Desktop UI Test',
-          canManagePermissions: true,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await pumpStudio(tester, size: const Size(1440, 1000));
 
     expect(find.text('Channel structure'), findsOneWidget);
     await openStudioTab(tester, 'Permissions');
@@ -174,8 +220,10 @@ void main() {
     await openStudioTab(tester, 'Forum');
     expect(find.text('Forum channels'), findsOneWidget);
     await openStudioTab(tester, 'Event flow');
-    expect(find.text('Temporary channel lifecycle'), findsOneWidget);
+    final lifecycle = find.text('Temporary channel lifecycle');
+    await tester.ensureVisible(lifecycle);
+    await tester.pumpAndSettle();
+    expect(lifecycle, findsOneWidget);
     expect(tester.takeException(), isNull);
-  });
   });
 }
