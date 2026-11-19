@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(40);
+select extensions.plan(42);
 select extensions.is((select count(*)::int from public.community_role_presets),4,'four built-in community presets exist');
 select extensions.is((select assignable from public.community_role_presets where preset_key='owner'),false,'Owner preset is non-delegable');
 select extensions.is((select assignable from public.community_role_presets where preset_key='admin'),true,'Admin preset is assignable under hierarchy guard');
@@ -45,6 +45,10 @@ select extensions.ok(exists(select 1 from public.event_staff_role_permissions wh
 select extensions.ok(exists(select 1 from public.event_staff_role_permissions where role_key='dispute_reviewer' and permission_key='event.disputes.review') and exists(select 1 from public.event_staff_role_permissions where role_key='dispute_reviewer' and permission_key='match.disputes.review'),'Dispute Reviewer catalogue matches event and match dispute review');
 
 select extensions.ok(position('community.manage_roles' in lower(pg_get_functiondef('public.preview_community_role_permissions(uuid,uuid,uuid,uuid)'::regprocedure))) > 0,'Delegated role managers can preview another member without receiving permission-delegation authority');
+
+
+select extensions.ok(to_regprocedure('public.save_community_role(uuid,uuid,text,text,text,integer,jsonb)') is not null and has_function_privilege('authenticated','public.save_community_role(uuid,uuid,text,text,text,integer,jsonb)','execute') and not has_function_privilege('anon','public.save_community_role(uuid,uuid,text,text,text,integer,jsonb)','execute'),'Role create and edit uses an authenticated atomic server-side RPC');
+select extensions.ok(to_regprocedure('public.replace_community_member_roles(uuid,uuid,uuid[])') is not null and has_function_privilege('authenticated','public.replace_community_member_roles(uuid,uuid,uuid[])','execute') and position('community.manage_roles' in lower(pg_get_functiondef('public.replace_community_member_roles(uuid,uuid,uuid[])'::regprocedure))) > 0,'Multi-role member assignment uses an authorised atomic server-side RPC');
 
 select * from extensions.finish();
 rollback;
