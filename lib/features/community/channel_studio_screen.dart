@@ -254,7 +254,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         (channel['name'].toString().toLowerCase().contains(query) ||
          channel['description'].toString().toLowerCase().contains(query)));
     }).toList();
-    return ListView(padding: const EdgeInsets.only(bottom: 28), children: [
+    return ListView(key: const ValueKey('batch3-structure-list'), padding: const EdgeInsets.only(bottom: 28), children: [
       _section('Channel structure', 'Arrange categories, choose channel types and keep temporary spaces separate.',
         trailing: FilledButton.tonalIcon(onPressed: _createCategory, icon: const Icon(Icons.create_new_folder_outlined, size: 17), label: const Text('Category'))),
       Padding(
@@ -502,7 +502,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       : _channels.map((row) => row['name'].toString()).toList();
     final selected = _permissionScope == 'Category' ? _permissionCategory : _permissionChannel;
     final safeTarget = targets.contains(selected) ? selected : (targets.isEmpty ? '' : targets.first);
-    return ListView(padding: const EdgeInsets.only(bottom: 28), children: [
+    return ListView(key: const ValueKey('batch3-permissions-list'), padding: const EdgeInsets.only(bottom: 28), children: [
       _section(
         'Permission inheritance',
         widget.canManagePermissions
@@ -650,7 +650,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       _textChannel = names.first;
     }
     final selectedType = selectedRow.isEmpty ? _textType : (selectedRow.first['kind'] == 'announcement' ? 'Announcement' : 'Text');
-    return ListView(padding: const EdgeInsets.only(bottom: 28), children: [
+    return ListView(key: const ValueKey('batch3-text-list'), padding: const EdgeInsets.only(bottom: 28), children: [
       _section('Text & Announcement behaviour', 'Configure read-only mode, slow mode, attachments, pins, history and mention controls.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(children: [
         DropdownButtonFormField<String>(
@@ -737,7 +737,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       final matchTag = _forumTag == 'All tags' || post['tag'] == _forumTag;
       return matchQuery && matchStatus && matchTag;
     }).toList();
-    return ListView(padding: const EdgeInsets.only(bottom: 28), children: [
+    return ListView(key: const ValueKey('batch3-forum-list'), padding: const EdgeInsets.only(bottom: 28), children: [
       _section('Forum channels', 'Topic-first discussions for recruitment, LFG, support and suggestions.',
         trailing: FilledButton.icon(onPressed: _newForumPost, icon: const Icon(Icons.add, size: 17), label: const Text('New post'))),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: TextField(decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search posts and topics…'), onChanged: (value) => setState(() => _forumQuery = value))),
@@ -836,7 +836,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     _previewNotice();
   }
 
-  Widget _engagementTab() => ListView(padding: const EdgeInsets.only(bottom: 28), children: [
+  Widget _engagementTab() => ListView(key: const ValueKey('batch3-engagement-list'), padding: const EdgeInsets.only(bottom: 28), children: [
     _section('Threads & replies', 'Keep deeper conversations attached to the original channel message.'),
     Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Column(children: [
       ..._threads.map((thread) => Padding(
@@ -1005,7 +1005,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
 
   Widget _voiceStageTab() {
     final stage = _voiceMode == 'Stage broadcast';
-    return ListView(padding: const EdgeInsets.only(bottom: 28), children: [
+    return ListView(key: const ValueKey('batch3-voice-stage-list'), padding: const EdgeInsets.only(bottom: 28), children: [
       _section('Voice and Stage are different surfaces', 'Voice is a room for two-way audio. Stage is a moderated broadcast with speakers and listeners.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: SegmentedButton<String>(
         segments: const [
@@ -1202,7 +1202,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
 
   Widget _eventFlowTab() {
     final template = _templates.firstWhere((row) => row['name'] == _templateName);
-    return ListView(padding: const EdgeInsets.only(bottom: 28), children: [
+    return ListView(key: const ValueKey('batch3-event-flow-list'), padding: const EdgeInsets.only(bottom: 28), children: [
       _section('Event context', 'Select an approved event first. Template channels are communication only; match participation and credentials remain in structured event records.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         DropdownButtonFormField<String>(
