@@ -229,6 +229,15 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   Widget _structureTab() {
     final active = _categories.where((row) => _showArchived || !_archived.contains(row['id'])).toList();
     final activeCount = _categories.length - _archived.length;
+    final query = _search.text.trim().toLowerCase();
+    final visible = active.where((category) {
+      if (query.isEmpty || category['name'].toString().toLowerCase().contains(query)) return true;
+      final categoryId = category['id'];
+      return _channels.any((channel) =>
+        channel['category'] == categoryId &&
+        (channel['name'].toString().toLowerCase().contains(query) ||
+         channel['description'].toString().toLowerCase().contains(query)));
+    }).toList();
     return ListView(padding: const EdgeInsets.only(bottom: 28), children: [
       _section('Channel structure', 'Arrange categories, choose channel types and keep temporary spaces separate.',
         trailing: FilledButton.tonalIcon(onPressed: _createCategory, icon: const Icon(Icons.create_new_folder_outlined, size: 17), label: const Text('Category'))),
@@ -239,7 +248,25 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           TextButton.icon(onPressed: () => setState(() => _showArchived = !_showArchived), icon: Icon(_showArchived ? Icons.visibility_off_outlined : Icons.archive_outlined, size: 15), label: Text(_showArchived ? 'Hide archived' : 'Show archived')),
         ]),
       ),
-      ...active.map(_categoryCard),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: TextField(
+          controller: _search,
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.search, size: 18),
+            hintText: 'Filter categories and channels…',
+            isDense: true,
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+      ),
+      if (visible.isEmpty)
+        const Padding(
+          padding: EdgeInsets.all(22),
+          child: EmptyState(title: 'No matching channels', message: 'Try another category or channel name.', icon: Icons.search_off),
+        )
+      else
+        ...visible.map((category) => _categoryCard(category, query: query)),
       _section('Channel types', 'Each surface has a different purpose and permission model.'),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Wrap(spacing: 7, runSpacing: 7, children: [
         _typeGuide(Icons.tag, 'Text', 'Conversation', KomnivoTheme.muted),
@@ -263,11 +290,15 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     ]),
   );
 
-  Widget _categoryCard(Map<String, dynamic> category) {
+  Widget _categoryCard(Map<String, dynamic> category, {String query = ''}) {
     final id = category['id'].toString();
     final archived = _archived.contains(id);
     final collapsed = _collapsed.contains(id);
-    final channelRows = _channels.where((row) => row['category'] == id).toList();
+    final channelRows = _channels.where((row) =>
+      row['category'] == id &&
+      (query.isEmpty ||
+       row['name'].toString().toLowerCase().contains(query) ||
+       row['description'].toString().toLowerCase().contains(query))).toList();
     final index = _categories.indexOf(category);
     return Container(
       key: ValueKey(id),
@@ -505,7 +536,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         if (_permissionScope == 'Channel') ...[
           const SizedBox(height: 10),
           OutlinedButton.icon(
-            onPressed: widget.canManagePermissions ? _syncWithCategory : null,
+            onPressed: widget.canManagePermissions ? () => _syncWithCategory(safeTarget) : null,
             icon: const Icon(Icons.sync, size: 16),
             label: const Text('Sync with category'),
           ),
@@ -515,12 +546,49 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(children: _permissionKeys.entries.map((entry) {
         final stateKey = _selectedRole + '|' + _permissionScope + '|' + safeTarget + '|' + entry.value;
         final state = _permissionStates[stateKey] ?? 'Inherit';
+        var inheritedState = 'Inherit';
+        var inheritedFrom = 'Category default';
+        if (_permissionScope == 'Channel') {
+          Map<String, dynamic>? selectedChannel;
+          for (final channel in _channels) {
+            if (channel['name'] == safeTarget) {
+              selectedChannel = channel;
+              break;
+            }
+          }
+          final categoryId = selectedChannel?['category'];
+          Map<String, dynamic>? selectedCategory;
+          for (final category in _categories) {
+            if (category['id'] == categoryId) {
+              selectedCategory = category;
+              break;
+            }
+          }
+          final categoryName = selectedCategory?['name']?.toString() ?? '';
+          final inheritedKey = _selectedRole + '|Category|' + categoryName + '|' + entry.value;
+          inheritedState = _permissionStates[inheritedKey] ?? 'Inherit';
+          inheritedFrom = categoryName.isEmpty ? 'Category default' : 'Inherited from ' + categoryName;
+        }
+        final effectiveState = state == 'Inherit' ? inheritedState : state;
+        final effectiveSource = state != 'Inherit' ? 'Channel override' : inheritedFrom;
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(entry.key, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
               Text(entry.value, style: const TextStyle(fontSize: 8, color: KomnivoTheme.muted)),
+              if (_permissionScope == 'Channel')
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Effective: ${effectiveState == 'Inherit' ? 'Default' : effectiveState} · ${effectiveSource}',
+                    style: TextStyle(
+                      fontSize: 8,
+                      color: effectiveState == 'Deny' ? KomnivoTheme.danger : effectiveState == 'Allow' ? const Color(0xFF54C9A5) : KomnivoTheme.muted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
             ])),
             const SizedBox(width: 8),
             SegmentedButton<String>(
@@ -547,9 +615,9 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     ]);
   }
 
-  void _syncWithCategory() {
+  void _syncWithCategory(String channelName) {
     for (final permission in _permissionKeys.values) {
-      final key = _selectedRole + '|Channel|' + _permissionChannel + '|' + permission;
+      final key = _selectedRole + '|Channel|' + channelName + '|' + permission;
       _permissionStates[key] = 'Inherit';
     }
     setState(() {});
