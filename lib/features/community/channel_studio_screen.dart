@@ -119,6 +119,16 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       {'name': 'Results & disputes', 'scope': 'Event', 'channels': ['results-updates', 'dispute-help'], 'audience': 'Event participants + authorised reviewers', 'detail': 'Communication only; official results remain in tournament records'},
     ];
     if (widget.channels.isNotEmpty) {
+      // Keep existing server category IDs visible in the studio even before
+      // the category-name query is wired in the backend pass.
+      for (final row in widget.channels) {
+        final categoryId = row['category_id']?.toString();
+        if (categoryId != null &&
+            categoryId.isNotEmpty &&
+            !_categories.any((category) => category['id'] == categoryId)) {
+          _categories.add({'id': categoryId, 'name': 'Existing category'});
+        }
+      }
       _channels
         ..clear()
         ..addAll(widget.channels.map((row) => {
@@ -140,24 +150,6 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   }
 
   void _previewNotice() => showMessage(context, 'UI preview updated. Persistent saving is part of the next backend phase.');
-
-  Color _typeColor(String type) {
-    switch (type) {
-      case 'announcement': return KomnivoTheme.cyan;
-      case 'forum': return KomnivoTheme.accent;
-      case 'voice': return const Color(0xFF54C9A5);
-      default: return KomnivoTheme.muted;
-    }
-  }
-
-  IconData _typeIcon(String type) {
-    switch (type) {
-      case 'announcement': return Icons.campaign_outlined;
-      case 'forum': return Icons.forum_outlined;
-      case 'voice': return Icons.graphic_eq;
-      default: return Icons.tag;
-    }
-  }
 
   Widget _banner() => Container(
     margin: const EdgeInsets.fromLTRB(14, 12, 14, 0),
