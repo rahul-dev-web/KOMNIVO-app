@@ -46,6 +46,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   final Set<String> _collapsed = {};
   final Set<String> _archived = {};
   final Map<String, String> _permissionStates = {};
+  final Map<String, String> _roleIds = {};
   String _selectedRole = 'Moderator';
   String _permissionScope = 'Category';
   String _permissionCategory = 'Community';
@@ -121,7 +122,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       ];
     }
     _loadTextSettings();
-    _loadCategories();
+    _loadCategories().then((_) => _loadPermissionOverrides());
     _posts = [
       {'title': 'Looking for two players for tonight', 'body': 'Need two reliable players for a squad. Share your role and availability.', 'tag': 'Recruitment', 'status': 'Open', 'author': 'RDX_Ace', 'replies': 8, 'time': '12 min ago'},
       {'title': 'Scrim schedule discussion', 'body': 'Can we agree on a practice window for this weekend?', 'tag': 'Scrims', 'status': 'In discussion', 'author': 'Nova', 'replies': 14, 'time': '38 min ago'},
@@ -592,6 +593,75 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     }
   }
 
+  Future<void> _loadPermissionOverrides() async {
+    if (widget.communityId.contains('ui-test')) return;
+    try {
+      final roles = await KomnivoRepository.instance.communityRoles(widget.communityId);
+      final categoryRows = await KomnivoRepository.instance.categoryPermissionOverrides(widget.communityId);
+      final channelRows = await KomnivoRepository.instance.channelPermissionOverrides(widget.communityId);
+      final roleNames = <String, String>{};
+      for (final role in roles) {
+        final id = role['id'].toString();
+        final name = role['name'].toString();
+        _roleIds[name] = id;
+        roleNames[id] = name;
+      }
+      final categoryNames = {for (final row in _categories) row['id'].toString(): row['name'].toString()};
+      final channelNames = {for (final row in _channels) row['id'].toString(): row['name'].toString()};
+      final states = <String, String>{};
+      for (final row in categoryRows) {
+        final role = roleNames[row['role_id']?.toString()];
+        final category = categoryNames[row['category_id']?.toString()];
+        if (role != null && category != null) {
+          states['$role|Category|$category|${row['permission_key']}'] =
+            row['effect'] == 'allow' ? 'Allow' : 'Deny';
+        }
+      }
+      for (final row in channelRows) {
+        final role = roleNames[row['role_id']?.toString()];
+        final channel = channelNames[row['channel_id']?.toString()];
+        if (role != null && channel != null) {
+          states['$role|Channel|$channel|${row['permission_key']}'] =
+            row['effect'] == 'allow' ? 'Allow' : 'Deny';
+        }
+      }
+      if (mounted) setState(() => _permissionStates.addAll(states));
+    } catch (_) {
+      // Permission previews remain fail-closed when the viewer cannot read override rows.
+    }
+  }
+
+  Future<void> _persistPermissionOverride(
+    String targetName, String permissionKey, String effect,
+  ) async {
+    if (!widget.canManagePermissions || widget.communityId.contains('ui-test')) return;
+    final roleId = _roleIds[_selectedRole];
+    if (roleId == null) {
+      showMessage(context, 'The selected role has no saved role record.');
+      return;
+    }
+    try {
+      if (_permissionScope == 'Category') {
+        final rows = _categories.where((row) => row['name'] == targetName).toList();
+        if (rows.isEmpty) return;
+        await KomnivoRepository.instance.setCategoryPermissionOverride(
+          communityId: widget.communityId, categoryId: rows.first['id'].toString(),
+          roleId: roleId, permissionKey: permissionKey, effect: effect,
+        );
+      } else {
+        final rows = _channels.where((row) => row['name'] == targetName).toList();
+        if (rows.isEmpty) return;
+        await KomnivoRepository.instance.setChannelPermissionOverride(
+          communityId: widget.communityId, channelId: rows.first['id'].toString(),
+          roleId: roleId, permissionKey: permissionKey, effect: effect,
+        );
+      }
+    } catch (error) {
+      if (mounted) showMessage(context, 'Permission override could not be saved: $error');
+      await _loadPermissionOverrides();
+    }
+  }
+
   Widget _permissionsTab() {
     final targets = _permissionScope == 'Category'
       ? _categories.map((row) => row['name'].toString()).toList()
@@ -715,7 +785,11 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
               ],
               selected: {state},
               onSelectionChanged: widget.canManagePermissions
-                ? (value) => setState(() => _permissionStates[stateKey] = value.first)
+                ? (value) {
+                    final selectedValue = value.first;
+                    setState(() => _permissionStates[stateKey] = selectedValue);
+                    _persistPermissionOverride(safeTarget, entry.value, selectedValue);
+                  }
                 : null,
             ),
           ]),
