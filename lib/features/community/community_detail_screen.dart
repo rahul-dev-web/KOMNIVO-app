@@ -9,6 +9,7 @@ import '../../core/ui.dart';
 import 'community_logo.dart';
 import '../inbox/chat_screen.dart';
 import '../inbox/voice_room_screen.dart';
+import 'role_management_screen.dart';
 
 class CommunityDetailScreen extends StatefulWidget {
   const CommunityDetailScreen({
@@ -32,6 +33,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   String _channelQuery = '';
   bool _canManageSettings = false;
   bool _canManageStructure = false;
+  bool _canManageRoles = false;
   bool _permissionsLoading = true;
 
   String get _communityId => _community['id'] as String;
@@ -50,11 +52,17 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
           scopeType: 'community',
           scopeId: communityId,
         ),
+        KomnivoRepository.instance.hasPermission(
+          permissionKey: 'community.manage_roles',
+          scopeType: 'community',
+          scopeId: communityId,
+        ),
       ]);
       if (!mounted || communityId != _communityId) return;
       setState(() {
         _canManageSettings = permissions[0];
         _canManageStructure = permissions[1];
+        _canManageRoles = permissions[2];
         _permissionsLoading = false;
       });
     } catch (_) {
@@ -62,6 +70,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
       setState(() {
         _canManageSettings = false;
         _canManageStructure = false;
+        _canManageRoles = false;
         _permissionsLoading = false;
       });
     }
@@ -96,6 +105,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
       _permissionsLoading = true;
       _canManageSettings = false;
       _canManageStructure = false;
+      _canManageRoles = false;
       _loadPermissions();
     } else if (oldWidget.community != widget.community) {
       _community = Map<String, dynamic>.from(widget.community);
@@ -106,6 +116,23 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     setState(() {
       _channelsFuture = KomnivoRepository.instance.channels(communityId: _communityId);
     });
+  }
+
+  Future<void> _manageRoles() async {
+    if (!await _verifyPermission('community.manage_roles')) {
+      if (mounted) showMessage(context, 'You do not have permission to manage community roles.');
+      await _loadPermissions();
+      return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => RoleManagementScreen(
+          communityId: _communityId,
+          communityName: _community['name']?.toString() ?? 'Community roles',
+        ),
+      ),
+    );
+    if (mounted) await _loadPermissions();
   }
 
   Future<void> _editCommunity() async {
@@ -406,6 +433,14 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
           ],
         ),
         actions: [
+          if (!_permissionsLoading && _canManageRoles)
+            IconButton(
+              tooltip: 'Manage roles',
+              onPressed: _manageRoles,
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              constraints: compact ? const BoxConstraints.tightFor(width: 34, height: 48) : const BoxConstraints(),
+              padding: EdgeInsets.zero,
+            ),
           if (!_permissionsLoading && _canManageStructure)
             IconButton(
               tooltip: 'Create channel',
@@ -537,19 +572,27 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                           ),
                       ],
                     ),
-                    if (!_permissionsLoading && _canManageSettings) ...[
+                    if (!_permissionsLoading && (_canManageSettings || _canManageRoles)) ...[
                       const SizedBox(height: 13),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: OutlinedButton.icon(
-                          onPressed: _editCommunity,
-                          icon: const Icon(Icons.tune, size: 16),
-                          label: const Text('Manage server'),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(0, 38),
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                          ),
-                        ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          if (_canManageSettings)
+                            OutlinedButton.icon(
+                              onPressed: _editCommunity,
+                              icon: const Icon(Icons.tune, size: 16),
+                              label: const Text('Manage server'),
+                              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 38), padding: const EdgeInsets.symmetric(horizontal: 12)),
+                            ),
+                          if (_canManageRoles)
+                            OutlinedButton.icon(
+                              onPressed: _manageRoles,
+                              icon: const Icon(Icons.admin_panel_settings_outlined, size: 16),
+                              label: const Text('Manage roles'),
+                              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 38), padding: const EdgeInsets.symmetric(horizontal: 12)),
+                            ),
+                        ],
                       ),
                     ],
                   ],
