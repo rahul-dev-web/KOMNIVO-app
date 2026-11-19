@@ -254,12 +254,18 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
       return;
     }
     if (!mounted) return;
+    final allChannels = await KomnivoRepository.instance.channels(
+      communityId: _communityId,
+      includeArchivedChannels: true,
+      includeArchivedCategories: true,
+    );
+    if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => ChannelStudioScreen(
           communityId: _communityId,
           communityName: _community['name']?.toString() ?? 'Community',
-          channels: channels,
+          channels: allChannels.isEmpty ? channels : allChannels,
           canManagePermissions: _canManagePermissions,
         ),
       ),
@@ -267,8 +273,41 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     if (mounted) _reloadChannels();
   }
 
-  void _openChannel(Map<String, dynamic> channel) {
+  Future<void> _openChannel(Map<String, dynamic> channel) async {
     final kind = channel['kind']?.toString() ?? 'text';
+    var canModerate = false;
+    try {
+      final channelId = channel['id']?.toString() ?? '';
+      final eventId = channel['event_id']?.toString();
+      if (eventId != null && eventId.isNotEmpty) {
+        final checks = await Future.wait([
+          KomnivoRepository.instance.hasPermission(
+            permissionKey: 'event.manage',
+            scopeType: 'event',
+            scopeId: eventId,
+          ),
+          KomnivoRepository.instance.hasPermission(
+            permissionKey: 'event.matches.operate',
+            scopeType: 'event',
+            scopeId: eventId,
+          ),
+        ]);
+        canModerate = checks.any((value) => value);
+      } else {
+        final communityId = channel['community_id']?.toString();
+        if (communityId != null && channelId.isNotEmpty) {
+          canModerate = await KomnivoRepository.instance.hasPermission(
+            permissionKey: 'channel.manage_messages',
+            scopeType: 'community',
+            scopeId: communityId,
+            resourceId: channelId,
+          );
+        }
+      }
+    } catch (_) {
+      canModerate = false;
+    }
+    if (!mounted) return;
     final Widget page = kind == 'voice'
         ? VoiceRoomScreen(
             channelId: channel['id'] as String,
@@ -277,7 +316,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
         : kind == 'forum'
             ? ForumChannelScreen(
                 channel: channel,
-                canModerate: _canManageMembers,
+                canModerate: canModerate,
               )
             : ChatScreen(channel: channel);
     Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => page));
