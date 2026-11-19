@@ -121,6 +121,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       ];
     }
     _loadTextSettings();
+    _loadCategories();
     _posts = [
       {'title': 'Looking for two players for tonight', 'body': 'Need two reliable players for a squad. Share your role and availability.', 'tag': 'Recruitment', 'status': 'Open', 'author': 'RDX_Ace', 'replies': 8, 'time': '12 min ago'},
       {'title': 'Scrim schedule discussion', 'body': 'Can we agree on a practice window for this weekend?', 'tag': 'Scrims', 'status': 'In discussion', 'author': 'Nova', 'replies': 14, 'time': '38 min ago'},
@@ -417,11 +418,35 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     }
   }
 
-  void _moveCategory(int from, int to) {
+  Future<void> _loadCategories() async {
+    try {
+      final rows = await KomnivoRepository.instance.channelCategories(widget.communityId);
+      if (!mounted || rows.isEmpty) return;
+      setState(() {
+        _categories
+          ..clear()
+          ..addAll(rows.map((row) => <String, dynamic>{'id': row['id'], 'name': row['name']}));
+        _archived
+          ..clear()
+          ..addAll(rows.where((row) => row['archived_at'] != null).map((row) => row['id'].toString()));
+      });
+    } catch (_) {
+      // Keep the editor's starter layout when the community has no saved categories yet.
+    }
+  }
+
+  Future<void> _moveCategory(int from, int to) async {
     setState(() {
       final row = _categories.removeAt(from);
       _categories.insert(to, row);
     });
+    for (var index = 0; index < _categories.length; index++) {
+      final id = _categories[index]['id']?.toString() ?? '';
+      if (!id.startsWith('cat-')) {
+        try { await KomnivoRepository.instance.updateChannelCategory(categoryId: id, position: index); }
+        catch (error) { if (mounted) showMessage(context, 'Category order could not be saved: $error'); }
+      }
+    }
     _previewNotice();
   }
 
@@ -434,11 +459,20 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       ),
     );
     if (name == null || name.length < 2) return;
-    setState(() => _categories.add({
-      'id': 'cat-' + DateTime.now().microsecondsSinceEpoch.toString(),
-      'name': name,
-    }));
-    _previewNotice();
+    try {
+      if (!widget.communityId.contains('ui-test')) {
+        final created = await KomnivoRepository.instance.createChannelCategory(
+          communityId: widget.communityId, name: name, position: _categories.length,
+        );
+        if (!mounted) return;
+        setState(() => _categories.add({'id': created['id'], 'name': created['name']}));
+      } else {
+        setState(() => _categories.add({'id': 'cat-' + DateTime.now().microsecondsSinceEpoch.toString(), 'name': name}));
+      }
+      _previewNotice();
+    } catch (error) {
+      if (mounted) showMessage(context, 'Category creation failed: $error');
+    }
   }
 
   Future<void> _renameCategory(Map<String, dynamic> category) async {
@@ -451,8 +485,15 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       ),
     );
     if (name == null || name.length < 2) return;
-    setState(() => category['name'] = name);
-    _previewNotice();
+    try {
+      final id = category['id'].toString();
+      if (!id.startsWith('cat-')) await KomnivoRepository.instance.updateChannelCategory(categoryId: id, name: name);
+      if (!mounted) return;
+      setState(() => category['name'] = name);
+      _previewNotice();
+    } catch (error) {
+      if (mounted) showMessage(context, 'Category rename failed: $error');
+    }
   }
 
   Future<void> _archiveCategory(Map<String, dynamic> category) async {
@@ -470,8 +511,14 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       ),
     );
     if (approved != true) return;
-    setState(() { if (isArchived) { _archived.remove(id); } else { _archived.add(id); } });
-    _previewNotice();
+    try {
+      if (!id.startsWith('cat-')) await KomnivoRepository.instance.updateChannelCategory(categoryId: id, archived: !isArchived);
+      if (!mounted) return;
+      setState(() { if (isArchived) { _archived.remove(id); } else { _archived.add(id); } });
+      _previewNotice();
+    } catch (error) {
+      if (mounted) showMessage(context, 'Category archive action failed: $error');
+    }
   }
 
   Future<void> _createChannel({String? categoryId}) async {
