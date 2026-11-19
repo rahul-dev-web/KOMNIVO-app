@@ -527,13 +527,34 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       builder: (_) => _ChannelDraftDialog(categories: _categories, initialCategoryId: categoryId),
     );
     if (draft == null) return;
-    setState(() => _channels.add({
-      'id': 'ch-' + DateTime.now().microsecondsSinceEpoch.toString(),
-      'name': draft['name']!, 'description': draft['description'] ?? '',
-      'kind': draft['kind'] ?? 'text', 'category': draft['category'] ?? _categories.first['id'],
-      'private': draft['private'] == 'true', 'temporary': draft['temporary'] == 'true',
-    }));
-    _previewNotice();
+    try {
+      final selectedCategory = draft['category'] ?? categoryId ?? _categories.first['id'].toString();
+      if (!widget.communityId.contains('ui-test')) {
+        final created = await KomnivoRepository.instance.createCommunityChannel(
+          communityId: widget.communityId,
+          name: draft['name']!,
+          description: draft['description'] ?? '',
+          kind: draft['kind'] ?? 'text',
+          categoryId: selectedCategory,
+          isPrivate: draft['private'] == 'true',
+        );
+        if (!mounted) return;
+        setState(() => _channels.add({
+          ...created, 'category': created['category_id'] ?? selectedCategory,
+          'private': created['is_private'] == true, 'temporary': draft['temporary'] == 'true',
+        }));
+      } else {
+        setState(() => _channels.add({
+          'id': 'ch-' + DateTime.now().microsecondsSinceEpoch.toString(),
+          'name': draft['name']!, 'description': draft['description'] ?? '',
+          'kind': draft['kind'] ?? 'text', 'category': selectedCategory,
+          'private': draft['private'] == 'true', 'temporary': draft['temporary'] == 'true',
+        }));
+      }
+      _previewNotice();
+    } catch (error) {
+      if (mounted) showMessage(context, 'Channel creation failed: $error');
+    }
   }
 
   Future<void> _editChannel(Map<String, dynamic> channel) async {
@@ -542,16 +563,33 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       builder: (_) => _ChannelDraftDialog(categories: _categories, channel: channel),
     );
     if (draft == null) return;
-    setState(() {
-      channel
-        ..['name'] = draft['name']!
-        ..['description'] = draft['description'] ?? ''
-        ..['kind'] = draft['kind'] ?? 'text'
-        ..['category'] = draft['category'] ?? channel['category']
-        ..['private'] = draft['private'] == 'true'
-        ..['temporary'] = draft['temporary'] == 'true';
-    });
-    _previewNotice();
+    try {
+      final id = channel['id']?.toString() ?? '';
+      final nextCategory = draft['category'] ?? channel['category']?.toString();
+      if (id.isNotEmpty && !id.startsWith('ch-')) {
+        await KomnivoRepository.instance.updateCommunityChannel(
+          channelId: id,
+          name: draft['name']!,
+          description: draft['description'] ?? '',
+          kind: draft['kind'] ?? 'text',
+          categoryId: nextCategory,
+          isPrivate: draft['private'] == 'true',
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        channel
+          ..['name'] = draft['name']!
+          ..['description'] = draft['description'] ?? ''
+          ..['kind'] = draft['kind'] ?? 'text'
+          ..['category'] = nextCategory
+          ..['private'] = draft['private'] == 'true'
+          ..['temporary'] = draft['temporary'] == 'true';
+      });
+      _previewNotice();
+    } catch (error) {
+      if (mounted) showMessage(context, 'Channel update failed: $error');
+    }
   }
 
   Widget _permissionsTab() {
