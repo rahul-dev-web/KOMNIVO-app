@@ -337,6 +337,78 @@ class KomnivoRepository {
     }
   }
 
+
+  Future<List<Map<String, dynamic>>> forumPosts(String channelId) async {
+    final rows = await client.from('forum_posts').select()
+      .eq('channel_id', channelId).order('is_pinned', ascending: false)
+      .order('created_at', ascending: false).limit(100);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<Map<String, dynamic>> createForumPost({
+    required String channelId,
+    required String communityId,
+    required String title,
+    required String body,
+    required String tag,
+  }) async {
+    final row = await client.from('forum_posts').insert({
+      'channel_id': channelId, 'community_id': communityId, 'author_id': userId,
+      'title': title.trim(), 'body': body.trim(), 'tag': tag,
+    }).select().single();
+    return Map<String, dynamic>.from(row);
+  }
+
+  Future<void> moderateForumPost({
+    required String postId, required String status, bool? locked, bool? pinned,
+  }) async {
+    await client.rpc('set_forum_post_status', params: {
+      'p_post_id': postId, 'p_status': status, 'p_locked': locked, 'p_pinned': pinned,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> forumReplies(String postId) async {
+    final rows = await client.from('forum_post_replies').select()
+      .eq('post_id', postId).order('created_at');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> createForumReply(String postId, String body) async {
+    final text = body.trim();
+    if (text.isEmpty) throw Exception('Reply cannot be empty.');
+    await client.from('forum_post_replies').insert({
+      'post_id': postId, 'author_id': userId, 'body': text,
+    });
+  }
+
+  Future<Map<String, dynamic>> saveChannelSettings({
+    required String channelId, required String communityId,
+    required Map<String, dynamic> settings,
+  }) async {
+    final row = await client.from('channel_settings').upsert({
+      'channel_id': channelId, 'community_id': communityId,
+      ...settings, 'updated_by': userId,
+    }, onConflict: 'channel_id').select().single();
+    return Map<String, dynamic>.from(row);
+  }
+
+  Future<void> setCategoryCollapsed(String categoryId, bool collapsed) async {
+    await client.from('channel_category_preferences').upsert({
+      'category_id': categoryId, 'user_id': userId, 'is_collapsed': collapsed,
+    }, onConflict: 'category_id,user_id');
+  }
+
+  Future<Map<String, dynamic>> scheduleChannelAnnouncement({
+    required String channelId, required String communityId,
+    required String body, required DateTime publishAt,
+  }) async {
+    final row = await client.from('scheduled_channel_announcements').insert({
+      'channel_id': channelId, 'community_id': communityId, 'created_by': userId,
+      'body': body.trim(), 'publish_at': publishAt.toUtc().toIso8601String(),
+    }).select().single();
+    return Map<String, dynamic>.from(row);
+  }
+
   Stream<List<Map<String, dynamic>>> messageStream(String channelId) {
     return client.from('messages').stream(primaryKey: ['id']).eq('channel_id', channelId).order('created_at');
   }
