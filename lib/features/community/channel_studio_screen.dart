@@ -97,8 +97,6 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   bool _allowSpeakerRequests = true;
   bool _allowStageChat = false;
   bool _allowInvitedGuests = true;
-  bool _recomputeOnReschedule = true;
-  bool _recomputeOnRosterChange = true;
   bool _notifyOnLifecycle = true;
 
   @override
@@ -115,7 +113,11 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         ...row,
         'category': row['category_id']?.toString() ?? 'cat-community',
         'private': row['is_private'] == true,
-        'temporary': row['match_id'] != null,
+        'temporary': row['is_temporary'] == true || row['match_id'] != null,
+        'event_id': row['event_id'],
+        'stage_id': row['stage_id'],
+        'group_id': row['group_id'],
+        'match_id': row['match_id'],
       }).toList();
     } else {
       _channels = [
@@ -882,7 +884,8 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       ? _categories.where((row) =>
           row['event_id'] == null && row['stage_id'] == null && row['group_id'] == null
         ).map((row) => row['name'].toString()).toList()
-      : _channels.map((row) => row['name'].toString()).toList();
+      : _channels.where((row) => row['event_id'] == null)
+          .map((row) => row['name'].toString()).toList();
     final selected = _permissionScope == 'Category' ? _permissionCategory : _permissionChannel;
     final safeTarget = targets.contains(selected) ? selected : (targets.isEmpty ? '' : targets.first);
     return ListView(key: const ValueKey('batch3-permissions-list'), padding: const EdgeInsets.only(bottom: 28), children: [
@@ -1887,8 +1890,10 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Lock at match/stage start', style: TextStyle(fontSize: 11)), subtitle: const Text('Stops new conversation while existing records remain visible.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)), value: _lockAtStart, onChanged: (value) => setState(() => _lockAtStart = value)),
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Archive after completion', style: TextStyle(fontSize: 11)), value: _archiveOnComplete, onChanged: (value) => setState(() => _archiveOnComplete = value)),
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Apply only to temporary event channels', style: TextStyle(fontSize: 11)), value: _temporaryOnly, onChanged: (value) => setState(() => _temporaryOnly = value)),
-        SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Recompute access after a reschedule', style: TextStyle(fontSize: 11)), subtitle: const Text('Invalidate old time/scope context and refresh assigned access.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)), value: _recomputeOnReschedule, onChanged: (value) => setState(() => _recomputeOnReschedule = value)),
-        SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Recompute access after roster changes', style: TextStyle(fontSize: 11)), value: _recomputeOnRosterChange, onChanged: (value) => setState(() => _recomputeOnRosterChange = value)),
+        const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Text('Audience access is resolved against current event, stage, group and match assignments on each request. No cached channel membership is used as the source of truth.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.4)),
+        ),
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Notify affected participants', style: TextStyle(fontSize: 11)), value: _notifyOnLifecycle, onChanged: (value) => setState(() => _notifyOnLifecycle = value)),
         const Divider(height: 1),
         SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Preserve official match records', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)), subtitle: const Text('Match IDs, participants, results and standings are not channel data.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)), value: _preserveRecords, onChanged: null),
