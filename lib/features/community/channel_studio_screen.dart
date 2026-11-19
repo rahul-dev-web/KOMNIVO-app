@@ -1093,7 +1093,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       _pins = settings['allow_pins'] != false;
       _history = settings['keep_history'] != false;
       _restrictBroadMentions = settings['allow_everyone_mention'] != true;
-      _mentionPolicy = settings['allow_user_mentions'] == true
+      _mentionPolicy = settings['allow_user_mentions'] != false
         ? 'Members and roles'
         : settings['allow_role_mentions'] == true ? 'Role mentions only' : 'No broad mentions';
     });
