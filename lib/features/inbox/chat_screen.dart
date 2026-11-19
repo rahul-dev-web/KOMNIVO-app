@@ -169,18 +169,21 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 _ThreadComposer(
                   enabled: !_readOnly,
-                  onPreview: (text) {
-                    setSheetState(() {
-                      draftReplies.add({
-                        'body': text,
-                        'sender_id': _userId,
+                  onPreview: (text) async {
+                    try {
+                      final messageId = await KomnivoRepository.instance.sendMessage(
+                        _channelId, text, parentMessageId: rootId,
+                      );
+                      final reply = <String, dynamic>{
+                        'id': messageId, 'body': text, 'sender_id': _userId,
+                        'parent_message_id': rootId,
                         'created_at': DateTime.now().toIso8601String(),
-                      });
-                    });
-                    if (mounted) {
-                      setState(() {
-                        _threadDraftReplies[rootId] = List<Map<String, dynamic>>.from(draftReplies);
-                      });
+                      };
+                      if (!mounted) return;
+                      setSheetState(() => replies.add(reply));
+                      setState(() => _latestMessages.add(reply));
+                    } catch (error) {
+                      if (mounted) showMessage(context, 'Thread reply failed: $error');
                     }
                   },
                 ),
