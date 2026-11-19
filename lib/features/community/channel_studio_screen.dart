@@ -9,11 +9,13 @@ class ChannelStudioScreen extends StatefulWidget {
     required this.communityId,
     required this.communityName,
     this.channels = const [],
+    this.canManagePermissions = false,
   });
 
   final String communityId;
   final String communityName;
   final List<Map<String, dynamic>> channels;
+  final bool canManagePermissions;
 
   @override
   State<ChannelStudioScreen> createState() => _ChannelStudioScreenState();
@@ -458,7 +460,24 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     final selected = _permissionScope == 'Category' ? _permissionCategory : _permissionChannel;
     final safeTarget = targets.contains(selected) ? selected : (targets.isEmpty ? '' : targets.first);
     return ListView(padding: const EdgeInsets.only(bottom: 28), children: [
-      _section('Permission inheritance', 'Choose a role and target, then set Inherit, Allow or Deny for each action.'),
+      _section(
+        'Permission inheritance',
+        widget.canManagePermissions
+          ? 'Choose a role and target, then set Inherit, Allow or Deny for each action.'
+          : 'Preview category and channel settings. Permission changes are restricted to users with permission-delegation authority.',
+      ),
+      if (!widget.canManagePermissions)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+          child: _surface(
+            color: KomnivoTheme.surfaceRaised,
+            child: const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.lock_outline, color: KomnivoTheme.cyan, size: 16),
+              SizedBox(width: 8),
+              Expanded(child: Text('Preview only · Your role can manage channel structure but cannot delegate permission grants. Ask the Community Owner to change these settings.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.4))),
+            ]),
+          ),
+        ),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: _surface(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('ROLE', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
         const SizedBox(height: 6),
@@ -489,7 +508,11 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         ),
         if (_permissionScope == 'Channel') ...[
           const SizedBox(height: 10),
-          OutlinedButton.icon(onPressed: _syncWithCategory, icon: const Icon(Icons.sync, size: 16), label: const Text('Sync with category')),
+          OutlinedButton.icon(
+            onPressed: widget.canManagePermissions ? _syncWithCategory : null,
+            icon: const Icon(Icons.sync, size: 16),
+            label: const Text('Sync with category'),
+          ),
         ],
       ]))),
       _section('Permission states', 'A channel inherits the category value unless a channel override is set.'),
@@ -513,7 +536,9 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
                 ButtonSegment(value: 'Deny', label: Text('Deny')),
               ],
               selected: {state},
-              onSelectionChanged: (value) => setState(() => _permissionStates[stateKey] = value.first),
+              onSelectionChanged: widget.canManagePermissions
+                ? (value) => setState(() => _permissionStates[stateKey] = value.first)
+                : null,
             ),
           ]),
         );
