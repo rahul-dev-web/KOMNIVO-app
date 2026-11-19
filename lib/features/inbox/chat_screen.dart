@@ -299,7 +299,7 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
     try {
-      final pollId = await KomnivoRepository.instance.createChannelPoll(
+      await KomnivoRepository.instance.createChannelPoll(
         channelId: _channelId,
         communityId: communityId,
         question: result['question']!,
@@ -359,7 +359,7 @@ class _ChatScreenState extends State<ChatScreen> {
       publishAt = DateTime(now.year, now.month, now.day + 1, 17, 30);
     }
     try {
-      final queued = await KomnivoRepository.instance.scheduleChannelAnnouncement(
+      await KomnivoRepository.instance.scheduleChannelAnnouncement(
         channelId: _channelId,
         communityId: communityId,
         body: '${result['title']}: ${result['body']}',
@@ -500,31 +500,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<bool> _resolveCanManageMessages() async {
-    final eventId = widget.channel['event_id']?.toString();
-    if (eventId != null && eventId.isNotEmpty) {
-      final values = await Future.wait([
-        KomnivoRepository.instance.hasPermission(
-          permissionKey: 'event.manage',
-          scopeType: 'event',
-          scopeId: eventId,
-        ),
-        KomnivoRepository.instance.hasPermission(
-          permissionKey: 'event.matches.operate',
-          scopeType: 'event',
-          scopeId: eventId,
-        ),
-      ]);
-      return values.any((value) => value);
-    }
-    final communityId = widget.channel['community_id']?.toString();
-    if (communityId == null || communityId.isEmpty) return false;
-    return KomnivoRepository.instance.hasPermission(
-      permissionKey: 'channel.manage_messages',
-      scopeType: 'community',
-      scopeId: communityId,
-      resourceId: _channelId,
-    );
+  Future<bool> _resolveCanManageMessages() {
+    return KomnivoRepository.instance.canManageChannelMessages(_channelId);
   }
 
   Future<void> _loadPolls() async {
@@ -659,18 +636,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               onChanged: (_) => setState(() {}),
             ),
-          ),
-        if (_readOnly)
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: KomnivoTheme.surfaceRaised, borderRadius: BorderRadius.circular(11), border: Border.all(color: KomnivoTheme.line)),
-            child: const Row(children: [
-              Icon(Icons.lock_outline, color: KomnivoTheme.cyan, size: 16),
-              SizedBox(width: 8),
-              Expanded(child: Text('Read-only channel · only authorised publishers can post.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))),
-            ]),
           ),
         if (_pollPreviews.isNotEmpty || _scheduledPreviews.isNotEmpty || _pinnedMessageIds.isNotEmpty)
           SizedBox(
