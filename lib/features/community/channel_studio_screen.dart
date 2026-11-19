@@ -754,7 +754,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           name: draft['name']!,
           description: draft['description'] ?? '',
           kind: draft['kind'] ?? 'text',
-          categoryId: selectedCategory,
+          categoryId: selectedCategory.startsWith('cat-') ? null : selectedCategory,
           isPrivate: draft['private'] == 'true',
         );
         if (!mounted) return;
@@ -791,7 +791,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           name: draft['name']!,
           description: draft['description'] ?? '',
           kind: draft['kind'] ?? 'text',
-          categoryId: nextCategory,
+          categoryId: nextCategory != null && !nextCategory.startsWith('cat-') ? nextCategory : null,
           isPrivate: draft['private'] == 'true',
         );
       }
