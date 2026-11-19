@@ -1601,68 +1601,134 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   );
 
   String _scopeTargetLabel(String scope) {
+    String labelFor(List<Map<String, dynamic>> rows, String? id, String field) {
+      final matches = rows.where((row) => row['id']?.toString() == id).toList();
+      return matches.isEmpty ? 'Not selected' : matches.first[field]?.toString() ?? 'Selected';
+    }
     switch (scope) {
-      case 'Stage': return _stageContext;
-      case 'Group': return _stageContext + ' · ' + _groupContext;
-      case 'Match': return _stageContext + ' · ' + _groupContext + ' · ' + _matchContext;
-      default: return 'Entire event';
+      case 'Stage': return labelFor(_stageOptions, _selectedStageId, 'name');
+      case 'Group': return labelFor(_stageOptions, _selectedStageId, 'name') + ' · ' + labelFor(_groupOptions, _selectedGroupId, 'label');
+      case 'Match': return labelFor(_stageOptions, _selectedStageId, 'name') + ' · ' + labelFor(_groupOptions, _selectedGroupId, 'label') + ' · ' + labelFor(_matchOptions, _selectedMatchId, 'match_code');
+      default: return _eventContext;
     }
   }
 
   Widget _scopeContextSelector(String scope) {
+    if (_eventOptions.isEmpty) {
+      final previewFields = <Widget>[];
+      if (scope != 'Event') {
+        previewFields.add(DropdownButtonFormField<String>(
+          isExpanded: true,
+          value: _stageContext,
+          decoration: const InputDecoration(labelText: 'Stage'),
+          items: const [
+            DropdownMenuItem(value: 'Configured stage', child: Text('Select configured stage')),
+            DropdownMenuItem(value: 'Qualifier stage', child: Text('Qualifier stage · preview')),
+            DropdownMenuItem(value: 'Final stage', child: Text('Final stage · preview')),
+          ],
+          onChanged: (value) => setState(() { _stageContext = value ?? _stageContext; _generatedPreview = false; }),
+        ));
+      }
+      if (scope == 'Group' || scope == 'Match') {
+        previewFields.add(const SizedBox(height: 10));
+        previewFields.add(DropdownButtonFormField<String>(
+          isExpanded: true,
+          value: _groupContext,
+          decoration: const InputDecoration(labelText: 'Group'),
+          items: const [
+            DropdownMenuItem(value: 'Configured group', child: Text('Select configured group')),
+            DropdownMenuItem(value: 'Group A', child: Text('Group A · preview')),
+            DropdownMenuItem(value: 'Group B', child: Text('Group B · preview')),
+          ],
+          onChanged: (value) => setState(() { _groupContext = value ?? _groupContext; _generatedPreview = false; }),
+        ));
+      }
+      if (scope == 'Match') {
+        previewFields.add(const SizedBox(height: 10));
+        previewFields.add(DropdownButtonFormField<String>(
+          isExpanded: true,
+          value: _matchContext,
+          decoration: const InputDecoration(labelText: 'Scheduled match'),
+          items: const [
+            DropdownMenuItem(value: 'Selected match', child: Text('Select scheduled match')),
+            DropdownMenuItem(value: 'Match 01', child: Text('Match 01 · preview')),
+            DropdownMenuItem(value: 'Match 02', child: Text('Match 02 · preview')),
+          ],
+          onChanged: (value) => setState(() { _matchContext = value ?? _matchContext; _generatedPreview = false; }),
+        ));
+      }
+      if (previewFields.isEmpty) {
+        return const Row(children: [
+          Icon(Icons.public, color: KomnivoTheme.cyan, size: 18),
+          SizedBox(width: 8),
+          Expanded(child: Text('Event-wide template · select a real event to publish.', style: TextStyle(fontSize: 10, color: KomnivoTheme.muted))),
+        ]);
+      }
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ...previewFields,
+        const SizedBox(height: 8),
+        const Text('Preview only · real templates are created from saved event records.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+      ]);
+    }
+
     final fields = <Widget>[];
     if (scope != 'Event') {
       fields.add(DropdownButtonFormField<String>(
-          isExpanded: true,
-        value: _stageContext,
+        isExpanded: true,
+        value: _selectedStageId,
         decoration: const InputDecoration(labelText: 'Stage'),
-        items: const [
-          DropdownMenuItem(value: 'Configured stage', child: Text('Select configured stage')),
-          DropdownMenuItem(value: 'Qualifier stage', child: Text('Qualifier stage · preview')),
-          DropdownMenuItem(value: 'Final stage', child: Text('Final stage · preview')),
-        ],
-        onChanged: (value) => setState(() { _stageContext = value ?? _stageContext; _generatedPreview = false; }),
+        items: _stageOptions.map((row) => DropdownMenuItem(
+          value: row['id'].toString(),
+          child: Text(row['name'].toString(), overflow: TextOverflow.ellipsis),
+        )).toList(),
+        onChanged: (value) {
+          if (value == null) return;
+          setState(() { _selectedStageId = value; _generatedPreview = false; });
+          _loadGroupsForStage(value);
+        },
       ));
     }
     if (scope == 'Group' || scope == 'Match') {
       fields.add(const SizedBox(height: 10));
       fields.add(DropdownButtonFormField<String>(
-          isExpanded: true,
-        value: _groupContext,
+        isExpanded: true,
+        value: _selectedGroupId,
         decoration: const InputDecoration(labelText: 'Group'),
-        items: const [
-          DropdownMenuItem(value: 'Configured group', child: Text('Select configured group')),
-          DropdownMenuItem(value: 'Group A', child: Text('Group A · preview')),
-          DropdownMenuItem(value: 'Group B', child: Text('Group B · preview')),
-        ],
-        onChanged: (value) => setState(() { _groupContext = value ?? _groupContext; _generatedPreview = false; }),
+        items: _groupOptions.map((row) => DropdownMenuItem(
+          value: row['id'].toString(),
+          child: Text(row['label'].toString()),
+        )).toList(),
+        onChanged: (value) {
+          if (value == null) return;
+          setState(() { _selectedGroupId = value; _generatedPreview = false; });
+          _loadMatchesForGroup(value);
+        },
       ));
     }
     if (scope == 'Match') {
       fields.add(const SizedBox(height: 10));
       fields.add(DropdownButtonFormField<String>(
-          isExpanded: true,
-        value: _matchContext,
+        isExpanded: true,
+        value: _selectedMatchId,
         decoration: const InputDecoration(labelText: 'Scheduled match'),
-        items: const [
-          DropdownMenuItem(value: 'Selected match', child: Text('Select scheduled match')),
-          DropdownMenuItem(value: 'Match 01', child: Text('Match 01 · preview')),
-          DropdownMenuItem(value: 'Match 02', child: Text('Match 02 · preview')),
-        ],
-        onChanged: (value) => setState(() { _matchContext = value ?? _matchContext; _generatedPreview = false; }),
+        items: _matchOptions.map((row) => DropdownMenuItem(
+          value: row['id'].toString(),
+          child: Text(row['match_code']?.toString() ?? 'Match ${row['match_number']} · ${row['status']}'),
+        )).toList(),
+        onChanged: (value) => setState(() { _selectedMatchId = value; _generatedPreview = false; }),
       ));
     }
     if (fields.isEmpty) {
-      return const Row(children: [
-        Icon(Icons.public, color: KomnivoTheme.cyan, size: 18),
-        SizedBox(width: 8),
-        Expanded(child: Text('Event-wide template · access is limited to the selected event audience.', style: TextStyle(fontSize: 10, color: KomnivoTheme.muted))),
+      return Row(children: [
+        const Icon(Icons.public, color: KomnivoTheme.cyan, size: 18),
+        const SizedBox(width: 8),
+        Expanded(child: Text('Event-wide template · $_eventContext', style: const TextStyle(fontSize: 10, color: KomnivoTheme.muted))),
       ]);
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       ...fields,
       const SizedBox(height: 8),
-      const Text('Selection is a local preview; real scope IDs are chosen from approved event records.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+      const Text('Targets are actual event, stage, group and match records. Channel membership never replaces structured tournament records.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
     ]);
   }
 
