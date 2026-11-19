@@ -468,9 +468,22 @@ class _PreviewPanelState extends State<_PreviewPanel> {
   ]);
 }
 
+class EventStaffManagementScreen extends StatelessWidget {
+  const EventStaffManagementScreen({super.key, required this.eventId, required this.eventName});
+  final String eventId;
+  final String eventName;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text('Event staff · $eventName')),
+    body: _EventStaffPanel(communityId: null, eventId: eventId, labels: _RoleManagementScreenState.staffRoles),
+  );
+}
+
 class _EventStaffPanel extends StatefulWidget {
-  const _EventStaffPanel({required this.communityId, required this.labels});
-  final String communityId;
+  const _EventStaffPanel({required this.communityId, this.eventId, required this.labels});
+  final String? communityId;
+  final String? eventId;
   final Map<String, String> labels;
   @override
   State<_EventStaffPanel> createState() => _EventStaffPanelState();
@@ -484,13 +497,17 @@ class _EventStaffPanelState extends State<_EventStaffPanel> {
   String? _eventId, _scopeId;
   String _role = 'match_operator', _scope = 'event';
   bool _busy = false;
+  bool _canAssign = false;
 
   @override
   void initState() { super.initState(); _initial = _loadEvents(); }
 
   Future<void> _loadEvents() async {
-    final rows = await _db.from('events').select('id,name,status')
-        .eq('community_id', widget.communityId).order('starts_at', ascending: false);
+    final rows = widget.eventId != null
+        ? await _db.from('events').select('id,name,status')
+            .eq('id', widget.eventId!).order('starts_at', ascending: false)
+        : await _db.from('events').select('id,name,status')
+            .eq('community_id', widget.communityId!).order('starts_at', ascending: false);
     _events = List<Map<String, dynamic>>.from(rows);
     if (_events.isNotEmpty) {
       _eventId ??= _events.first['id'].toString();
@@ -511,6 +528,10 @@ class _EventStaffPanelState extends State<_EventStaffPanel> {
     _matches = List<Map<String, dynamic>>.from(values[1] as List);
     _assignments = List<Map<String, dynamic>>.from(values[2] as List);
     _catalog = List<Map<String, dynamic>>.from(values[3] as List);
+    _canAssign = await _db.rpc('has_permission', params: {
+      'p_permission_key': 'event.staff.assign', 'p_scope_type': 'event',
+      'p_scope_id': _eventId, 'p_related_id': null, 'p_resource_id': null,
+    }) == true;
     final roundIds = _rounds.map((r) => r['id'].toString()).toList();
     _groups = roundIds.isEmpty ? [] : List<Map<String, dynamic>>.from(await _db
       .from('event_groups').select('id,label,round_id').inFilter('round_id', roundIds));
@@ -584,11 +605,12 @@ class _EventStaffPanelState extends State<_EventStaffPanel> {
           items: _events.map((e) => DropdownMenuItem(value: e['id'].toString(), child: Text(e['name'].toString()))).toList(),
           onChanged: (v) async { setState(() { _eventId = v; _scopeId = null; }); await _refreshEvent(); }),
         const SizedBox(height: 8),
-        TextField(controller: _username, decoration: const InputDecoration(labelText: 'KOMNIVO username', prefixIcon: Icon(Icons.person_search_outlined))),
+        if (!_canAssign) const _InfoBox(title: 'Read-only staff view', body: 'Your current event role does not include staff assignment. An event organiser or authorised Tournament Director/Competition Manager must assign staff.'),
+        TextField(enabled: _canAssign, controller: _username, decoration: const InputDecoration(labelText: 'KOMNIVO username', prefixIcon: Icon(Icons.person_search_outlined))),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(value: _role, decoration: const InputDecoration(labelText: 'Staff role'),
           items: widget.labels.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
-          onChanged: (v) => setState(() => _role = v ?? _role)),
+          onChanged: !_canAssign ? null : (v) => setState(() => _role = v ?? _role)),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(value: _scope, decoration: const InputDecoration(labelText: 'Scope'),
           items: const [
@@ -597,7 +619,7 @@ class _EventStaffPanelState extends State<_EventStaffPanel> {
             DropdownMenuItem(value: 'group', child: Text('Group')),
             DropdownMenuItem(value: 'match', child: Text('Single match')),
           ],
-          onChanged: (v) async { setState(() { _scope = v ?? 'event'; _scopeId = null; }); await _refreshEvent(); }),
+          onChanged: !_canAssign ? null : (v) async { setState(() { _scope = v ?? 'event'; _scopeId = null; }); await _refreshEvent(); }),
         if (_scope != 'event') ...[
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(value: _scopeId, decoration: InputDecoration(labelText: _scope),
@@ -605,7 +627,7 @@ class _EventStaffPanelState extends State<_EventStaffPanel> {
             onChanged: (v) => setState(() => _scopeId = v)),
         ],
         const SizedBox(height: 10),
-        FilledButton.icon(onPressed: _busy ? null : _assign,
+        FilledButton.icon(onPressed: _busy || !_canAssign ? null : _assign,
           icon: _busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.person_add_alt_1),
           label: const Text('Assign staff')),
         const SizedBox(height: 16),
@@ -626,7 +648,7 @@ class _EventStaffPanelState extends State<_EventStaffPanel> {
           final scopeId = r['match_id'] ?? r['group_id'] ?? r['stage_id'];
           return Card(child: ListTile(dense: true, title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
             subtitle: Text('${widget.labels[r['role_key']] ?? r['role_key']} · ${r['scope_type']}${scopeId == null ? '' : ' · $scopeId'}', style: const TextStyle(fontSize: 9)),
-            trailing: IconButton(onPressed: _busy ? null : () => _remove(r), icon: const Icon(Icons.person_remove_alt_1_outlined))));
+            trailing: IconButton(onPressed: _busy || !_canAssign ? null : () => _remove(r), icon: const Icon(Icons.person_remove_alt_1_outlined))));
         }),
         const _InfoBox(title: 'Scope boundaries', body: 'Community role access does not become event operational access. Server-side assignment and hierarchy guards remain authoritative.'),
       ]);
