@@ -30,6 +30,24 @@ abstract class CommunityOperationsDataSource {
   Future<Set<String>> loadPermissions(String communityId);
   Future<CommunityDirectoryData> loadDirectory(String communityId);
   Future<CommunityIdentityData> loadIdentity(String communityId);
+  Future<Map<String, dynamic>> loadOnboardingData(String communityId);
+  Future<void> saveOnboardingConfiguration(
+    String communityId,
+    List<Map<String, dynamic>> questions,
+  );
+  Future<void> submitOnboardingAnswers(
+    String communityId,
+    Map<String, dynamic> answers,
+  );
+  Future<List<Map<String, dynamic>>> loadChannelRecommendations(
+    String communityId,
+  );
+  Future<void> saveChannelOnboardingTags(
+    String communityId,
+    String channelId,
+    List<String> topics,
+    List<String> gameModes,
+  );
   Future<List<Map<String, dynamic>>> loadInvites(String communityId);
   Future<List<Map<String, dynamic>>> loadReports(String communityId);
   Future<List<Map<String, dynamic>>> loadChannelPolicies(String communityId);
@@ -84,79 +102,16 @@ class SupabaseCommunityOperationsDataSource
 
   @override
   Future<CommunityDirectoryData> loadDirectory(String communityId) async {
-    final base = List<Map<String, dynamic>>.from(
-      await _db.from('community_members').select(
-        'user_id,role,joined_at,muted_until,profiles(display_name,username,avatar_url,is_public)',
-      ).eq('community_id', communityId).order('joined_at', ascending: false).limit(500),
+    final rows = await _db.rpc(
+      'get_community_member_directory',
+      params: {'p_community_id': communityId},
     );
-    if (base.isEmpty) return const CommunityDirectoryData(members: []);
-    final ids = base.map((row) => row['user_id'].toString()).toSet().toList();
-
-    final roleRows = await _optionalRows(
-      _db.from('community_member_roles')
-          .select('user_id,community_roles(name,preset_key,colour)')
-          .eq('community_id', communityId).inFilter('user_id', ids),
-    );
-    final accounts = await _optionalRows(
-      _db.from('game_accounts')
-          .select('user_id,ownership_status')
-          .inFilter('user_id', ids),
-    );
-    final captains = await _optionalRows(
-      _db.from('team_members').select('user_id,role')
-          .inFilter('user_id', ids).inFilter('role', ['owner', 'captain']),
-    );
-    final events = await _optionalRows(
-      _db.from('events').select('id').eq('community_id', communityId),
-    );
-    final eventIds = events.map((row) => row['id'].toString()).toList();
-    var participantIds = <String>{};
-    var staffIds = <String>{};
-    if (eventIds.isNotEmpty) {
-      final registrations = await _optionalRows(
-        _db.from('event_registrations').select('id').inFilter('event_id', eventIds),
-      );
-      final registrationIds =
-          registrations.map((row) => row['id'].toString()).toList();
-      if (registrationIds.isNotEmpty) {
-        final players = await _optionalRows(
-          _db.from('registration_players').select('user_id')
-              .inFilter('registration_id', registrationIds),
-        );
-        participantIds = players.map((row) => row['user_id'].toString()).toSet();
-      }
-      final staff = await _optionalRows(
-        _db.from('event_staff_assignments').select('user_id')
-            .inFilter('event_id', eventIds),
-      );
-      staffIds = staff.map((row) => row['user_id'].toString()).toSet();
+    if (rows is! List) {
+      throw Exception('The member directory returned an invalid response.');
     }
-
-    final rolesByUser = <String, List<Map<String, dynamic>>>{};
-    for (final row in roleRows) {
-      final role = row['community_roles'];
-      if (role is! Map) continue;
-      rolesByUser.putIfAbsent(row['user_id'].toString(), () => [])
-          .add(Map<String, dynamic>.from(role));
-    }
-    final accountsByUser = <String, List<Map<String, dynamic>>>{};
-    for (final row in accounts) {
-      accountsByUser.putIfAbsent(row['user_id'].toString(), () => []).add(row);
-    }
-    final captainIds = captains.map((row) => row['user_id'].toString()).toSet();
-
-    final enriched = base.map((row) {
-      final userId = row['user_id'].toString();
-      return <String, dynamic>{
-        ...row,
-        '_community_roles': rolesByUser[userId] ?? [],
-        '_game_accounts': accountsByUser[userId] ?? [],
-        '_is_team_captain': captainIds.contains(userId),
-        '_is_event_participant': participantIds.contains(userId),
-        '_is_event_staff': staffIds.contains(userId),
-      };
-    }).toList();
-    return CommunityDirectoryData(members: enriched);
+    return CommunityDirectoryData(
+      members: List<Map<String, dynamic>>.from(rows),
+    );
   }
 
   @override
@@ -184,6 +139,82 @@ class SupabaseCommunityOperationsDataSource
   }
 
   @override
+  Future<Map<String, dynamic>> loadOnboardingData(String communityId) async {
+    final result = await _db.rpc(
+      'get_community_onboarding_data',
+      params: {'p_community_id': communityId},
+    );
+    if (result is! Map) {
+      throw Exception('Onboarding data returned an invalid response.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
+  @override
+  Future<void> saveOnboardingConfiguration(
+    String communityId,
+    List<Map<String, dynamic>> questions,
+  ) async {
+    await _db.rpc(
+      'save_community_onboarding_configuration',
+      params: {
+        'p_community_id': communityId,
+        'p_questions': questions,
+      },
+    );
+  }
+
+  @override
+  Future<void> submitOnboardingAnswers(
+    String communityId,
+    Map<String, dynamic> answers,
+  ) async {
+    await _db.rpc(
+      'submit_community_onboarding_answers',
+      params: {
+        'p_community_id': communityId,
+        'p_answers': answers,
+      },
+    );
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> loadChannelRecommendations(
+    String communityId,
+  ) async {
+    final rows = await _db.rpc(
+      'get_community_channel_recommendations',
+      params: {'p_community_id': communityId},
+    );
+    if (rows is! List) {
+      throw Exception('Channel recommendations returned an invalid response.');
+    }
+    return List<Map<String, dynamic>>.from(rows).map((row) {
+      final channel = Map<String, dynamic>.from(row);
+      channel['id'] = channel['channel_id'];
+      return channel;
+    }).toList();
+  }
+
+  @override
+  Future<void> saveChannelOnboardingTags(
+    String communityId,
+    String channelId,
+    List<String> topics,
+    List<String> gameModes,
+  ) async {
+    await _db.rpc(
+      'save_community_channel_onboarding_tags',
+      params: {
+        'p_community_id': communityId,
+        'p_channel_id': channelId,
+        'p_topics': topics,
+        'p_game_modes': gameModes,
+      },
+    );
+  }
+
+  @override
   Future<List<Map<String, dynamic>>> loadInvites(String communityId) async =>
       List<Map<String, dynamic>>.from(await _db.from('community_invites')
           .select('id,created_by,expires_at,max_uses,uses,created_at')
@@ -200,7 +231,7 @@ class SupabaseCommunityOperationsDataSource
   @override
   Future<List<Map<String, dynamic>>> loadChannelPolicies(String communityId) async {
     final channels = List<Map<String, dynamic>>.from(await _db.from('channels')
-        .select('id,name,kind,archived_at').eq('community_id', communityId)
+        .select('id,name,kind,archived_at,event_id,onboarding_topics,onboarding_game_modes').eq('community_id', communityId)
         .isFilter('archived_at', null).order('name'));
     if (channels.isEmpty) return [];
     final ids = channels.map((row) => row['id'].toString()).toList();
