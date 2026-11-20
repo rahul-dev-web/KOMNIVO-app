@@ -785,7 +785,14 @@ class _OnboardingTabState extends State<_OnboardingTab> {
     const SizedBox(height: 10),
     FilledButton.icon(onPressed: () => setState(() => _draftReady = true),
       icon: const Icon(Icons.tune_rounded), label: const Text('Review onboarding configuration')),
-    if (_draftReady) const _WritePendingNote(text: 'Configuration is ready for review. It has not been saved; onboarding schema and server validation are part of the Batch 4 backend.'),
+    if (_draftReady) ...[
+      _OnboardingConfigurationReviewCard(
+        enabled: _enabled,
+        requiredQuestions: _required,
+        onEdit: () => setState(() => _draftReady = false),
+      ),
+      const _WritePendingNote(text: 'Configuration is ready for review. It has not been saved; onboarding schema and server validation are part of the Batch 4 backend.'),
+    ],
   ]);
 
   String _description(String question) => switch (question) {
@@ -839,6 +846,13 @@ class _OnboardingTabState extends State<_OnboardingTab> {
       icon: const Icon(Icons.check_circle_outline), label: const Text('Review my answers'),
     ),
     if (_draftReady) ...[
+      _MemberOnboardingReviewCard(
+        gameMode: _gameMode,
+        region: _region.text.trim(),
+        interests: _interests.toList(),
+        activities: _activities.toList(),
+        onEdit: () => setState(() => _draftReady = false),
+      ),
       const _WritePendingNote(text: 'Your answers are ready for review but have not been submitted. The onboarding answer endpoint will be connected with the Batch 4 backend.'),
       const SizedBox(height: 12),
       _OnboardingChannelRecommendations(
@@ -858,6 +872,92 @@ class _OnboardingTabState extends State<_OnboardingTab> {
     if (_enabled['Preferred activities'] == true && _required['Preferred activities'] == true && _activities.isEmpty) return false;
     return true;
   }
+}
+
+class _OnboardingConfigurationReviewCard extends StatelessWidget {
+  const _OnboardingConfigurationReviewCard({
+    required this.enabled,
+    required this.requiredQuestions,
+    required this.onEdit,
+  });
+  final Map<String, bool> enabled;
+  final Map<String, bool> requiredQuestions;
+  final VoidCallback onEdit;
+  @override
+  Widget build(BuildContext context) {
+    final active = enabled.entries.where((entry) => entry.value).toList();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(11),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Row(children: [
+            Icon(Icons.fact_check_outlined, color: KomnivoTheme.cyan, size: 17),
+            SizedBox(width: 7),
+            Expanded(child: Text('Onboarding configuration review', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900))),
+            _StatusTag(label: 'UNSAVED', tone: _TagTone.warning),
+          ]),
+          const SizedBox(height: 8),
+          ...active.map((entry) => _DetailRow(
+            label: entry.key,
+            value: requiredQuestions[entry.key] == true ? 'Enabled · Required' : 'Enabled · Optional',
+          )),
+          _DetailRow(label: 'Disabled questions', value: enabled.entries.where((entry) => !entry.value).map((entry) => entry.key).join(', ').isEmpty
+              ? 'None'
+              : enabled.entries.where((entry) => !entry.value).map((entry) => entry.key).join(', ')),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_outlined, size: 14),
+              label: const Text('Edit questions'),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _MemberOnboardingReviewCard extends StatelessWidget {
+  const _MemberOnboardingReviewCard({
+    required this.gameMode,
+    required this.region,
+    required this.interests,
+    required this.activities,
+    required this.onEdit,
+  });
+  final String? gameMode;
+  final String region;
+  final List<String> interests;
+  final List<String> activities;
+  final VoidCallback onEdit;
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(11),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.fact_check_outlined, color: KomnivoTheme.cyan, size: 17),
+          SizedBox(width: 7),
+          Expanded(child: Text('Your answer review', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900))),
+          _StatusTag(label: 'NOT SUBMITTED', tone: _TagTone.warning),
+        ]),
+        const SizedBox(height: 8),
+        _DetailRow(label: 'Game mode', value: gameMode ?? 'Not selected'),
+        _DetailRow(label: 'Region', value: region.isEmpty ? 'Not provided' : region),
+        _DetailRow(label: 'Interests', value: interests.isEmpty ? 'None selected' : interests.join(', ')),
+        _DetailRow(label: 'Activities', value: activities.isEmpty ? 'None selected' : activities.join(', ')),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined, size: 14),
+            label: const Text('Edit answers'),
+          ),
+        ),
+      ]),
+    ),
+  );
 }
 
 class _OnboardingChannelRecommendations extends StatelessWidget {
