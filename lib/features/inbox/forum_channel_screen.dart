@@ -41,14 +41,20 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
   Future<void> _loadPosts() async {
     try {
       final rows = await KomnivoRepository.instance.forumPosts(widget.channel['id'].toString());
-      final mapped = rows.map((row) => <String, dynamic>{
-        ...row,
-        'author': row['author_id']?.toString() == KomnivoRepository.instance.userId
-            ? 'You' : 'Member',
-        'replies': 0,
-        'time': _timeLabel(row['created_at']?.toString()),
-        'pinned': row['is_pinned'] == true,
-        'locked': row['is_locked'] == true,
+      final postIds = rows.map((row) => row['id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty).toList();
+      final replyCounts = await KomnivoRepository.instance.forumPostReplyCounts(postIds);
+      final mapped = rows.map((row) {
+        final id = row['id']?.toString() ?? '';
+        return <String, dynamic>{
+          ...row,
+          'author': row['author_id']?.toString() == KomnivoRepository.instance.userId
+              ? 'You' : 'Member',
+          'replies': replyCounts[id] ?? 0,
+          'time': _timeLabel(row['created_at']?.toString()),
+          'pinned': row['is_pinned'] == true,
+          'locked': row['is_locked'] == true,
+        };
       }).toList();
       if (mounted) setState(() { _posts = mapped; _loading = false; });
     } catch (error) {
