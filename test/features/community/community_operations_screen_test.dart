@@ -275,6 +275,7 @@ void main() {
 
     await tester.tap(find.text('Competitive scrims'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Review my answers'));
     await tester.tap(find.text('Review my answers'));
     await tester.pumpAndSettle();
 
@@ -343,6 +344,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Community safety'), findsOneWidget);
+    await tester.ensureVisible(find.text('#general'));
     expect(find.text('#general'), findsOneWidget);
     expect(find.text('SLOW MODE 15s'), findsOneWidget);
     expect(find.text('LINKS BLOCKED'), findsOneWidget);
@@ -362,6 +364,7 @@ void main() {
     await tester.enterText(find.byType(TextField).first, '6');
     await tester.tap(find.text('Prepare lockdown'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Review safety policy'));
     await tester.tap(find.text('Review safety policy'));
     await tester.pumpAndSettle();
 
