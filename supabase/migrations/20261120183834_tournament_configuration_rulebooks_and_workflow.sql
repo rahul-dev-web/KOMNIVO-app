@@ -298,7 +298,6 @@ BEGIN
   END IF;
 
   v_payload := v_proposal.payload;
-  v_community_id := v_proposal.community_id;
   v_event_config := COALESCE(v_payload->'event_config','{}'::jsonb);
   v_rules := COALESCE(v_payload->'rules_json','{}'::jsonb);
   v_scoring := COALESCE(v_payload->'scoring_config','{}'::jsonb);
@@ -365,7 +364,7 @@ BEGIN
     starts_at, registration_opens_at, registration_closes_at, capacity,
     rules_json, scoring_config, event_config, banner_path
   ) VALUES (
-    v_community_id, v_game_id, p_user_id, v_name, v_description, v_format, 'draft',
+    v_proposal.community_id, v_game_id, p_user_id, v_name, v_description, v_format, 'draft',
     v_starts_at, v_registration_opens_at, v_registration_closes_at, v_capacity,
     v_rules, v_scoring, v_event_config, v_banner_path
   ) RETURNING id, status INTO v_event_id, v_event_status;
@@ -373,7 +372,7 @@ BEGIN
   INSERT INTO public.tournament_config_versions (
     event_id, version, owner_user_id, community_id, config, change_reason, changed_by
   ) VALUES (
-    v_event_id, 1, p_user_id, v_community_id,
+    v_event_id, 1, p_user_id, v_proposal.community_id,
     jsonb_build_object(
       'name', v_name, 'format', v_format, 'capacity', v_capacity,
       'game_id', v_game_id, 'starts_at', v_starts_at,
@@ -392,7 +391,7 @@ BEGIN
   INSERT INTO public.audit_logs (
     actor_id, community_id, event_id, entity_type, entity_id, action, reason, metadata
   ) VALUES (
-    p_user_id, v_community_id, v_event_id, 'event', v_event_id,
+    p_user_id, v_proposal.community_id, v_event_id, 'event', v_event_id,
     'tournament_draft_created',
     'Organiser explicitly approved structured tournament proposal',
     jsonb_build_object('proposal_id', p_proposal_id, 'published', false)
