@@ -225,6 +225,76 @@ async function validatePayload(
   };
 }
 
+async function preparePrivateRulebookDownload(
+  admin: SupabaseClient,
+  rulebook: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  let storagePath = stringValue(rulebook.storage_path);
+  let fileSize = numberValue(rulebook.file_size_bytes);
+  let downloadError: string | null = null;
+
+  if (!storagePath) {
+    const sourceUrl = stringValue(rulebook.source_url);
+    if (!sourceUrl.toLowerCase().endsWith(".pdf")) {
+      return { ...rulebook, storage_path: null, download_url: sourceUrl, official_downloaded: false };
+    }
+
+    try {
+      const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(20000) });
+      if (!response.ok) throw new Error("Official source returned HTTP " + response.status + ".");
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.length < 100 || bytes.length > 25 * 1024 * 1024) {
+        throw new Error("Official PDF size is outside the allowed 25 MB limit.");
+      }
+      const signature = new TextDecoder().decode(bytes.slice(0, 5));
+      if (signature !== "%PDF-") throw new Error("Official source response is not a PDF file.");
+
+      const safeVersion = stringValue(rulebook.version).replace(/[^a-zA-Z0-9._-]+/g, "-");
+      const safeTitle = stringValue(rulebook.title).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 70);
+      storagePath = String(rulebook.game_id) + "/" + safeTitle + "-" + safeVersion + ".pdf";
+      const { error: uploadError } = await admin.storage.from("tournament-rulebooks").upload(
+        storagePath,
+        bytes,
+        { contentType: "application/pdf", upsert: true },
+      );
+      if (uploadError) throw new Error("Could not save the official PDF in private Storage.");
+      fileSize = bytes.length;
+
+      await admin.from("tournament_rulebooks").update({
+        storage_path: storagePath,
+        file_size_bytes: fileSize,
+        downloaded_at: new Date().toISOString(),
+        download_error: null,
+        source_checked_at: new Date().toISOString(),
+      }).eq("id", String(rulebook.id));
+    } catch (error) {
+      downloadError = error instanceof Error ? error.message : "Official PDF download failed.";
+      await admin.from("tournament_rulebooks").update({
+        download_error: downloadError.slice(0, 240),
+        source_checked_at: new Date().toISOString(),
+      }).eq("id", String(rulebook.id));
+      console.warn("[organizer-tournament-workflow] Official rulebook download could not be cached:", downloadError);
+    }
+  }
+
+  let downloadUrl = stringValue(rulebook.source_url);
+  if (storagePath) {
+    const { data: signed, error } = await admin.storage
+      .from("tournament-rulebooks")
+      .createSignedUrl(storagePath, 60 * 60);
+    if (!error && signed?.signedUrl) downloadUrl = signed.signedUrl;
+  }
+
+  return {
+    ...rulebook,
+    storage_path: storagePath || null,
+    file_size_bytes: Number.isFinite(fileSize) ? fileSize : null,
+    download_url: downloadUrl,
+    official_downloaded: Boolean(storagePath),
+    download_error: downloadError ?? rulebook.download_error ?? null,
+  };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -268,13 +338,16 @@ Deno.serve(async (req: Request) => {
       const gameId = stringValue(body.game_id);
       const mode = stringValue(body.format);
       const { data, error } = await admin.from("tournament_rulebooks")
-        .select("id,title,version,region,mode_scope,scope,source_title,source_url,rules_config,scoring_config,notes")
+        .select("id,game_id,title,version,region,mode_scope,scope,source_title,source_url,storage_path,file_size_bytes,downloaded_at,download_error,rules_config,scoring_config,notes")
         .eq("game_id", gameId)
         .eq("is_active", true)
         .contains("mode_scope", [mode])
         .order("title");
       if (error) throw new Error("Could not load standard rulebooks.");
-      return json({ rulebooks: data ?? [], community_name: community.name });
+      const prepared = await Promise.all((data ?? []).map((row) =>
+        preparePrivateRulebookDownload(admin, row as Record<string, unknown>),
+      ));
+      return json({ rulebooks: prepared, community_name: community.name });
     }
 
     if (action === "create_proposal") {
