@@ -200,6 +200,9 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
   Future<void> reviewJoinRequest(String requestId, String decision, String reason) async {}
 
   @override
+  Future<void> reviewModerationReport(String reportId, String status, String note) async {}
+
+  @override
   Future<String> submitModerationReport(String communityId, String? targetUserId, String? messageId, String reason, String details) async => 'report-1';
 
   @override
