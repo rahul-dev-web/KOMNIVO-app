@@ -542,9 +542,9 @@ void main() {
     );
     await _openOperationsTab(tester, 'Onboarding');
     await tester.scrollUntilVisible(
-      find.text('Save channel tags').first,
+      find.text('Save channel tags'),
       280,
-      scrollable: find.byType(Scrollable).last,
+      scrollable: find.byType(ListView).last,
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save channel tags').first);
@@ -619,8 +619,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Invite settings'), findsOneWidget);
-    await tester.tap(find.byType(SwitchListTile).last);
-    await tester.pump();
+    final inviteOnly = find.text('Invite-only community');
+    await tester.ensureVisible(inviteOnly);
+    await tester.tap(inviteOnly);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Create invite'));
     await tester.pump();
     for (var i = 0; i < 12; i++) {
