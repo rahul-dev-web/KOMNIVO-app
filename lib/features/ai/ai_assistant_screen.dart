@@ -369,6 +369,17 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     }
   }
 
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      _scroll.animateTo(
+        _scroll.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
   Future<void> _send() async => _sendMessage(_input.text.trim());
 
   Future<void> _openTournamentForm() async {
@@ -382,10 +393,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         builder: (_) => TournamentFormScreen(
           communities: _managedCommunities,
           initialCommunityId: _activeCommunityId ?? widget.communityId,
-          conversationId: (widget.initialCommunityId != null &&
-                  widget.initialCommunityId != _communityId)
-              ? null
-              : _conversationId,
+          conversationId: _conversationId,
         ),
       ),
     );
@@ -481,15 +489,16 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       }
     }
     if (selectedProposal == null) return;
+    final proposalDetails = selectedProposal;
     setState(() => _resolvingProposalId = proposalId);
     try {
-      final isStructuredTournament = selectedProposal['workflow_type'] == 'tournament';
+      final isStructuredTournament = proposalDetails['workflow_type'] == 'tournament';
       final response = await Supabase.instance.client.functions.invoke(
         isStructuredTournament ? 'organizer-tournament-workflow' : 'komnivo-ai-proposal-action',
         body: isStructuredTournament
             ? {
                 'action': 'resolve_proposal',
-                'community_id': selectedProposal['community_id'],
+                'community_id': proposalDetails['community_id'],
                 'proposal_id': proposalId,
                 'decision': decision,
               }
@@ -520,7 +529,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         setState(() => _items.add(_ChatItem(
           false,
           isStructuredTournament
-              ? 'Approved. Draft tournament “${data['name'] ?? selectedProposal['name'] ?? 'event'}” has been created. Status: DRAFT. It is not published yet. You can edit its configuration from the organiser workspace.'
+              ? 'Approved. Draft tournament “${data['name'] ?? proposalDetails['name'] ?? 'event'}” has been created. Status: DRAFT. It is not published yet. You can edit its configuration from the organiser workspace.'
               : 'Approved. Draft event “${data['name'] ?? 'event'}” has been created. Status: DRAFT. It is not published yet. Open the organiser workspace to review and publish it when ready.',
         )));
       } else {
