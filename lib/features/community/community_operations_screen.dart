@@ -671,7 +671,7 @@ class _ReportDraftDialogState extends State<_ReportDraftDialog> {
         onChanged: (value) => setState(() => _reason = value ?? _reason),
       ),
       const SizedBox(height: 10),
-      TextField(controller: _details, minLines: 3, maxLines: 5, maxLength: 1000,
+      TextField(controller: _details, onChanged: (_) => setState(() {}), minLines: 3, maxLines: 5, maxLength: 1000,
         decoration: const InputDecoration(labelText: 'What happened?', hintText: 'Add relevant context without unrelated personal data.')),
       const _WritePendingNote(text: 'The report submission endpoint will be connected with the Batch 4 backend. This form does not send a report yet.'),
     ])),
@@ -789,7 +789,7 @@ class _OnboardingTabState extends State<_OnboardingTab> {
       ),
     if (_enabled['Region'] == true) ...[
       const SizedBox(height: 10),
-      TextField(controller: _region, decoration: const InputDecoration(labelText: 'Region', hintText: 'e.g. Central India')),
+      TextField(controller: _region, onChanged: (_) => setState(() {}), decoration: const InputDecoration(labelText: 'Region', hintText: 'e.g. Central India')),
     ],
     if (_enabled['Player interests'] == true) ...[
       const SizedBox(height: 14),
@@ -1219,7 +1219,7 @@ class _ModerationActionDialogState extends State<_ModerationActionDialog> {
         ),
       ],
       const SizedBox(height: 10),
-      TextField(controller: _reason, minLines: 3, maxLines: 5, maxLength: 600,
+      TextField(controller: _reason, onChanged: (_) => setState(() {}), minLines: 3, maxLines: 5, maxLength: 600,
         decoration: const InputDecoration(labelText: 'Reason (required)', hintText: 'Record the rule or evidence that supports this action.')),
       const _WritePendingNote(text: 'This is an action review draft. It does not warn, remove, mute, restrict or ban anyone until the scoped server operation is connected.'),
     ]))),
