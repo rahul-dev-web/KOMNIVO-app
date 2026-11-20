@@ -6,7 +6,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
-import 'channel_history_policy.dart';
 import '../../core/ui.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -629,7 +628,7 @@ class _ChatScreenState extends State<ChatScreen> {
               if (!_allowAttachments) const Text('Attachments off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
               if (!_allowThreads) const Text('Threads off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
               if (!_allowPins) const Text('Pins off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
-              if (!_keepHistory && !_canManageMessages) const Text('Only the 50 most recent messages are shown', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+              if (!_keepHistory && !_canManageMessages) const Text('Only the last 24 hours of messages are shown', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
             ]),
           ),
         if (_searching)
@@ -667,17 +666,12 @@ class _ChatScreenState extends State<ChatScreen> {
               }
               final query = _searchController.text.trim().toLowerCase();
               final allMessages = snapshot.data ?? [];
-              final visibleHistory = applyChannelHistoryPolicy(
-                allMessages,
-                keepHistory: _keepHistory,
-                canManageMessages: _canManageMessages,
-              );
-              // History is retained in the database for audit/evidence purposes.
-              // This setting changes member presentation only; moderators retain full history.
-              _latestMessages = List<Map<String, dynamic>>.from(visibleHistory);
+              // Supabase RLS applies the configured history window server-side.
+              // Moderators are exempt; history remains stored for audit/evidence purposes.
+              _latestMessages = List<Map<String, dynamic>>.from(allMessages);
               final messages = query.isEmpty
-                  ? visibleHistory
-                  : visibleHistory.where((message) => (message['body'] ?? '').toString().toLowerCase().contains(query)).toList();
+                  ? allMessages
+                  : allMessages.where((message) => (message['body'] ?? '').toString().toLowerCase().contains(query)).toList();
 
               if (snapshot.connectionState == ConnectionState.waiting && messages.isEmpty) {
                 return const Center(child: CircularProgressIndicator());
