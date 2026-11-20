@@ -1,7 +1,7 @@
 -- Batch 3 approved event-template creation, idempotency and scoped lifecycle integration.
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(15);
+select extensions.plan(16);
 
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_user_meta_data)
 values
@@ -121,6 +121,13 @@ select extensions.is(
     and match_id is null),
  1::bigint,
  'group template does not create a duplicate private group room'
+);
+select extensions.is(
+ (select count(*) from public.channel_categories
+  where group_id='76000000-0000-4000-8000-000000000001'
+    and char_length(name) between 2 and 60),
+ 1::bigint,
+ 'automatically generated group category names satisfy the 60-character schema limit'
 );
 select set_config(
  'b3.group_template_duplicate',
