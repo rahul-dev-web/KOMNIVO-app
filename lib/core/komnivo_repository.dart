@@ -560,11 +560,23 @@ class KomnivoRepository {
     await client.from('channels').update({'category_id': categoryId}).eq('id', channelId);
   }
 
-  Future<List<Map<String, dynamic>>> forumPosts(String channelId) async {
-    final rows = await client.from('forum_posts').select()
-      .eq('channel_id', channelId).order('is_pinned', ascending: false)
-      .order('created_at', ascending: false).limit(100);
-    return List<Map<String, dynamic>>.from(rows);
+  Future<List<Map<String, dynamic>>> forumPosts(
+    String channelId, {
+    String? query,
+    String? status,
+    String? tag,
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final rows = await client.rpc('search_channel_forum_posts', params: {
+      'p_channel_id': channelId,
+      'p_query': query?.trim().isEmpty == true ? null : query?.trim(),
+      'p_status': status == null || status == 'All' ? null : status,
+      'p_tag': tag == null || tag == 'All tags' ? null : tag,
+      'p_limit': limit,
+      'p_offset': offset,
+    });
+    return List<Map<String, dynamic>>.from(rows as List);
   }
 
   Future<Map<String, dynamic>> createForumPost({
