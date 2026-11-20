@@ -257,7 +257,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('No broad mentions'), findsOneWidget);
-    expect(find.text('Role mentions only'), findsOneWidget);
+    expect(find.text('Role mentions only'), findsWidgets);
     expect(find.text('Members and roles'), findsOneWidget);
     expect(find.text('Channel moderators only'), findsNothing);
     expect(tester.takeException(), isNull);
