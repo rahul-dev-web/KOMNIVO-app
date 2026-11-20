@@ -1,0 +1,5 @@
+-- Historical Batch 3 migration-history marker.
+-- The complete persistent channel/forum/poll/announcement schema is created by
+-- 202611200001_batch_3_channel_forum_poll_announcement_backend.sql.
+-- This earlier remote record was intentionally a no-op and is retained here
+-- so a clean local replay reproduces the deployed migration inventory.
