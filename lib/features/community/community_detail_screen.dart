@@ -465,8 +465,6 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final title = _community['name']?.toString() ?? 'Community';
-    final description =
-        _community['description']?.toString().trim() ?? '';
     final compact = widget.embedded && MediaQuery.sizeOf(context).width < 600;
     return Scaffold(
       appBar: AppBar(
@@ -493,14 +491,26 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
-                  const Text(
-                    'COMMUNITY SERVER',
-                    style: TextStyle(
-                      color: KomnivoTheme.muted,
-                      fontSize: 8,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.people_outline,
+                        size: 11,
+                        color: KomnivoTheme.muted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '\${_community['member_count'] ?? 1} members',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: KomnivoTheme.muted,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -508,14 +518,41 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
           ],
         ),
         actions: [
-          if (!_permissionsLoading && _canManageRoles)
-            IconButton(
-              tooltip: 'Manage roles',
-              onPressed: _manageRoles,
-              icon: const Icon(Icons.admin_panel_settings_outlined),
-              constraints: compact ? const BoxConstraints.tightFor(width: 34, height: 48) : const BoxConstraints(),
-              padding: EdgeInsets.zero,
-            ),
+          PopupMenuButton<String>(
+            tooltip: 'Community tools',
+            icon: const Icon(Icons.admin_panel_settings_outlined),
+            padding: EdgeInsets.zero,
+            onSelected: (value) {
+              if (value == 'members_safety') {
+                _openCommunityOperations();
+              } else if (value == 'manage_roles') {
+                _manageRoles();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem<String>(
+                value: 'members_safety',
+                child: Row(
+                  children: [
+                    Icon(Icons.groups_2_outlined, size: 18),
+                    SizedBox(width: 9),
+                    Text('Members & safety'),
+                  ],
+                ),
+              ),
+              if (!_permissionsLoading && _canManageRoles)
+                const PopupMenuItem<String>(
+                  value: 'manage_roles',
+                  child: Row(
+                    children: [
+                      Icon(Icons.admin_panel_settings_outlined, size: 18),
+                      SizedBox(width: 9),
+                      Text('Manage roles'),
+                    ],
+                  ),
+                ),
+            ],
+          ),
           if (!_permissionsLoading && _canManageStructure)
             IconButton(
               tooltip: 'Channel Studio',
@@ -602,112 +639,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
               compact ? 16 : 28,
             ),
             children: [
-              Container(
-                padding: EdgeInsets.all(compact ? 11 : 16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      KomnivoTheme.surfaceRaised,
-                      KomnivoTheme.surface,
-                    ],
-                  ),
-                  border: Border.all(
-                    color: KomnivoTheme.accent.withValues(alpha: .28),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      description.isNotEmpty
-                          ? description
-                          : 'Welcome to the community. Pick a channel and start connecting.',
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: compact ? 10 : 12,
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 13),
-                    Wrap(
-                      spacing: 7,
-                      runSpacing: 7,
-                      children: [
-                        _InfoPill(
-                          icon: Icons.people_outline,
-                          label:
-                              '${_community['member_count'] ?? 1} members',
-                        ),
-                        _InfoPill(
-                          icon: _community['visibility'] == 'private'
-                              ? Icons.lock_outline
-                              : Icons.public,
-                          label: _community['visibility'] == 'private'
-                              ? 'INVITE ONLY'
-                              : 'PUBLIC',
-                        ),
-                        if (!_permissionsLoading && _canManageSettings)
-                          const _InfoPill(
-                            icon: Icons.shield_outlined,
-                            label: 'OWNER / ADMIN',
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: OutlinedButton.icon(
-                        onPressed: _openCommunityOperations,
-                        icon: const Icon(Icons.groups_2_outlined, size: 16),
-                        label: const Text('Members & safety'),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(0, 38),
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                        ),
-                      ),
-                    ),
-                    if (!_permissionsLoading && (_canManageSettings || _canManageRoles)) ...[
-                      const SizedBox(height: 13),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          if (_canManageSettings)
-                            OutlinedButton.icon(
-                              onPressed: _editCommunity,
-                              icon: const Icon(Icons.tune, size: 16),
-                              label: const Text('Manage server'),
-                              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 38), padding: const EdgeInsets.symmetric(horizontal: 12)),
-                            ),
-                          if (_canManageStructure)
-                            OutlinedButton.icon(
-                              onPressed: () async {
-                                final rows = await _channelsFuture;
-                                if (mounted) await _openChannelStudio(rows);
-                              },
-                              icon: const Icon(Icons.dashboard_customize_outlined, size: 16),
-                              label: const Text('Channel Studio'),
-                              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 38), padding: const EdgeInsets.symmetric(horizontal: 12)),
-                            ),
-                          if (_canManageRoles)
-                            OutlinedButton.icon(
-                              onPressed: _manageRoles,
-                              icon: const Icon(Icons.admin_panel_settings_outlined, size: 16),
-                              label: const Text('Manage roles'),
-                              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 38), padding: const EdgeInsets.symmetric(horizontal: 12)),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              SizedBox(height: compact ? 9 : 15),
+              SizedBox(height: compact ? 4 : 8),
               TextField(
                 onChanged: (value) => setState(() => _channelQuery = value),
                 decoration: const InputDecoration(
@@ -1138,28 +1070,5 @@ class _EditChannelDialogState extends State<_EditChannelDialog> {
             child: const Text('Save changes'),
           ),
         ],
-      );
-}
-
-class _InfoPill extends StatelessWidget {
-  const _InfoPill({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .08),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: KomnivoTheme.cyan),
-            const SizedBox(width: 6),
-            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w800)),
-          ],
-        ),
       );
 }
