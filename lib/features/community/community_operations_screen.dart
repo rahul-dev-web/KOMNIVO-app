@@ -2477,169 +2477,380 @@ class _InviteRevokeDraftCard extends StatelessWidget {
 }
 
 class _AppealsTab extends StatefulWidget {
-  const _AppealsTab({required this.canReviewAppeals});
+  const _AppealsTab({
+    required this.communityId,
+    required this.source,
+    required this.canReviewAppeals,
+  });
+  final String communityId;
+  final CommunityOperationsDataSource source;
   final bool canReviewAppeals;
   @override
   State<_AppealsTab> createState() => _AppealsTabState();
 }
 
 class _AppealsTabState extends State<_AppealsTab> {
-  final _reference = TextEditingController();
+  late Future<List<Map<String, dynamic>>> _actions;
+  late Future<List<Map<String, dynamic>>> _appeals;
+  Map<String, dynamic>? _selectedAction;
   final _details = TextEditingController();
   final _evidence = TextEditingController();
   String _reason = 'Incorrect or disproportionate action';
-  Map<String, String>? _draft;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
 
   @override
   void dispose() {
-    _reference.dispose();
     _details.dispose();
     _evidence.dispose();
     super.dispose();
   }
 
-  void _prepareAppeal() {
-    if (_reference.text.trim().isEmpty || _details.text.trim().length < 10) {
-      showMessage(context, 'Add the decision reference and at least 10 characters of context.');
+  void _refresh() {
+    _actions = widget.source.loadModerationActions(widget.communityId);
+    _appeals = widget.source.loadAppeals(widget.communityId);
+  }
+
+  Future<void> _submitAppeal() async {
+    final action = _selectedAction;
+    if (action == null || _details.text.trim().length < 10) {
+      showMessage(context, 'Select a moderation decision and add at least 10 characters of context.');
       return;
     }
-    setState(() => _draft = {
-      'reference': _reference.text.trim(),
-      'reason': _reason,
-      'details': _details.text.trim(),
-      'evidence': _evidence.text.trim(),
-    });
+    setState(() => _saving = true);
+    try {
+      await widget.source.submitAppeal(
+        action['id'].toString(),
+        _reason,
+        _details.text.trim(),
+        _evidence.text.trim(),
+      );
+      if (!mounted) return;
+      showMessage(context, 'Appeal submitted. The decision is now in the review queue.');
+      setState(() {
+        _selectedAction = null;
+        _details.clear();
+        _evidence.clear();
+        _refresh();
+      });
+    } catch (error) {
+      if (mounted) showMessage(context, 'Appeal was not submitted: ' + error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _reviewAppeal(Map<String, dynamic> appeal, String decision) async {
+    final responseController = TextEditingController();
+    String duration = '24 hours';
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, updateDialog) => AlertDialog(
+          title: Text(
+            switch (decision) {
+              'uphold' => 'Uphold decision?',
+              'modify' => 'Modify decision?',
+              'revoke' => 'Revoke decision?',
+              _ => 'Dismiss appeal?',
+            },
+          ),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (decision == 'modify')
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: duration,
+                    decoration: const InputDecoration(labelText: 'New restriction duration'),
+                    items: const ['1 hour', '6 hours', '24 hours', '3 days', '7 days']
+                        .map((item) => DropdownMenuItem(value: item, child: Text(item)))
+                        .toList(),
+                    onChanged: (value) => updateDialog(() => duration = value ?? duration),
+                  ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: responseController,
+                  minLines: 3,
+                  maxLines: 5,
+                  maxLength: 2000,
+                  decoration: const InputDecoration(
+                    labelText: 'Reviewer response',
+                    hintText: 'Explain the outcome and evidence considered.',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: responseController.text.trim().length < 8
+                  ? null
+                  : () => Navigator.pop(dialogContext, {
+                        'response': responseController.text.trim(),
+                        'duration': duration,
+                      }),
+              child: const Text('Submit decision'),
+            ),
+          ],
+        ),
+      ),
+    );
+    responseController.dispose();
+    if (result == null || !mounted) return;
+    final durationMinutes = switch (result['duration']) {
+      '1 hour' => 60,
+      '6 hours' => 360,
+      '24 hours' => 1440,
+      '3 days' => 4320,
+      '7 days' => 10080,
+      _ => null,
+    };
+    setState(() => _saving = true);
+    try {
+      await widget.source.reviewAppeal(
+        appeal['id'].toString(),
+        decision,
+        result['response']!,
+        decision == 'modify' ? durationMinutes : null,
+      );
+      if (!mounted) return;
+      showMessage(context, 'Appeal decision saved.');
+      setState(_refresh);
+    } catch (error) {
+      if (mounted) showMessage(context, 'Appeal decision was not saved: ' + error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Widget _actionCard(Map<String, dynamic> action) {
+    final created = DateTime.tryParse(action['created_at']?.toString() ?? '');
+    final active = action['status'] == 'applied';
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(11),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+              child: Text(
+                (action['action_type'] ?? 'moderation').toString().replaceAll('_', ' ').toUpperCase(),
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+              ),
+            ),
+            _StatusTag(
+              label: (action['status'] ?? 'unknown').toString().toUpperCase(),
+              tone: active ? _TagTone.warning : _TagTone.neutral,
+            ),
+          ]),
+          _DetailRow(label: 'Decision', value: action['id'].toString().substring(0, 8)),
+          _DetailRow(label: 'Reason', value: action['reason']?.toString() ?? 'Not provided'),
+          if (action['duration_minutes'] != null)
+            _DetailRow(label: 'Duration', value: action['duration_minutes'].toString() + ' minutes'),
+          if (created != null) _DetailRow(label: 'Issued', value: _dateLabel(created)),
+          if (active)
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton(
+                onPressed: _saving ? null : () => setState(() => _selectedAction = action),
+                child: const Text('Appeal this decision'),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _appealCard(Map<String, dynamic> appeal) {
+    final created = DateTime.tryParse(appeal['created_at']?.toString() ?? '');
+    final status = appeal['status']?.toString() ?? 'pending';
+    final pending = status == 'pending' || status == 'reviewing';
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(11),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+              child: Text(
+                appeal['reason']?.toString() ?? 'Appeal',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+              ),
+            ),
+            _StatusTag(
+              label: status.toUpperCase(),
+              tone: pending ? _TagTone.warning : _TagTone.success,
+            ),
+          ]),
+          _DetailRow(label: 'Appeal', value: appeal['id'].toString().substring(0, 8)),
+          Text(
+            appeal['details']?.toString() ?? '',
+            style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.4),
+          ),
+          if ((appeal['reviewer_response'] ?? '').toString().isNotEmpty)
+            _DetailRow(label: 'Reviewer response', value: appeal['reviewer_response'].toString()),
+          if (created != null) _DetailRow(label: 'Submitted', value: _dateLabel(created)),
+          if (widget.canReviewAppeals && pending) ...[
+            const Divider(height: 18),
+            const Text('Reviewer decision', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                OutlinedButton(
+                  onPressed: _saving ? null : () => _reviewAppeal(appeal, 'uphold'),
+                  child: const Text('Uphold'),
+                ),
+                OutlinedButton(
+                  onPressed: _saving ? null : () => _reviewAppeal(appeal, 'modify'),
+                  child: const Text('Modify'),
+                ),
+                FilledButton.tonal(
+                  onPressed: _saving ? null : () => _reviewAppeal(appeal, 'revoke'),
+                  child: const Text('Revoke'),
+                ),
+                TextButton(
+                  onPressed: _saving ? null : () => _reviewAppeal(appeal, 'dismiss'),
+                  child: const Text('Dismiss'),
+                ),
+              ],
+            ),
+          ],
+        ]),
+      ),
+    );
   }
 
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
-    children: [
-      const _PageHeading(
-        title: 'Appeals',
-        subtitle: 'Request a review of a moderation decision with context and evidence.',
-      ),
-      const SizedBox(height: 12),
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(13),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Prepare an appeal', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _reference,
-              decoration: const InputDecoration(
-                labelText: 'Moderation decision reference',
-                hintText: 'Enter the decision ID shown in your notice',
+  Widget build(BuildContext context) => FutureBuilder<List<Map<String, dynamic>>>(
+    future: _actions,
+    builder: (context, actionSnapshot) {
+      if (actionSnapshot.connectionState == ConnectionState.waiting) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (actionSnapshot.hasError) {
+        return _LoadFailure(
+          title: 'Moderation history could not be loaded',
+          details: actionSnapshot.error.toString(),
+          onRetry: () => setState(_refresh),
+        );
+      }
+      final actions = actionSnapshot.data ?? const <Map<String, dynamic>>[];
+      return FutureBuilder<List<Map<String, dynamic>>>(
+        future: _appeals,
+        builder: (context, appealSnapshot) {
+          if (appealSnapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (appealSnapshot.hasError) {
+            return _LoadFailure(
+              title: 'Appeal history could not be loaded',
+              details: appealSnapshot.error.toString(),
+              onRetry: () => setState(_refresh),
+            );
+          }
+          final appeals = appealSnapshot.data ?? const <Map<String, dynamic>>[];
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+            children: [
+              const _PageHeading(
+                title: 'Appeals',
+                subtitle: 'Appeal a recorded moderation action. Only authorised reviewers can change the outcome.',
               ),
-            ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              isExpanded: true,
-              value: _reason,
-              decoration: const InputDecoration(labelText: 'Appeal reason'),
-              items: const [
-                'Incorrect or disproportionate action',
-                'New evidence',
-                'Context was not considered',
-                'Identity or account mix-up',
-                'Other',
-              ].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-              onChanged: (v) => setState(() => _reason = v ?? _reason),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _details,
-              onChanged: (_) => setState(() {}),
-              minLines: 4,
-              maxLines: 6,
-              maxLength: 1500,
-              decoration: const InputDecoration(
-                labelText: 'Explain why the decision should be reviewed',
-                hintText: 'Describe the context and what outcome you are requesting.',
+              if (_selectedAction != null) ...[
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        const Expanded(child: Text('Appeal a moderation decision', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900))),
+                        IconButton(
+                          tooltip: 'Cancel appeal',
+                          onPressed: () => setState(() => _selectedAction = null),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ]),
+                      _DetailRow(label: 'Decision', value: _selectedAction!['id'].toString().substring(0, 8)),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: _reason,
+                        decoration: const InputDecoration(labelText: 'Appeal reason'),
+                        items: const [
+                          'Incorrect or disproportionate action',
+                          'New evidence',
+                          'Context was not considered',
+                          'Identity or account mix-up',
+                          'Other',
+                        ].map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
+                        onChanged: _saving ? null : (value) => setState(() => _reason = value ?? _reason),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _details,
+                        enabled: !_saving,
+                        minLines: 3,
+                        maxLines: 5,
+                        maxLength: 3000,
+                        decoration: const InputDecoration(labelText: 'Why should this decision be reviewed?'),
+                      ),
+                      TextField(
+                        controller: _evidence,
+                        enabled: !_saving,
+                        maxLength: 1000,
+                        decoration: const InputDecoration(labelText: 'Evidence reference (optional)'),
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton(
+                        onPressed: _saving || _details.text.trim().length < 10 ? null : _submitAppeal,
+                        child: Text(_saving ? 'Submitting…' : 'Submit appeal'),
+                      ),
+                    ]),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              const _SectionHeader(
+                title: 'My moderation decisions',
+                subtitle: 'Only actions visible to your account are listed. Private evidence stays scoped.',
               ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _evidence,
-              decoration: const InputDecoration(
-                labelText: 'Evidence reference (optional)',
-                hintText: 'Evidence ID or approved evidence link',
+              if (actions.isEmpty)
+                const _EmptyState(
+                  icon: Icons.shield_outlined,
+                  title: 'No moderation decisions',
+                  body: 'There are no visible moderation actions for this account in this community.',
+                )
+              else
+                ...actions.map(_actionCard),
+              const SizedBox(height: 16),
+              _SectionHeader(
+                title: widget.canReviewAppeals ? 'Appeal review queue' : 'My submitted appeals',
+                subtitle: widget.canReviewAppeals
+                    ? 'Reviewers may uphold, modify, revoke or dismiss each appeal with a written response.'
+                    : 'Appeals are listed with their current review status.',
               ),
-            ),
-            const SizedBox(height: 10),
-            FilledButton.icon(
-              onPressed: _reference.text.trim().isNotEmpty && _details.text.trim().length >= 10
-                  ? _prepareAppeal
-                  : null,
-              icon: const Icon(Icons.fact_check_outlined),
-              label: const Text('Review appeal'),
-            ),
-          ]),
-        ),
-      ),
-      if (_draft != null) ...[
-        const SizedBox(height: 10),
-        _AppealDraftCard(
-          draft: _draft!,
-          onDiscard: () => setState(() => _draft = null),
-        ),
-      ],
-      const SizedBox(height: 16),
-      const _SectionHeader(
-        title: 'My appeal history',
-        subtitle: 'Only submitted records will appear here. Drafts are not treated as lodged appeals.',
-      ),
-      const _PendingFeatureCard(
-        title: 'No appeal records available',
-        detail: 'The current database has no appeal submission table. Your review draft stays on this screen until the Batch 4 appeal API and persistence model are connected.',
-        icon: Icons.history_outlined,
-      ),
-      if (widget.canReviewAppeals) ...[
-        const SizedBox(height: 16),
-        const _SectionHeader(
-          title: 'Moderator review queue',
-          subtitle: 'Reviewer decisions must include scope, evidence and a reasoned outcome.',
-        ),
-        const _PendingFeatureCard(
-          title: 'Appeal queue not connected',
-          detail: 'No appeal records are fabricated. Assigned reviewer, uphold / modify / revoke decision, response and audit trail will be connected to the Batch 4 appeal model.',
-          icon: Icons.balance_outlined,
-        ),
-      ],
-    ],
-  );
-}
-
-class _AppealDraftCard extends StatelessWidget {
-  const _AppealDraftCard({required this.draft, required this.onDiscard});
-  final Map<String, String> draft;
-  final VoidCallback onDiscard;
-  @override
-  Widget build(BuildContext context) => Card(
-    color: KomnivoTheme.surfaceRaised,
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Icon(Icons.balance_outlined, color: KomnivoTheme.cyan),
-          SizedBox(width: 7),
-          Expanded(child: Text('Appeal review draft', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11))),
-          _StatusTag(label: 'NOT SUBMITTED', tone: _TagTone.warning),
-        ]),
-        const SizedBox(height: 8),
-        _DetailRow(label: 'Decision', value: draft['reference'] ?? ''),
-        _DetailRow(label: 'Reason', value: draft['reason'] ?? ''),
-        _DetailRow(label: 'Evidence', value: (draft['evidence'] ?? '').isEmpty ? 'Not attached' : draft['evidence']!),
-        const SizedBox(height: 5),
-        Text(draft['details'] ?? '', style: const TextStyle(fontSize: 10, height: 1.4)),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(onPressed: onDiscard, child: const Text('Discard draft')),
-        ),
-        const _WritePendingNote(text: 'This appeal is prepared locally only. It has not been submitted or added to moderation history.'),
-      ]),
-    ),
+              if (appeals.isEmpty)
+                const _EmptyState(
+                  icon: Icons.balance_outlined,
+                  title: 'No appeal records',
+                  body: 'Submitted appeals will appear here with their review status and response.',
+                )
+              else
+                ...appeals.map(_appealCard),
+            ],
+          );
+        },
+      );
+    },
   );
 }
 
