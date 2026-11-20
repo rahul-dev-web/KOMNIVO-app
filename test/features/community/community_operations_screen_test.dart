@@ -348,6 +348,7 @@ Future<void> _pumpOperations(
   WidgetTester tester, {
   Set<String> permissions = const {},
   Size size = const Size(430, 900),
+  String communityVisibility = 'private',
   _FakeCommunityOperationsSource? source,
 }) async {
   tester.view.physicalSize = size;
@@ -358,7 +359,7 @@ Future<void> _pumpOperations(
       community: const {
         'id': 'community-test',
         'name': 'UI Test Community',
-        'visibility': 'private',
+        'visibility': communityVisibility,
       },
       dataSource: source ?? _FakeCommunityOperationsSource(permissions: permissions),
     ),
@@ -436,6 +437,7 @@ void main() {
     expect(find.text('Nova Ace'), findsOneWidget);
     expect(find.text('Orbit Mod'), findsNothing);
 
+    await tester.ensureVisible(find.text('Team captains'));
     await tester.tap(find.text('Team captains'));
     await tester.pumpAndSettle();
     expect(find.text('Nova Ace'), findsOneWidget);
@@ -542,7 +544,7 @@ void main() {
     );
     await _openOperationsTab(tester, 'Onboarding');
     await tester.scrollUntilVisible(
-      find.text('Save channel tags'),
+      find.text('Save channel tags').first,
       280,
       scrollable: find.descendant(
         of: find.byType(ListView).last,
@@ -616,6 +618,7 @@ void main() {
       tester,
       permissions: {'community.manage_invites'},
       source: source,
+      communityVisibility: 'public',
     );
     await _openOperationsTab(tester, 'Invites');
     await tester.tap(find.text('Create'));
