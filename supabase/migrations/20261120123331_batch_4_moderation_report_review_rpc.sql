@@ -51,7 +51,7 @@ begin
 
  return jsonb_build_object('saved',true,'status',p_status);
 end;
-$function$
+$function$;
 
 revoke all on function public.review_community_moderation_report(uuid,text,text) from public,anon;
 grant execute on function public.review_community_moderation_report(uuid,text,text) to authenticated;
