@@ -860,6 +860,154 @@ class _OnboardingTabState extends State<_OnboardingTab> {
   }
 }
 
+class _OnboardingChannelRecommendations extends StatelessWidget {
+  const _OnboardingChannelRecommendations({
+    required this.channels,
+    required this.gameMode,
+    required this.interests,
+    required this.activities,
+    this.onOpenChannel,
+  });
+
+  final Future<List<Map<String, dynamic>>> channels;
+  final String? gameMode;
+  final Set<String> interests;
+  final Set<String> activities;
+  final Future<void> Function(Map<String, dynamic> channel)? onOpenChannel;
+
+  Set<String> _keywords() {
+    final terms = <String>{};
+    for (final interest in interests) {
+      switch (interest) {
+        case 'Rank push':
+          terms.addAll(['rank', 'scrim', 'team', 'match']);
+          break;
+        case 'Competitive scrims':
+          terms.addAll(['scrim', 'tournament', 'match', 'team']);
+          break;
+        case 'Casual matches':
+          terms.addAll(['general', 'casual', 'social']);
+          break;
+        case 'Content creation':
+          terms.addAll(['creator', 'content', 'media']);
+          break;
+        case 'Coaching':
+          terms.addAll(['coach', 'strategy', 'guide', 'support']);
+          break;
+        case 'Team building':
+          terms.addAll(['team', 'lfg', 'looking-for-team', 'recruit']);
+          break;
+      }
+    }
+    for (final activity in activities) {
+      switch (activity) {
+        case 'Find a team':
+          terms.addAll(['team', 'lfg', 'looking-for-team', 'recruit']);
+          break;
+        case 'Join tournaments':
+          terms.addAll(['tournament', 'event', 'compete']);
+          break;
+        case 'Play scrims':
+          terms.addAll(['scrim', 'practice']);
+          break;
+        case 'Learn strategies':
+          terms.addAll(['strategy', 'coach', 'guide']);
+          break;
+        case 'Join voice sessions':
+          terms.add('voice');
+          break;
+        case 'Help organise events':
+          terms.addAll(['event', 'organiser', 'staff']);
+          break;
+      }
+    }
+    if (gameMode == 'Battle Royale') terms.addAll(['battle-royale', 'br']);
+    if (gameMode == 'Clash Squad') terms.addAll(['clash-squad', 'cs']);
+    return terms;
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<Map<String, dynamic>>>(
+    future: channels,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Card(
+          child: Padding(
+            padding: EdgeInsets.all(12),
+            child: Row(children: [
+              SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+              SizedBox(width: 9),
+              Expanded(child: Text('Checking available community channels…', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))),
+            ]),
+          ),
+        );
+      }
+      if (snapshot.hasError) {
+        return _PrivacyNote(
+          text: 'Channel recommendations could not be loaded: ' + snapshot.error.toString(),
+        );
+      }
+      final available = snapshot.data ?? const <Map<String, dynamic>>[];
+      final terms = _keywords();
+      final matches = available.where((channel) {
+        if (terms.isEmpty) return false;
+        final name = (channel['name'] ?? '').toString().toLowerCase();
+        final kind = (channel['kind'] ?? '').toString().toLowerCase();
+        return terms.any(name.contains) || (terms.contains('voice') && kind == 'voice');
+      }).toList();
+
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(children: [
+                Icon(Icons.explore_outlined, color: KomnivoTheme.cyan, size: 17),
+                SizedBox(width: 7),
+                Expanded(child: Text('Suggested community channels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900))),
+              ]),
+              const SizedBox(height: 4),
+              const Text(
+                'Suggestions are matched against channels visible to your account. They never grant membership or access.',
+                style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.4),
+              ),
+              const SizedBox(height: 8),
+              if (terms.isEmpty)
+                const Text('Select an interest or activity to see relevant channels.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))
+              else if (matches.isEmpty)
+                const Text('No available channel names match these preferences yet.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))
+              else
+                ...matches.map((channel) => Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Row(children: [
+                    Icon(
+                      channel['kind'] == 'voice' ? Icons.volume_up_outlined : Icons.tag,
+                      color: KomnivoTheme.muted,
+                      size: 15,
+                    ),
+                    const SizedBox(width: 7),
+                    Expanded(child: Text(
+                      channel['name'].toString(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+                    )),
+                    if (onOpenChannel != null)
+                      TextButton(
+                        onPressed: () => onOpenChannel!(channel),
+                        child: const Text('Open'),
+                      ),
+                  ]),
+                )),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
 class _IdentityStateCard extends StatelessWidget {
   const _IdentityStateCard({required this.identity});
   final CommunityIdentityData identity;
