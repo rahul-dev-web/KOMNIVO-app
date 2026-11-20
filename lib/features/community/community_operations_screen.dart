@@ -84,7 +84,7 @@ class SupabaseCommunityOperationsDataSource
   Future<CommunityDirectoryData> loadDirectory(String communityId) async {
     final base = List<Map<String, dynamic>>.from(
       await _db.from('community_members').select(
-        'user_id,role,joined_at,muted_until,profiles(display_name,username,avatar_url,region,is_public)',
+        'user_id,role,joined_at,muted_until,profiles(display_name,username,avatar_url,is_public)',
       ).eq('community_id', communityId).order('joined_at', ascending: false).limit(500),
     );
     if (base.isEmpty) return const CommunityDirectoryData(members: []);
@@ -378,7 +378,7 @@ class _MemberDirectoryTabState extends State<_MemberDirectoryTab> {
 
   static const _filters = [
     'All', 'Staff', 'Verified players', 'Team captains',
-    'Event participants', 'Restricted', 'Recent joins',
+    'Event participants', 'Muted / restricted', 'Recent joins',
   ];
 
   @override
@@ -429,7 +429,7 @@ class _MemberDirectoryTabState extends State<_MemberDirectoryTab> {
       case 'Verified players': return verified;
       case 'Team captains': return member['_is_team_captain'] == true;
       case 'Event participants': return member['_is_event_participant'] == true;
-      case 'Restricted': return restricted;
+      case 'Muted / restricted': return restricted;
       case 'Recent joins': return recent;
       default: return true;
     }
@@ -572,7 +572,7 @@ class _MemberCard extends StatelessWidget {
                 if (verified) const _StatusTag(label: 'UID VERIFIED', tone: _TagTone.success),
                 if (member['_is_team_captain'] == true) const _StatusTag(label: 'TEAM CAPTAIN'),
                 if (member['_is_event_participant'] == true) const _StatusTag(label: 'EVENT PLAYER'),
-                if (restricted) const _StatusTag(label: 'RESTRICTED', tone: _TagTone.danger),
+                if (restricted) const _StatusTag(label: 'MUTED', tone: _TagTone.danger),
               ]),
             ])),
             const SizedBox(width: 6),
@@ -621,7 +621,7 @@ class _MemberDetailsSheet extends StatelessWidget {
           _DetailRow(label: 'Community role', value: member['role']?.toString() ?? 'Member'),
           _DetailRow(label: 'Additional roles', value: roles.isEmpty ? 'None assigned' : roles.join(', ')),
           _DetailRow(label: 'Member since', value: joined == null ? 'Unavailable' : _dateLabel(joined)),
-          _DetailRow(label: 'Region', value: profile['is_public'] == true ? (profile['region']?.toString().isNotEmpty == true ? profile['region'].toString() : 'Not provided') : 'Hidden by profile privacy'),
+          _DetailRow(label: 'Profile visibility', value: profile['is_public'] == true ? 'Public' : 'Private'),
           _DetailRow(label: 'Team role', value: member['_is_team_captain'] == true ? 'Captain / Owner' : 'No captain assignment'),
           _DetailRow(label: 'Event participation', value: member['_is_event_participant'] == true ? 'Registered in a community event' : 'No current registration found'),
           if (restricted) _DetailRow(label: 'Restriction', value: 'Muted until ' + _dateLabel(muted), danger: true),
@@ -665,6 +665,7 @@ class _ReportDraftDialogState extends State<_ReportDraftDialog> {
         style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10))),
       const SizedBox(height: 10),
       DropdownButtonFormField<String>(
+        isExpanded: true,
         value: _reason, decoration: const InputDecoration(labelText: 'Reason'),
         items: const ['Harassment or abuse', 'Spam or scam', 'Impersonation', 'Cheating or unfair play', 'Unsafe content', 'Other']
             .map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
@@ -782,6 +783,7 @@ class _OnboardingTabState extends State<_OnboardingTab> {
     const SizedBox(height: 10),
     if (_enabled['Game mode'] == true)
       DropdownButtonFormField<String>(
+        isExpanded: true,
         value: _gameMode, decoration: const InputDecoration(labelText: 'Game mode'),
         items: const ['Battle Royale', 'Clash Squad', 'Both', 'Not decided']
             .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
@@ -1099,6 +1101,7 @@ class _InviteSettingsDialogState extends State<_InviteSettingsDialog> {
       mainAxisSize: MainAxisSize.min,
       children: [
         DropdownButtonFormField<String>(
+        isExpanded: true,
           value: _expiry,
           decoration: const InputDecoration(labelText: 'Link expiry'),
           items: const ['1 day', '7 days', '30 days', 'Never']
@@ -1107,6 +1110,7 @@ class _InviteSettingsDialogState extends State<_InviteSettingsDialog> {
         ),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
+        isExpanded: true,
           value: _limit,
           decoration: const InputDecoration(labelText: 'Usage limit'),
           items: const ['1 use', '5 uses', '25 uses', '100 uses', 'Unlimited']
@@ -1235,13 +1239,13 @@ class _InviteCard extends StatelessWidget {
             const Icon(Icons.link_rounded, color: KomnivoTheme.cyan),
             const SizedBox(width: 8),
             const Expanded(child: Text('Community invite', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11))),
-            _StatusTag(label: status, tone: expired || exhausted ? _TagTone.warning : _TagTone.success),
+            _StatusTag(label: expired ? 'EXPIRED' : exhausted ? 'USED UP' : 'NOT EXPIRED', tone: expired || exhausted ? _TagTone.warning : _TagTone.neutral),
           ]),
           const SizedBox(height: 8),
           _DetailRow(label: 'Usage', value: maxUses == null ? '$uses · unlimited' : '$uses / $maxUses'),
           _DetailRow(label: 'Created', value: created == null ? 'Unavailable' : _dateLabel(created)),
           _DetailRow(label: 'Expires', value: expiry == null ? 'Never' : _dateLabel(expiry)),
-          const _PrivacyNote(text: 'Invite secrets are not displayed from their stored hash. Revoke and rotation will use a privileged server operation.'),
+          const _PrivacyNote(text: 'Invite secrets are not displayed from their stored hash. This status reflects expiry and usage only; the current schema does not expose revoke state. Revoke and rotation require a privileged server operation.'),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
@@ -1414,12 +1418,14 @@ class _ModerationActionDialogState extends State<_ModerationActionDialog> {
     content: SizedBox(width: 440, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
       if (widget.memberName != null) Align(alignment: Alignment.centerLeft, child: Text('Target: ' + widget.memberName!, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10))),
       DropdownButtonFormField<String>(
+        isExpanded: true,
         value: _action, decoration: const InputDecoration(labelText: 'Action'),
         items: _actions.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
         onChanged: (v) => setState(() => _action = v ?? _action),
       ),
       const SizedBox(height: 10),
       DropdownButtonFormField<String>(
+        isExpanded: true,
         value: _scope, decoration: const InputDecoration(labelText: 'Scope'),
         items: const ['Community', 'Selected channel', 'Specific message'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
         onChanged: (v) => setState(() => _scope = v ?? _scope),
@@ -1431,6 +1437,7 @@ class _ModerationActionDialogState extends State<_ModerationActionDialog> {
       if (_needsDuration) ...[
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
+        isExpanded: true,
           value: _duration, decoration: const InputDecoration(labelText: 'Duration'),
           items: const ['1 hour', '6 hours', '24 hours', '3 days', '7 days', 'Permanent'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
           onChanged: (v) => setState(() => _duration = v ?? _duration),
@@ -1542,12 +1549,14 @@ class _SafetyTabState extends State<_SafetyTab> {
               value: _lockdown, onChanged: (v) => setState(() => _lockdown = v)),
             if (_lockdown) ...[
               DropdownButtonFormField<String>(
+        isExpanded: true,
                 value: _scope, decoration: const InputDecoration(labelText: 'Scope'),
                 items: const ['All text channels', 'Selected channels', 'New members only'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
                 onChanged: (v) => setState(() => _scope = v ?? _scope),
               ),
               const SizedBox(height: 9),
               DropdownButtonFormField<String>(
+        isExpanded: true,
                 value: _duration, decoration: const InputDecoration(labelText: 'Duration'),
                 items: const ['15 minutes', '30 minutes', '1 hour', '6 hours'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
                 onChanged: (v) => setState(() => _duration = v ?? _duration),
