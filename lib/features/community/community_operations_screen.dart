@@ -909,7 +909,11 @@ class _MemberDetailsSheet extends StatelessWidget {
           _DetailRow(label: 'Profile visibility', value: profile['is_public'] == true ? 'Public' : 'Private'),
           _DetailRow(label: 'Team role', value: member['_is_team_captain'] == true ? 'Captain / Owner' : 'No captain assignment'),
           _DetailRow(label: 'Event participation', value: member['_is_event_participant'] == true ? 'Registered in a community event' : 'No current registration found'),
-          if (restricted) _DetailRow(label: 'Restriction', value: 'Muted until ' + _dateLabel(muted), danger: true),
+          if (restricted) _DetailRow(
+            label: 'Restriction',
+            value: muted != null ? 'Muted until ' + _dateLabel(muted) : 'Active restriction',
+            danger: true,
+          ),
           const SizedBox(height: 12),
           const _PrivacyNote(text: 'Moderation controls are available only after the server confirms the acting moderator’s scope and authority.'),
           const SizedBox(height: 8),
@@ -2450,34 +2454,6 @@ class _InviteCard extends StatelessWidget {
   }
 }
 
-class _InviteRevokeDraftCard extends StatelessWidget {
-  const _InviteRevokeDraftCard({required this.invite, required this.onDiscard});
-  final Map<String, dynamic> invite;
-  final VoidCallback onDiscard;
-  @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Icon(Icons.link_off_outlined, color: KomnivoTheme.danger),
-          SizedBox(width: 7),
-          Expanded(child: Text('Invite revoke review', style: TextStyle(fontWeight: FontWeight.w900))),
-          _StatusTag(label: 'NOT REVOKED', tone: _TagTone.warning),
-        ]),
-        const SizedBox(height: 8),
-        _DetailRow(label: 'Invite', value: invite['id'].toString().substring(0, 8)),
-        _DetailRow(label: 'Used', value: (invite['uses'] ?? 0).toString()),
-        const _WritePendingNote(text: 'Revoke confirmation is prepared. The invite remains usable until a privileged server revoke operation is connected.'),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(onPressed: onDiscard, child: const Text('Discard review')),
-        ),
-      ]),
-    ),
-  );
-}
-
 class _AppealsTab extends StatefulWidget {
   const _AppealsTab({
     required this.communityId,
@@ -3306,32 +3282,6 @@ class _ModerationActionDialogState extends State<_ModerationActionDialog> {
   );
 }
 
-class _ModerationDraftCard extends StatelessWidget {
-  const _ModerationDraftCard({required this.draft, required this.onDiscard});
-  final Map<String, dynamic> draft;
-  final VoidCallback onDiscard;
-  @override
-  Widget build(BuildContext context) => Card(child: Padding(
-    padding: const EdgeInsets.all(12),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Row(children: [
-        Icon(Icons.pending_actions, color: KomnivoTheme.cyan), SizedBox(width: 7),
-        Expanded(child: Text('Action ready for backend review', style: TextStyle(fontWeight: FontWeight.w900))),
-        _StatusTag(label: 'NOT SENT', tone: _TagTone.warning),
-      ]),
-      const SizedBox(height: 8),
-      _DetailRow(label: 'Action', value: draft['action'].toString()),
-      _DetailRow(label: 'Scope', value: draft['scope'].toString()),
-      _DetailRow(label: 'Target', value: draft['target_user_id'] == null ? 'Not selected' : 'Member selected'),
-       if (draft['channel_id'] != null) _DetailRow(label: 'Channel', value: 'Channel selected'),
-       if (draft['message_id'] != null) _DetailRow(label: 'Message', value: 'Message selected'),
-       if (draft['duration'] != null) _DetailRow(label: 'Duration', value: draft['duration'].toString()),
-      _DetailRow(label: 'Reason', value: draft['reason'].toString()),
-      Align(alignment: Alignment.centerRight, child: TextButton(onPressed: onDiscard, child: const Text('Discard draft'))),
-    ]),
-  ));
-}
-
 class _SafetyTab extends StatefulWidget {
   const _SafetyTab({required this.communityId, required this.source, this.onOpenChannelStudio});
   final String communityId;
@@ -4020,25 +3970,6 @@ class _WritePendingNote extends StatelessWidget {
     decoration: BoxDecoration(color: KomnivoTheme.surfaceRaised, borderRadius: BorderRadius.circular(9), border: Border.all(color: KomnivoTheme.line)),
     child: Text(text, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.4)),
   );
-}
-
-class _PendingFeatureCard extends StatelessWidget {
-  const _PendingFeatureCard({required this.title, required this.detail, required this.icon});
-  final String title;
-  final String detail;
-  final IconData icon;
-  @override
-  Widget build(BuildContext context) => Card(child: Padding(
-    padding: const EdgeInsets.all(12),
-    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(icon, color: KomnivoTheme.cyan), const SizedBox(width: 9),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
-        const SizedBox(height: 4),
-        Text(detail, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.4)),
-      ])),
-    ]),
-  ));
 }
 
 class _EmptyState extends StatelessWidget {
