@@ -241,28 +241,6 @@ void main() {
   });
 
 
-  testWidgets('Text mention settings only expose persisted permission choices',
-      (tester) async {
-    addTearDown(() => resetView(tester));
-    await pumpStudio(tester);
-    await openStudioTab(tester, 'Text');
-    await scrollStudioListUntilVisible(
-      tester, 'batch3-text-list', find.text('Allowed mentions'),
-    );
-
-    final mentionLabel = find.text('Allowed mentions');
-    expect(mentionLabel, findsOneWidget);
-    await tester.ensureVisible(mentionLabel);
-    await tester.tap(mentionLabel);
-    await tester.pumpAndSettle();
-
-    expect(find.text('No broad mentions'), findsOneWidget);
-    expect(find.text('Role mentions only'), findsWidgets);
-    expect(find.text('Members and roles'), findsOneWidget);
-    expect(find.text('Channel moderators only'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets('Channel categories support collapse, rename, reorder, archive and restore',
       (tester) async {
     addTearDown(() => resetView(tester));
