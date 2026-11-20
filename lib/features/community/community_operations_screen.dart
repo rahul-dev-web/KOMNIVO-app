@@ -2378,7 +2378,7 @@ class _InviteSettingsDialogState extends State<_InviteSettingsDialog> {
           'single_use': _singleUse,
           'invite_only': _inviteOnly,
         }),
-        child: const Text('Review settings'),
+        child: const Text('Create invite'),
       ),
     ],
   );
@@ -3531,16 +3531,8 @@ class _SafetyTabState extends State<_SafetyTab> {
                       }),
                     ),
                     const SizedBox(height: 9),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      value: _scope,
-                      decoration: const InputDecoration(labelText: 'Scope'),
-                      items: const ['All text channels', 'Selected channels', 'New members only']
-                          .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-                      onChanged: (v) => setState(() {
-                        _scope = v ?? _scope;
-                        _safetyDraft = null;
-                      }),
+                    const _PrivacyNote(
+                      text: 'Lockdown is community-wide: it pauses sending in all community text channels and pauses invite creation when that option is enabled.',
                     ),
                     const SizedBox(height: 9),
                     DropdownButtonFormField<String>(
@@ -3652,7 +3644,7 @@ class _SafetyTabState extends State<_SafetyTab> {
       'raid_window': raidWindow,
       'lockdown': _lockdown,
       'raid_trigger': _lockdown ? _raidTrigger : 'Not set',
-      'scope': _lockdown ? _scope : 'Not set',
+      'scope': _lockdown ? 'All community text channels' : 'Not set',
       'duration': _lockdown ? _duration : 'Not set',
     });
   }
