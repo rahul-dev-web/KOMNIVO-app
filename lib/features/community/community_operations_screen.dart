@@ -2779,6 +2779,7 @@ class _AppealsTabState extends State<_AppealsTab> {
                         minLines: 3,
                         maxLines: 5,
                         maxLength: 3000,
+                        onChanged: (_) => setState(() {}),
                         decoration: const InputDecoration(labelText: 'Why should this decision be reviewed?'),
                       ),
                       TextField(
