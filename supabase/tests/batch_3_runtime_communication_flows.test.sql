@@ -2,7 +2,7 @@
 -- Exercises the actual RLS policies and BEFORE triggers with SET ROLE authenticated.
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(32);
+select extensions.plan(35);
 
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_user_meta_data)
 values
@@ -211,6 +211,20 @@ select extensions.is(
  1::bigint,
  'a member can publish a tagged Forum post in a forum channel'
 );
+select extensions.is(
+ (select count(*) from public.search_channel_forum_posts(
+   '64000000-0000-4000-8000-000000000004','weekend',null,null,100,0
+ )),
+ 1::bigint,
+ 'server-side Forum full-text search finds terms across topic body content'
+);
+select extensions.is(
+ (select count(*) from public.search_channel_forum_posts(
+   '64000000-0000-4000-8000-000000000004','weekend','Closed','Recruitment',100,0
+ )),
+ 0::bigint,
+ 'Forum full-text search combines status and tag filters on the server'
+);
 
 insert into public.forum_post_replies(post_id,author_id,body)
 values ('66000000-0000-4000-8000-000000000001',
@@ -289,6 +303,13 @@ select extensions.is(
   where id='66000000-0000-4000-8000-000000000001'),
  0::bigint,
  'a non-member cannot read private-community Forum posts'
+);
+select extensions.is(
+ (select count(*) from public.search_channel_forum_posts(
+   '64000000-0000-4000-8000-000000000004','weekend',null,null,100,0
+ )),
+ 0::bigint,
+ 'private-community Forum search cannot reveal topics to a non-member'
 );
 select extensions.is(
  (select count(*) from public.channel_poll_feed('64000000-0000-4000-8000-000000000005')),
