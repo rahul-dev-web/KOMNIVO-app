@@ -527,7 +527,10 @@ async function preparePrivateRulebookDownload(
     }
   }
 
-  let downloadUrl = stringValue(rulebook.source_url);
+  const isCleanedFreeFireRulebook = stringValue(rulebook.title) === "Free Fire India Rulebook";
+  // Never send the organiser to the unfiltered EWC source as the rulebook download.
+  // Only the generated, EWC-cleaned private copy is exposed for Free Fire India.
+  let downloadUrl = isCleanedFreeFireRulebook ? "" : stringValue(rulebook.source_url);
   if (storagePath) {
     const { data: signed, error } = await admin.storage
       .from("tournament-rulebooks")
@@ -540,7 +543,8 @@ async function preparePrivateRulebookDownload(
     storage_path: storagePath || null,
     file_size_bytes: Number.isFinite(fileSize) ? fileSize : null,
     download_url: downloadUrl,
-    official_downloaded: Boolean(storagePath),
+    official_downloaded: Boolean(storagePath) && !isCleanedFreeFireRulebook,
+    download_available: Boolean(storagePath),
     download_error: downloadError ?? rulebook.download_error ?? null,
   };
 }
