@@ -568,14 +568,7 @@ void main() {
       source: source,
     );
     await _openOperationsTab(tester, 'Onboarding');
-    await tester.scrollUntilVisible(
-      find.text('Save channel tags').first,
-      280,
-      scrollable: find.descendant(
-        of: find.byType(ListView).last,
-        matching: find.byType(Scrollable),
-      ).first,
-    );
+    await tester.ensureVisible(find.text('Save channel tags').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save channel tags').first);
     await tester.pumpAndSettle();
@@ -733,7 +726,7 @@ void main() {
 
     expect(source.reports, hasLength(1));
     expect(source.reports.single['status'], 'open');
-    await tester.pageBack();
+    Navigator.of(tester.element(find.text('Nova Ace'))).pop();
     await tester.pumpAndSettle();
     await _openOperationsTab(tester, 'Moderation');
 
