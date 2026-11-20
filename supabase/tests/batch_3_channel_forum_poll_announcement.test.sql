@@ -26,8 +26,15 @@ begin
   if v_def is null or position('slow_mode_seconds' in v_def)=0
     or position('read_only' in v_def)=0
     or position('announcement_publishers_only' in v_def)=0
-    or position('service_role' in v_def)=0
+    or position('is_batch3_maintenance_context' in v_def)=0
   then raise exception 'Batch 3: channel behaviour guard is incomplete'; end if;
+
+  select pg_get_functiondef(p.oid) into v_def
+  from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname='app_private' and p.proname='is_batch3_maintenance_context';
+  if v_def is null or position('service_role' in v_def)=0
+    or position('current_setting' in v_def)=0
+  then raise exception 'Batch 3: trigger maintenance bypass is not scoped to trusted database/service contexts'; end if;
 
   if has_function_privilege('authenticated','public.publish_due_channel_announcements(integer)','EXECUTE')
     or has_function_privilege('anon','public.publish_due_channel_announcements(integer)','EXECUTE')
