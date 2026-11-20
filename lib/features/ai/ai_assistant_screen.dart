@@ -473,10 +473,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   Future<void> _resolveProposal(String proposalId, String decision) async {
     if (_resolvingProposalId != null) return;
-    final selectedProposal = _items
-        .where((item) => item.proposal?['id']?.toString() == proposalId)
-        .map((item) => item.proposal)
-        .firstOrNull;
+    Map<String, dynamic>? selectedProposal;
+    for (final item in _items) {
+      if (item.proposal?['id']?.toString() == proposalId) {
+        selectedProposal = item.proposal;
+        break;
+      }
+    }
     if (selectedProposal == null) return;
     setState(() => _resolvingProposalId = proposalId);
     try {
