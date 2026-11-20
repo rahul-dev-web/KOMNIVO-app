@@ -178,6 +178,62 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
         ownershipStatus: 'proof_pending',
       );
 
+
+  @override
+  Future<Map<String, dynamic>> loadCommunityAccessPolicy(String communityId) async =>
+      {'visibility': 'private', 'join_approval_required': false};
+
+  @override
+  Future<void> saveCommunityAccessPolicy(String communityId, String visibility, bool approvalRequired) async {}
+
+  @override
+  Future<Map<String, dynamic>> createInvite(String communityId, int? maxUses, int? expiresInHours, bool requiresApproval) async =>
+      {'invite': {'id':'invite-1','requires_approval':requiresApproval}, 'code':'0123456789abcdef0123456789abcdef0123456789abcdef'};
+
+  @override
+  Future<void> revokeInvite(String inviteId) async {}
+
+  @override
+  Future<List<Map<String, dynamic>>> loadJoinRequests(String communityId) async => const [];
+
+  @override
+  Future<void> reviewJoinRequest(String requestId, String decision, String reason) async {}
+
+  @override
+  Future<String> submitModerationReport(String communityId, String? targetUserId, String? messageId, String reason, String details) async => 'report-1';
+
+  @override
+  Future<List<Map<String, dynamic>>> loadModerationActions(String communityId) async => const [];
+
+  @override
+  Future<String> applyModerationAction(String communityId, Map<String, dynamic> action) async => 'action-1';
+
+  @override
+  Future<List<Map<String, dynamic>>> loadAppeals(String communityId) async => const [];
+
+  @override
+  Future<String> submitAppeal(String actionId, String reason, String details, String evidenceReference) async => 'appeal-1';
+
+  @override
+  Future<void> reviewAppeal(String appealId, String decision, String response, int? newDurationMinutes) async {}
+
+  @override
+  Future<Map<String, dynamic>> loadSafetySettings(String communityId) async => {
+    'message_burst_limit': 6,
+    'message_window_seconds': 10,
+    'mention_burst_limit': 4,
+    'mention_window_seconds': 60,
+    'restrict_links_for_new_members': false,
+    'new_member_link_restriction_hours': 24,
+    'pause_invites_during_lockdown': true,
+    'raid_join_threshold': 10,
+    'raid_window_seconds': 60,
+    'lockdown_until': null,
+  };
+
+  @override
+  Future<void> saveSafetySettings(String communityId, Map<String, dynamic> settings) async {}
+
   @override
   Future<List<Map<String, dynamic>>> loadInvites(String communityId) async =>
       const [
