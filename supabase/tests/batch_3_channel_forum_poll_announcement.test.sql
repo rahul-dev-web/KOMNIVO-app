@@ -20,6 +20,16 @@ begin
     where n.nspname='public' and c.relname='messages' and t.tgname='messages_batch3_channel_guard' and not t.tgisinternal)
   then raise exception 'Batch 3: message behaviour enforcement trigger missing'; end if;
 
+  select coalesce(qual,'') into v_policy from pg_policies
+    where schemaname='public' and tablename='messages'
+      and policyname='messages_read_channel_member';
+  if v_policy is null
+    or position('keep_history' in v_policy)=0
+    or position('24:00:00' in v_policy)=0
+    or position('can_manage_event_channel' in v_policy)=0
+    or position('channel.manage_messages' in v_policy)=0
+  then raise exception 'Batch 3: channel history visibility is not enforced by scoped RLS'; end if;
+
   select pg_get_functiondef(p.oid) into v_def from pg_proc p
     join pg_namespace n on n.oid=p.pronamespace
     where n.nspname='app_private' and p.proname='guard_batch3_channel_message';
