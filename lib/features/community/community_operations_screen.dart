@@ -48,8 +48,22 @@ abstract class CommunityOperationsDataSource {
     List<String> topics,
     List<String> gameModes,
   );
+  Future<Map<String, dynamic>> loadCommunityAccessPolicy(String communityId);
+  Future<void> saveCommunityAccessPolicy(String communityId, String visibility, bool approvalRequired);
   Future<List<Map<String, dynamic>>> loadInvites(String communityId);
+  Future<Map<String, dynamic>> createInvite(String communityId, int? maxUses, int? expiresInHours, bool requiresApproval);
+  Future<void> revokeInvite(String inviteId);
+  Future<List<Map<String, dynamic>>> loadJoinRequests(String communityId);
+  Future<void> reviewJoinRequest(String requestId, String decision, String reason);
   Future<List<Map<String, dynamic>>> loadReports(String communityId);
+  Future< String > submitModerationReport(String communityId, String? targetUserId, String? messageId, String reason, String details);
+  Future<List<Map<String, dynamic>>> loadModerationActions(String communityId);
+  Future<String> applyModerationAction(String communityId, Map<String, dynamic> action);
+  Future<List<Map<String, dynamic>>> loadAppeals(String communityId);
+  Future<String> submitAppeal(String actionId, String reason, String details, String evidenceReference);
+  Future<void> reviewAppeal(String appealId, String decision, String response, int? newDurationMinutes);
+  Future<Map<String, dynamic>> loadSafetySettings(String communityId);
+  Future<void> saveSafetySettings(String communityId, Map<String, dynamic> settings);
   Future<List<Map<String, dynamic>>> loadChannelPolicies(String communityId);
   Future<List<Map<String, dynamic>>> loadAudit(String communityId);
 }
@@ -216,11 +230,79 @@ class SupabaseCommunityOperationsDataSource
   }
 
   @override
+  Future<Map<String, dynamic>> loadCommunityAccessPolicy(String communityId) async {
+    final row = await _db.from('communities')
+        .select('visibility,join_approval_required')
+        .eq('id', communityId)
+        .maybeSingle();
+    if (row == null) throw Exception('Community access policy is unavailable.');
+    return Map<String, dynamic>.from(row);
+  }
+
+  @override
+  Future<void> saveCommunityAccessPolicy(
+    String communityId,
+    String visibility,
+    bool approvalRequired,
+  ) async {
+    await _db.rpc('update_community_access_policy', params: {
+      'p_community_id': communityId,
+      'p_visibility': visibility,
+      'p_require_approval': approvalRequired,
+    });
+  }
+
+  @override
   Future<List<Map<String, dynamic>>> loadInvites(String communityId) async =>
       List<Map<String, dynamic>>.from(await _db.from('community_invites')
-          .select('id,created_by,expires_at,max_uses,uses,created_at')
+          .select('id,created_by,expires_at,max_uses,uses,created_at,revoked_at,requires_approval')
           .eq('community_id', communityId)
           .order('created_at', ascending: false).limit(100));
+
+  @override
+  Future<Map<String, dynamic>> createInvite(
+    String communityId,
+    int? maxUses,
+    int? expiresInHours,
+    bool requiresApproval,
+  ) async {
+    final response = await _db.functions.invoke(
+      'create-community-invite',
+      body: {
+        'community_id': communityId,
+        'max_uses': maxUses,
+        'expires_in_hours': expiresInHours,
+        'requires_approval': requiresApproval,
+      },
+    );
+    if (response.status < 200 || response.status >= 300 || response.data is! Map) {
+      throw Exception((response.data is Map
+          ? (response.data as Map)['error']
+          : null)?.toString() ?? 'Invite creation failed.');
+    }
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  @override
+  Future<void> revokeInvite(String inviteId) async {
+    await _db.rpc('revoke_community_invite', params: {'p_invite_id': inviteId});
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> loadJoinRequests(String communityId) async =>
+      List<Map<String, dynamic>>.from(await _db.from('community_join_requests')
+          .select('id,user_id,invite_id,status,applicant_note,review_reason,created_at,reviewed_at,profiles!community_join_requests_user_id_fkey(display_name,username,avatar_url)')
+          .eq('community_id', communityId)
+          .order('created_at', ascending: false).limit(100));
+
+  @override
+  Future<void> reviewJoinRequest(String requestId, String decision, String reason) async {
+    await _db.rpc('review_community_join_request', params: {
+      'p_request_id': requestId,
+      'p_decision': decision,
+      'p_reason': reason,
+    });
+  }
 
   @override
   Future<List<Map<String, dynamic>>> loadReports(String communityId) async =>
@@ -228,6 +310,117 @@ class SupabaseCommunityOperationsDataSource
           .select('id,reporter_id,target_user_id,message_id,reason,details,status,assigned_to,created_at,resolved_at')
           .eq('community_id', communityId)
           .order('created_at', ascending: false).limit(100));
+
+  @override
+  Future<String> submitModerationReport(
+    String communityId,
+    String? targetUserId,
+    String? messageId,
+    String reason,
+    String details,
+  ) async {
+    final result = await _db.rpc('submit_community_moderation_report', params: {
+      'p_community_id': communityId,
+      'p_target_user_id': targetUserId,
+      'p_message_id': messageId,
+      'p_reason': reason,
+      'p_details': details,
+    });
+    return result.toString();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> loadModerationActions(String communityId) async =>
+      List<Map<String, dynamic>>.from(await _db.from('community_moderation_actions')
+          .select('id,action_type,target_user_id,channel_id,message_id,reason,duration_minutes,status,created_by,created_at')
+          .eq('community_id', communityId)
+          .order('created_at', ascending: false).limit(100));
+
+  @override
+  Future<String> applyModerationAction(
+    String communityId,
+    Map<String, dynamic> action,
+  ) async {
+    final result = await _db.rpc('apply_community_moderation_action', params: {
+      'p_community_id': communityId,
+      'p_action_type': action['action_type'],
+      'p_target_user_id': action['target_user_id'],
+      'p_reason': action['reason'],
+      'p_duration_minutes': action['duration_minutes'],
+      'p_channel_id': action['channel_id'],
+      'p_message_id': action['message_id'],
+    });
+    return result.toString();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> loadAppeals(String communityId) async =>
+      List<Map<String, dynamic>>.from(await _db.from('community_moderation_appeals')
+          .select('id,moderation_action_id,appellant_id,reason,details,evidence_reference,status,reviewer_id,reviewer_response,created_at,reviewed_at')
+          .eq('community_id', communityId)
+          .order('created_at', ascending: false).limit(100));
+
+  @override
+  Future<String> submitAppeal(
+    String actionId,
+    String reason,
+    String details,
+    String evidenceReference,
+  ) async {
+    final result = await _db.rpc('submit_community_moderation_appeal', params: {
+      'p_moderation_action_id': actionId,
+      'p_reason': reason,
+      'p_details': details,
+      'p_evidence_reference': evidenceReference,
+    });
+    return result.toString();
+  }
+
+  @override
+  Future<void> reviewAppeal(
+    String appealId,
+    String decision,
+    String response,
+    int? newDurationMinutes,
+  ) async {
+    await _db.rpc('review_community_moderation_appeal', params: {
+      'p_appeal_id': appealId,
+      'p_decision': decision,
+      'p_response': response,
+      'p_new_duration_minutes': newDurationMinutes,
+    });
+  }
+
+  @override
+  Future<Map<String, dynamic>> loadSafetySettings(String communityId) async {
+    final row = await _db.from('community_safety_settings')
+        .select()
+        .eq('community_id', communityId)
+        .maybeSingle();
+    return row == null ? <String, dynamic>{} : Map<String, dynamic>.from(row);
+  }
+
+  @override
+  Future<void> saveSafetySettings(
+    String communityId,
+    Map<String, dynamic> settings,
+  ) async {
+    await _db.rpc('save_community_safety_settings', params: {
+      'p_community_id': communityId,
+      'p_message_burst_limit': settings['message_burst_limit'],
+      'p_message_window_seconds': settings['message_window_seconds'],
+      'p_mention_burst_limit': settings['mention_burst_limit'],
+      'p_mention_window_seconds': settings['mention_window_seconds'],
+      'p_restrict_links_for_new_members': settings['restrict_links_for_new_members'],
+      'p_new_member_link_restriction_hours': settings['new_member_link_restriction_hours'],
+      'p_pause_invites_during_lockdown': settings['pause_invites_during_lockdown'],
+      'p_raid_join_threshold': settings['raid_join_threshold'],
+      'p_raid_window_seconds': settings['raid_window_seconds'],
+      'p_lockdown_minutes': settings['lockdown_minutes'],
+      'p_lockdown_reason': settings['lockdown_reason'],
+    });
+  }
+
 
   @override
   Future<List<Map<String, dynamic>>> loadChannelPolicies(String communityId) async {
