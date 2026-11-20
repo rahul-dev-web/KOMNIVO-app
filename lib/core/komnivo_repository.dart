@@ -595,6 +595,19 @@ class KomnivoRepository {
     return List<Map<String, dynamic>>.from(rows);
   }
 
+  Future<Map<String, int>> forumPostReplyCounts(List<String> postIds) async {
+    if (postIds.isEmpty) return <String, int>{};
+    final rows = await client.from('forum_post_replies')
+      .select('post_id').inFilter('post_id', postIds);
+    final counts = <String, int>{};
+    for (final row in rows) {
+      final postId = row['post_id']?.toString();
+      if (postId == null) continue;
+      counts[postId] = (counts[postId] ?? 0) + 1;
+    }
+    return counts;
+  }
+
   Future<void> createForumReply(String postId, String body) async {
     final text = body.trim();
     if (text.isEmpty) throw Exception('Reply cannot be empty.');
