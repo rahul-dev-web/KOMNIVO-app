@@ -544,7 +544,7 @@ async function preparePrivateRulebookDownload(
     file_size_bytes: Number.isFinite(fileSize) ? fileSize : null,
     download_url: downloadUrl,
     official_downloaded: Boolean(storagePath) && !isCleanedFreeFireRulebook,
-    download_available: Boolean(storagePath),
+    download_available: Boolean(storagePath && downloadUrl),
     download_error: downloadError ?? rulebook.download_error ?? null,
   };
 }
