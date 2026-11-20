@@ -1245,7 +1245,6 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
             DropdownMenuItem(value: 'No broad mentions', child: Text('No broad mentions')),
             DropdownMenuItem(value: 'Role mentions only', child: Text('Role mentions only')),
             DropdownMenuItem(value: 'Members and roles', child: Text('Members and roles')),
-            DropdownMenuItem(value: 'Channel moderators only', child: Text('Channel moderators only')),
           ],
           onChanged: (value) => setState(() => _mentionPolicy = value ?? _mentionPolicy),
         ),
@@ -1300,7 +1299,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
       return matchQuery && matchStatus && matchTag;
     }).toList();
     return ListView(key: const ValueKey('batch3-forum-list'), padding: const EdgeInsets.only(bottom: 28), children: [
-      _section('Forum channels', 'Topic-first discussions for recruitment, LFG, support and suggestions.',
+      _section('Forum channels', 'Layout preview only · sample topics are not saved here. Open a real Forum channel for live posts, search, tags, replies and moderation.',
         trailing: FilledButton.icon(onPressed: _newForumPost, icon: const Icon(Icons.add, size: 17), label: const Text('New post'))),
       Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: TextField(decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search posts and topics…'), onChanged: (value) => setState(() => _forumQuery = value))),
       Padding(padding: const EdgeInsets.fromLTRB(16, 9, 16, 0), child: Wrap(spacing: 6, runSpacing: 6, children: [
@@ -1399,7 +1398,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
   }
 
   Widget _engagementTab() => ListView(key: const ValueKey('batch3-engagement-list'), padding: const EdgeInsets.only(bottom: 28), children: [
-    _section('Threads & replies', 'Keep deeper conversations attached to the original channel message.'),
+    _section('Threads & replies', 'Preview only · sample threads, polls and schedules are not saved here. Use live channel tools to create them.'),
     Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Column(children: [
       ..._threads.map((thread) => Padding(
         padding: const EdgeInsets.only(bottom: 8),
