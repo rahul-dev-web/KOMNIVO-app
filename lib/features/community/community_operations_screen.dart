@@ -1791,9 +1791,18 @@ class _ModerationTabState extends State<_ModerationTab> {
   void initState() { super.initState(); _future = widget.source.loadReports(widget.communityId); }
   void _refresh() => setState(() => _future = widget.source.loadReports(widget.communityId));
 
-  Future<void> _prepareAction({String? memberName}) async {
+  Future<void> _prepareAction({
+    String? memberName,
+    String? targetUserId,
+    String? messageId,
+  }) async {
     final result = await showDialog<Map<String, dynamic>>(
-      context: context, builder: (_) => _ModerationActionDialog(memberName: memberName),
+      context: context,
+      builder: (_) => _ModerationActionDialog(
+        memberName: memberName,
+        targetUserId: targetUserId,
+        messageId: messageId,
+      ),
     );
     if (result != null && mounted) setState(() => _draft = result);
   }
@@ -1832,7 +1841,12 @@ class _ModerationTabState extends State<_ModerationTab> {
           )
         else
           ...shown.map((report) => _ModerationReportCard(
-            report: report, onReview: () => _prepareAction(memberName: report['target_user_id'] == null ? null : 'reported member'),
+            report: report,
+            onReview: () => _prepareAction(
+              memberName: report['target_user_id'] == null ? null : 'reported member',
+              targetUserId: report['target_user_id']?.toString(),
+              messageId: report['message_id']?.toString(),
+            ),
           )),
         const SizedBox(height: 14),
         const _SafetyBoundaryCard(
@@ -1876,28 +1890,55 @@ class _ModerationReportCard extends StatelessWidget {
 }
 
 class _ModerationActionDialog extends StatefulWidget {
-  const _ModerationActionDialog({this.memberName});
+  const _ModerationActionDialog({
+    this.memberName,
+    this.targetUserId,
+    this.messageId,
+  });
   final String? memberName;
+  final String? targetUserId;
+  final String? messageId;
   @override
   State<_ModerationActionDialog> createState() => _ModerationActionDialogState();
 }
 
 class _ModerationActionDialogState extends State<_ModerationActionDialog> {
   final _reason = TextEditingController();
+  final _target = TextEditingController();
+  final _message = TextEditingController();
   String _action = 'Warn';
   String _scope = 'Community';
   String _duration = '24 hours';
   String _channel = '';
   static const _actions = ['Warn', 'Delete message', 'Timeout', 'Mute', 'Channel restriction', 'Kick', 'Ban', 'Unban'];
   bool get _needsDuration => const {'Timeout', 'Mute', 'Ban'}.contains(_action);
-  bool get _needsChannel => _action == 'Channel restriction';
+  bool get _needsChannel => _action == 'Channel restriction' || _scope == 'Selected channel';
+  bool get _needsMessage => _action == 'Delete message' || _scope == 'Specific message';
+  bool get _hasTarget => (widget.targetUserId ?? _target.text.trim()).isNotEmpty;
   @override
-  void dispose() { _reason.dispose(); super.dispose(); }
+  void dispose() {
+    _reason.dispose();
+    _target.dispose();
+    _message.dispose();
+    super.dispose();
+  }
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('Moderation action'),
     content: SizedBox(width: 440, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      if (widget.memberName != null) Align(alignment: Alignment.centerLeft, child: Text('Target: ' + widget.memberName!, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10))),
+      if (widget.memberName != null)
+        Align(alignment: Alignment.centerLeft, child: Text('Target: ' + widget.memberName!, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10)))
+      else ...[
+        TextField(
+          controller: _target,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(
+            labelText: 'Target member ID / reference (required)',
+            hintText: 'Select a member from the directory or enter the member reference',
+          ),
+        ),
+        const SizedBox(height: 10),
+      ],
       DropdownButtonFormField<String>(
         isExpanded: true,
         value: _action, decoration: const InputDecoration(labelText: 'Action'),
@@ -1913,7 +1954,24 @@ class _ModerationActionDialogState extends State<_ModerationActionDialog> {
       ),
       if (_needsChannel) ...[
         const SizedBox(height: 10),
-        TextField(onChanged: (v) => _channel = v, decoration: const InputDecoration(labelText: 'Channel target', hintText: 'Select a channel in the connected action flow')),
+        TextField(
+          onChanged: (v) { _channel = v; setState(() {}); },
+          decoration: const InputDecoration(
+            labelText: 'Channel ID (required)',
+            hintText: 'Choose a channel in the connected channel selector',
+          ),
+        ),
+      ],
+      if (_needsMessage) ...[
+        const SizedBox(height: 10),
+        TextField(
+          controller: _message,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(
+            labelText: 'Message ID (required)',
+            hintText: 'Reference the exact message to review or delete',
+          ),
+        ),
       ],
       if (_needsDuration) ...[
         const SizedBox(height: 10),
@@ -1932,11 +1990,20 @@ class _ModerationActionDialogState extends State<_ModerationActionDialog> {
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
       FilledButton(
-        onPressed: _reason.text.trim().length < 8 || (_needsChannel && _channel.trim().isEmpty) ? null :
-          () => Navigator.pop(context, {
-            'action': _action, 'scope': _scope, 'duration': _needsDuration ? _duration : null,
-            'channel': _needsChannel ? _channel.trim() : null, 'reason': _reason.text.trim(),
-          }),
+        onPressed: !_hasTarget ||
+            _reason.text.trim().length < 8 ||
+            (_needsChannel && _channel.trim().isEmpty) ||
+            (_needsMessage && (widget.messageId ?? _message.text.trim()).isEmpty)
+            ? null
+            : () => Navigator.pop(context, {
+                'action': _action,
+                'scope': _scope,
+                'target_user_id': widget.targetUserId ?? _target.text.trim(),
+                'message_id': widget.messageId ?? (_needsMessage ? _message.text.trim() : null),
+                'duration': _needsDuration ? _duration : null,
+                'channel_id': _needsChannel ? _channel.trim() : null,
+                'reason': _reason.text.trim(),
+              }),
         child: const Text('Prepare action'),
       ),
     ],
@@ -1959,7 +2026,10 @@ class _ModerationDraftCard extends StatelessWidget {
       const SizedBox(height: 8),
       _DetailRow(label: 'Action', value: draft['action'].toString()),
       _DetailRow(label: 'Scope', value: draft['scope'].toString()),
-      if (draft['duration'] != null) _DetailRow(label: 'Duration', value: draft['duration'].toString()),
+      _DetailRow(label: 'Target', value: draft['target_user_id'] == null ? 'Not selected' : 'Member selected'),
+       if (draft['channel_id'] != null) _DetailRow(label: 'Channel', value: 'Channel selected'),
+       if (draft['message_id'] != null) _DetailRow(label: 'Message', value: 'Message selected'),
+       if (draft['duration'] != null) _DetailRow(label: 'Duration', value: draft['duration'].toString()),
       _DetailRow(label: 'Reason', value: draft['reason'].toString()),
       Align(alignment: Alignment.centerRight, child: TextButton(onPressed: onDiscard, child: const Text('Discard draft'))),
     ]),
