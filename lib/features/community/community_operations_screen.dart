@@ -57,7 +57,8 @@ abstract class CommunityOperationsDataSource {
   Future<List<Map<String, dynamic>>> loadJoinRequests(String communityId);
   Future<void> reviewJoinRequest(String requestId, String decision, String reason);
   Future<List<Map<String, dynamic>>> loadReports(String communityId);
-  Future< String > submitModerationReport(String communityId, String? targetUserId, String? messageId, String reason, String details);
+  Future<void> reviewModerationReport(String reportId, String status, String note);
+  Future<String> submitModerationReport(String communityId, String? targetUserId, String? messageId, String reason, String details);
   Future<List<Map<String, dynamic>>> loadModerationActions(String communityId);
   Future<String> applyModerationAction(String communityId, Map<String, dynamic> action);
   Future<List<Map<String, dynamic>>> loadAppeals(String communityId);
@@ -311,6 +312,15 @@ class SupabaseCommunityOperationsDataSource
           .select('id,reporter_id,target_user_id,message_id,reason,details,status,assigned_to,created_at,resolved_at')
           .eq('community_id', communityId)
           .order('created_at', ascending: false).limit(100));
+
+  @override
+  Future<void> reviewModerationReport(String reportId, String status, String note) async {
+    await _db.rpc('review_community_moderation_report', params: {
+      'p_report_id': reportId,
+      'p_status': status,
+      'p_review_note': note,
+    });
+  }
 
   @override
   Future<String> submitModerationReport(
