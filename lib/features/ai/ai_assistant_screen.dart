@@ -135,10 +135,12 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
             .select('id,action_type,proposal,source_refs,status,expires_at')
             .eq('conversation_id', conversationId)
             .order('created_at'),
-        client.from('tournament_proposals')
-            .select('id,payload,source_refs,status,expires_at,event_id')
-            .eq('conversation_id', conversationId)
-            .order('created_at'),
+        _organizer
+            ? client.from('tournament_proposals')
+                .select('id,payload,source_refs,status,expires_at,event_id')
+                .eq('conversation_id', conversationId)
+                .order('created_at')
+            : Future.value(<Map<String, dynamic>>[]),
       ]);
       if (!mounted) return;
       final messages = List<Map<String, dynamic>>.from(results[0] as List);
@@ -380,7 +382,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         builder: (_) => TournamentFormScreen(
           communities: _managedCommunities,
           initialCommunityId: _activeCommunityId ?? widget.communityId,
-          conversationId: _conversationId,
+          conversationId: (widget.initialCommunityId != null &&
+                  widget.initialCommunityId != _communityId)
+              ? null
+              : _conversationId,
         ),
       ),
     );
@@ -725,6 +730,12 @@ class _EventProposalCard extends StatelessWidget {
     final game = proposal['game_name']?.toString() ?? 'Game';
     final startsAt = DateTime.tryParse(proposal['starts_at']?.toString() ?? '');
     final close = DateTime.tryParse(proposal['registration_closes_at']?.toString() ?? '');
+    final eventConfig = proposal['event_config'] is Map
+        ? Map<String, dynamic>.from(proposal['event_config'] as Map)
+        : <String, dynamic>{};
+    final entryType = eventConfig['entry_type']?.toString() ?? 'free';
+    final stageCount = eventConfig['stage_count']?.toString() ?? '—';
+    final prizePool = eventConfig['prize_pool_amount']?.toString() ?? '0';
     final sources = proposal['source_refs'] is List
         ? (proposal['source_refs'] as List).whereType<Map>().map((row) {
             final file = row['document']?.toString() ?? '';
@@ -764,11 +775,14 @@ class _EventProposalCard extends StatelessWidget {
         Wrap(spacing: 8, runSpacing: 8, children: [
           _ProposalChip(icon: Icons.sports_esports, label: game),
           _ProposalChip(icon: Icons.groups_outlined, label: format.toUpperCase()),
-          _ProposalChip(icon: Icons.people_outline, label: '$capacity teams'),
+          _ProposalChip(icon: Icons.people_outline, label: '$capacity slots'),
+          _ProposalChip(icon: Icons.account_tree_outlined, label: '$stageCount stages'),
+          _ProposalChip(icon: Icons.payments_outlined, label: entryType == 'paid' ? 'Paid entry' : 'Free entry'),
+          _ProposalChip(icon: Icons.card_giftcard_outlined, label: '₹$prizePool prize pool'),
         ]),
         const SizedBox(height: 10),
         if (startsAt != null)
-          _ProposalInfo(icon: Icons.event_outlined, label: 'Starts: ${startsAt.toLocal()}'),
+          _ProposalInfo(icon: Icons.event_outlined, label: 'Matches start: ${startsAt.toLocal()}'),
         if (close != null)
           _ProposalInfo(icon: Icons.lock_clock_outlined, label: 'Registration closes: ${close.toLocal()}'),
         if (sources.isNotEmpty) ...[
