@@ -489,7 +489,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       }
     }
     if (selectedProposal == null) return;
-    final proposalDetails = selectedProposal!;
+    final proposalDetails = selectedProposal;
     setState(() => _resolvingProposalId = proposalId);
     try {
       final isStructuredTournament = proposalDetails['workflow_type'] == 'tournament';
