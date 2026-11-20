@@ -281,7 +281,9 @@ class _CommunityOperationsScreenState extends State<CommunityOperationsScreen> {
       final access = snapshot.data ?? <String>{};
       final sections = <_OperationsSection>[
         _OperationsSection('Members', Icons.groups_outlined, _MemberDirectoryTab(
-          communityId: _communityId, source: _source,
+          communityId: _communityId,
+          source: _source,
+          canManageMembers: access.contains('community.manage_members'),
         )),
         _OperationsSection('Onboarding', Icons.fact_check_outlined, _OnboardingTab(
           communityId: _communityId, source: _source,
@@ -370,9 +372,14 @@ class _WriteBoundaryNotice extends StatelessWidget {
 }
 
 class _MemberDirectoryTab extends StatefulWidget {
-  const _MemberDirectoryTab({required this.communityId, required this.source});
+  const _MemberDirectoryTab({
+    required this.communityId,
+    required this.source,
+    required this.canManageMembers,
+  });
   final String communityId;
   final CommunityOperationsDataSource source;
+  final bool canManageMembers;
   @override
   State<_MemberDirectoryTab> createState() => _MemberDirectoryTabState();
 }
@@ -445,7 +452,11 @@ class _MemberDirectoryTabState extends State<_MemberDirectoryTab> {
     await showModalBottomSheet<void>(
       context: context, isScrollControlled: true, useSafeArea: true,
       backgroundColor: KomnivoTheme.surface,
-      builder: (context) => _MemberDetailsSheet(member: member, name: _name(member)),
+      builder: (context) => _MemberDetailsSheet(
+        member: member,
+        name: _name(member),
+        canManageMembers: widget.canManageMembers,
+      ),
     );
   }
 
@@ -591,9 +602,14 @@ class _MemberCard extends StatelessWidget {
 }
 
 class _MemberDetailsSheet extends StatelessWidget {
-  const _MemberDetailsSheet({required this.member, required this.name});
+  const _MemberDetailsSheet({
+    required this.member,
+    required this.name,
+    required this.canManageMembers,
+  });
   final Map<String, dynamic> member;
   final String name;
+  final bool canManageMembers;
   @override
   Widget build(BuildContext context) {
     final profile = member['profiles'] is Map ? Map<String, dynamic>.from(member['profiles'] as Map) : <String, dynamic>{};
@@ -634,17 +650,44 @@ class _MemberDetailsSheet extends StatelessWidget {
           const SizedBox(height: 12),
           const _PrivacyNote(text: 'Moderation controls are available only after the server confirms the acting moderator’s scope and authority.'),
           const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final report = await showDialog<Map<String, String>>(
-                context: context, builder: (_) => _ReportDraftDialog(memberName: name),
-              );
-              if (report != null && context.mounted) {
-                showMessage(context, 'Report draft prepared. Nothing has been submitted.');
-              }
-            },
-            icon: const Icon(Icons.flag_outlined, size: 16), label: const Text('Prepare report'),
-          ),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final report = await showDialog<Map<String, String>>(
+                    context: context,
+                    builder: (_) => _ReportDraftDialog(memberName: name),
+                  );
+                  if (report != null && context.mounted) {
+                    showMessage(context, 'Report draft prepared. Nothing has been submitted.');
+                  }
+                },
+                icon: const Icon(Icons.flag_outlined, size: 16),
+                label: const Text('Prepare report'),
+              ),
+            ),
+            if (canManageMembers) ...[
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    final action = await showDialog<Map<String, dynamic>>(
+                      context: context,
+                      builder: (_) => _ModerationActionDialog(
+                        memberName: name,
+                        targetUserId: member['user_id']?.toString(),
+                      ),
+                    );
+                    if (action != null && context.mounted) {
+                      showMessage(context, 'Moderation action drafted for ' + name + '. No member state has changed.');
+                    }
+                  },
+                  icon: const Icon(Icons.shield_outlined, size: 16),
+                  label: const Text('Moderate'),
+                ),
+              ),
+            ],
+          ]),
         ],
       )),
     );
