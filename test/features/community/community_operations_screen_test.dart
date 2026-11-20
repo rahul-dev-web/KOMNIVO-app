@@ -150,6 +150,7 @@ void main() {
 
     expect(find.text('Members'), findsOneWidget);
     expect(find.text('Onboarding'), findsOneWidget);
+    expect(find.text('Appeals'), findsOneWidget);
     expect(find.text('Invites'), findsNothing);
     expect(find.text('Moderation'), findsNothing);
     expect(find.text('Safety'), findsNothing);
@@ -173,6 +174,7 @@ void main() {
     for (final label in [
       'Members',
       'Onboarding',
+      'Appeals',
       'Invites',
       'Moderation',
       'Safety',
@@ -213,6 +215,32 @@ void main() {
     expect(find.textContaining('Verification proof pending'), findsOneWidget);
     expect(find.textContaining('Accepted · member'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Members can prepare appeals and reviewers see a separate queue',
+      (tester) async {
+    addTearDown(() => _reset(tester));
+    await _pumpOperations(tester);
+    await tester.tap(find.text('Appeals'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byType(TextField).first,
+      'decision-2026-001',
+    );
+    await tester.enterText(
+      find.byType(TextField).last,
+      'The decision did not include the supplied match evidence and roster context.',
+    );
+    await tester.ensureVisible(find.text('Review appeal'));
+    await tester.tap(find.text('Review appeal'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Appeal review draft'), findsOneWidget);
+    expect(find.text('NOT SUBMITTED'), findsOneWidget);
+    expect(find.text('My appeal history'), findsOneWidget);
+
+    await _reset(tester);
   });
 
   testWidgets('Invite revoke requires confirmation and remains a draft',
