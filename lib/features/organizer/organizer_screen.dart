@@ -16,7 +16,7 @@ class OrganizerScreen extends StatefulWidget {
 }
 
 class _OrganizerScreenState extends State<OrganizerScreen> {
-  String _status = 'Create and manage tournament drafts from the structured organiser workflow.';
+  final String _status = 'Create and manage tournament drafts from the structured organiser workflow.';
   Future<List<Map<String, dynamic>>>? _eventsFuture;
 
   @override
