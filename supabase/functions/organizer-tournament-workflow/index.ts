@@ -87,7 +87,10 @@ async function validatePayload(
   const gameId = stringValue(input.game_id);
   const { data: game, error: gameError } = await admin.from("games")
     .select("id,code,name,is_active").eq("id", gameId).maybeSingle();
-  if (gameError || !game || game.is_active !== true) throw new Error("Select an active supported game.");
+  if (gameError || !game || game.is_active !== true ||
+      !["free_fire_india", "bgmi"].includes(String(game.code))) {
+    throw new Error("Select Free Fire India or Battlegrounds Mobile India.");
+  }
 
   const registrationOpensAt = futureIso(input.registration_opens_at, "Registration start");
   const registrationClosesAt = futureIso(input.registration_closes_at, "Registration close");
