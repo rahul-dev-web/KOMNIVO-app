@@ -247,7 +247,12 @@ void main() {
     await pumpStudio(tester);
     await openStudioTab(tester, 'Text');
 
-    final mentionField = find.byType(DropdownButtonFormField<String>).last;
+    final mentionField = find.byWidgetPredicate(
+      (widget) => widget is DropdownButtonFormField<String> &&
+          widget.decoration.labelText == 'Allowed mentions',
+    );
+    expect(mentionField, findsOneWidget);
+    await tester.ensureVisible(mentionField);
     await tester.tap(mentionField);
     await tester.pumpAndSettle();
 
