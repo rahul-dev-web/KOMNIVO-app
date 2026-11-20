@@ -164,6 +164,22 @@ begin
   where conrelid='public.channels'::regclass and conname='channels_kind_check';
   if v_def is null or position('forum' in v_def)=0
   then raise exception 'Batch 3: forum channel type is not accepted by the database constraint'; end if;
+
+  foreach v_table in array array[
+    'channel_category_preferences_user_collapsed_idx',
+    'forum_posts_channel_community_idx',
+    'forum_post_replies_author_idx',
+    'channel_poll_votes_option_poll_idx',
+    'scheduled_announcements_channel_community_idx',
+    'event_communication_instances_community_idx',
+    'event_channel_lifecycle_rules_community_idx',
+    'message_attachments_message_id_idx',
+    'message_pins_pinned_by_idx',
+    'messages_parent_message_id_idx'
+  ] loop
+    if not exists(select 1 from pg_indexes where schemaname='public' and indexname=v_table)
+    then raise exception 'Batch 3: expected query/foreign-key index % is missing',v_table; end if;
+  end loop;
 end;
 $test$;
 select extensions.ok(true,'Batch 3 channel, forum, poll and scheduling database contracts hold');
