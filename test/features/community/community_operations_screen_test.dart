@@ -143,6 +143,18 @@ void _reset(WidgetTester tester) {
   tester.view.resetDevicePixelRatio();
 }
 
+Future<void> _openOperationsTab(WidgetTester tester, String label) async {
+  final tab = find.descendant(
+    of: find.byType(TabBar),
+    matching: find.text(label),
+  );
+  expect(tab, findsOneWidget);
+  tester.ensureVisible(tab);
+  await tester.pumpAndSettle();
+  await tester.tap(tab);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('Regular members only see directory and onboarding', (tester) async {
     addTearDown(() => _reset(tester));
@@ -206,8 +218,7 @@ void main() {
       (tester) async {
     addTearDown(() => _reset(tester));
     await _pumpOperations(tester);
-    await tester.tap(find.text('Onboarding'));
-    await tester.pumpAndSettle();
+    await _openOperationsTab(tester, 'Onboarding');
 
     expect(find.text('Platform sign-in'), findsOneWidget);
     expect(find.text('Free Fire UID ownership'), findsOneWidget);
@@ -221,15 +232,15 @@ void main() {
       (tester) async {
     addTearDown(() => _reset(tester));
     await _pumpOperations(tester);
-    await tester.tap(find.text('Appeals'));
-    await tester.pumpAndSettle();
+    await _openOperationsTab(tester, 'Appeals');
 
+    await tester.ensureVisible(find.text('Moderation decision reference'));
     await tester.enterText(
-      find.byType(TextField).first,
+      find.widgetWithText(TextField, 'Moderation decision reference'),
       'decision-2026-001',
     );
     await tester.enterText(
-      find.byType(TextField).last,
+      find.widgetWithText(TextField, 'Explain why the decision should be reviewed'),
       'The decision did not include the supplied match evidence and roster context.',
     );
     await tester.ensureVisible(find.text('Review appeal'));
@@ -250,8 +261,8 @@ void main() {
       tester,
       permissions: {'community.manage_invites'},
     );
-    await tester.tap(find.text('Invites'));
-    await tester.pumpAndSettle();
+    await _openOperationsTab(tester, 'Invites');
+    await tester.ensureVisible(find.text('Prepare revoke'));
     expect(find.text('Prepare revoke'), findsOneWidget);
 
     await tester.tap(find.text('Prepare revoke'));
@@ -273,8 +284,8 @@ void main() {
       tester,
       permissions: {'community.manage_invites'},
     );
-    await tester.tap(find.text('Invites'));
-    await tester.pumpAndSettle();
+    await _openOperationsTab(tester, 'Invites');
+    await tester.ensureVisible(find.text('Create'));
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
 
@@ -293,8 +304,7 @@ void main() {
       (tester) async {
     addTearDown(() => _reset(tester));
     await _pumpOperations(tester);
-    await tester.tap(find.text('Onboarding'));
-    await tester.pumpAndSettle();
+    await _openOperationsTab(tester, 'Onboarding');
 
     await tester.tap(find.byType(DropdownButtonFormField<String>).first);
     await tester.pumpAndSettle();
@@ -322,8 +332,8 @@ void main() {
       tester,
       permissions: {'community.manage_invites'},
     );
-    await tester.tap(find.text('Invites'));
-    await tester.pumpAndSettle();
+    await _openOperationsTab(tester, 'Invites');
+    await tester.ensureVisible(find.text('Create'));
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Review settings'));
@@ -342,8 +352,7 @@ void main() {
       tester,
       permissions: {'community.manage_members'},
     );
-    await tester.tap(find.text('Moderation'));
-    await tester.pumpAndSettle();
+    await _openOperationsTab(tester, 'Moderation');
     await tester.tap(find.text('New action'));
     await tester.pumpAndSettle();
 
@@ -375,8 +384,7 @@ void main() {
       tester,
       permissions: {'community.manage_settings'},
     );
-    await tester.tap(find.text('Safety'));
-    await tester.pumpAndSettle();
+    await _openOperationsTab(tester, 'Safety');
 
     expect(find.text('Community safety'), findsOneWidget);
     await tester.ensureVisible(find.text('#general'));
@@ -393,10 +401,11 @@ void main() {
       tester,
       permissions: {'community.manage_settings'},
     );
-    await tester.tap(find.text('Safety'));
-    await tester.pumpAndSettle();
+    await _openOperationsTab(tester, 'Safety');
 
+    await tester.ensureVisible(find.text('Message burst limit'));
     await tester.enterText(find.byType(TextField).first, '6');
+    await tester.ensureVisible(find.text('Prepare lockdown'));
     await tester.tap(find.text('Prepare lockdown'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Review safety policy'));
@@ -418,8 +427,7 @@ void main() {
       permissions: {'community.audit.read'},
     );
     expect(find.text('Audit'), findsOneWidget);
-    await tester.tap(find.text('Audit'));
-    await tester.pumpAndSettle();
+    await _openOperationsTab(tester, 'Audit');
     expect(find.text('Audit history'), findsOneWidget);
     expect(find.text('No audit records'), findsOneWidget);
     expect(tester.takeException(), isNull);
