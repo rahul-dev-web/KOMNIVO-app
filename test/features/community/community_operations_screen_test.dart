@@ -803,12 +803,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Safety centre reviews anti-spam windows and raid lockdown without applying',
+  testWidgets('Safety centre reviews and saves anti-spam windows and raid lockdown',
       (tester) async {
     addTearDown(() => _reset(tester));
+    final source = _FakeCommunityOperationsSource(
+      permissions: {'community.manage_settings'},
+    );
     await _pumpOperations(
       tester,
       permissions: {'community.manage_settings'},
+      source: source,
       size: const Size(430, 2100),
     );
     await _openOperationsTab(tester, 'Safety');
