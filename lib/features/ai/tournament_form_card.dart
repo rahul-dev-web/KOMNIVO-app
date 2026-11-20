@@ -763,6 +763,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                                     _communityId = value;
                                     _rulebooks = [];
                                     _rulebookId = null;
+                                    _rulesSource = 'custom';
                                   });
                                   await _loadRulebooks();
                                 },
@@ -897,6 +898,13 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                                 Expanded(child: TextField(controller: _invites, keyboardType: TextInputType.number, decoration: _decoration('Direct invites')),
                                 ),
                               ]),
+                              if ([
+                                _groupSize,_qualifiers,_nextRound,_qualified,_invites,
+                              ].every((controller) => controller.text.trim().isEmpty))
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 7),
+                                  child: Text('Coming soon · Leave every roadmap field blank to complete this later.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
+                                ),
                             ] else
                               const Text('Coming soon · Leave the roadmap unset and complete it when your bracket is decided.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
                           ]),
