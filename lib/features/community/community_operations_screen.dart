@@ -3208,7 +3208,12 @@ class _ModerationActionDialogState extends State<_ModerationActionDialog> {
         isExpanded: true,
         value: _action, decoration: const InputDecoration(labelText: 'Action'),
         items: _actions.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-        onChanged: (v) => setState(() => _action = v ?? _action),
+        onChanged: (v) => setState(() {
+          _action = v ?? _action;
+          if (_action != 'Ban' && _duration == 'Permanent') {
+            _duration = '24 hours';
+          }
+        }),
       ),
       const SizedBox(height: 10),
       DropdownButtonFormField<String>(
@@ -3250,7 +3255,11 @@ class _ModerationActionDialogState extends State<_ModerationActionDialog> {
         DropdownButtonFormField<String>(
         isExpanded: true,
           value: _duration, decoration: const InputDecoration(labelText: 'Duration'),
-          items: const ['1 hour', '6 hours', '24 hours', '3 days', '7 days', 'Permanent'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+          items: (_action == 'Ban'
+              ? const ['1 hour', '6 hours', '24 hours', '3 days', '7 days', 'Permanent']
+              : const ['1 hour', '6 hours', '24 hours', '3 days', '7 days'])
+              .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+              .toList(),
           onChanged: (v) => setState(() => _duration = v ?? _duration),
         ),
       ],
