@@ -2,7 +2,7 @@
 -- Exercises the actual RLS policies and BEFORE triggers with SET ROLE authenticated.
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(28);
+select extensions.plan(33);
 
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_user_meta_data)
 values
@@ -41,7 +41,9 @@ insert into public.channels(
  ('64000000-0000-4000-8000-000000000005','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-polls','Poll test','text',false,'61000000-0000-4000-8000-000000000001'),
  ('64000000-0000-4000-8000-000000000006','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-announcements','Announcement test','announcement',false,'61000000-0000-4000-8000-000000000001'),
  ('64000000-0000-4000-8000-000000000007','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-attachments-off','Attachments disabled test','text',false,'61000000-0000-4000-8000-000000000001'),
- ('64000000-0000-4000-8000-000000000008','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-restricted-text','Links and broad mentions disabled test','text',false,'61000000-0000-4000-8000-000000000001');
+ ('64000000-0000-4000-8000-000000000008','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-restricted-text','Links and broad mentions disabled test','text',false,'61000000-0000-4000-8000-000000000001'),
+ ('64000000-0000-4000-8000-000000000009','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-announcement-publishers','Publisher-only announcement test','announcement',false,'61000000-0000-4000-8000-000000000001'),
+ ('64000000-0000-4000-8000-000000000010','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-threads-disabled','Thread policy test','text',false,'61000000-0000-4000-8000-000000000001');
 
 insert into public.channel_settings(
  channel_id,community_id,read_only,slow_mode_seconds,
@@ -52,7 +54,9 @@ insert into public.channel_settings(
  ('64000000-0000-4000-8000-000000000003','62000000-0000-4000-8000-000000000001',true,0,true,true,false,false,'61000000-0000-4000-8000-000000000001'),
  ('64000000-0000-4000-8000-000000000006','62000000-0000-4000-8000-000000000001',true,0,true,false,false,true,'61000000-0000-4000-8000-000000000001'),
  ('64000000-0000-4000-8000-000000000007','62000000-0000-4000-8000-000000000001',false,0,false,true,false,false,'61000000-0000-4000-8000-000000000001'),
- ('64000000-0000-4000-8000-000000000008','62000000-0000-4000-8000-000000000001',false,0,true,false,false,false,'61000000-0000-4000-8000-000000000001');
+ ('64000000-0000-4000-8000-000000000008','62000000-0000-4000-8000-000000000001',false,0,true,false,false,false,'61000000-0000-4000-8000-000000000001'),
+ ('64000000-0000-4000-8000-000000000009','62000000-0000-4000-8000-000000000001',false,0,true,true,false,true,'61000000-0000-4000-8000-000000000001'),
+ ('64000000-0000-4000-8000-000000000010','62000000-0000-4000-8000-000000000001',false,0,true,true,false,false,'61000000-0000-4000-8000-000000000001');
 
 -- A member's category collapse choice is isolated to their own account.
 set local role authenticated;
@@ -119,6 +123,53 @@ select extensions.throws_ok(
  'Broad mentions are disabled in this channel',
  'the database rejects broad mentions when they are disabled'
 );
+
+-- Message thread writes are persisted as child messages and blocked by channel policy.
+insert into public.messages(id,channel_id,sender_id,body)
+values ('65000000-0000-4000-8000-000000000005','64000000-0000-4000-8000-000000000010',
+        '61000000-0000-4000-8000-000000000002','Thread root message');
+select extensions.is(
+ (select count(*) from public.messages where id='65000000-0000-4000-8000-000000000005'),
+ 1::bigint,
+ 'a member can send a root message in a thread-disabled channel'
+);
+select extensions.throws_ok(
+ $insert into public.messages(channel_id,sender_id,body,parent_message_id)
+   values ('64000000-0000-4000-8000-000000000010',
+           '61000000-0000-4000-8000-000000000002','This reply must be rejected',
+           '65000000-0000-4000-8000-000000000005')$,
+ 'P0001',
+ 'Message threads are disabled in this channel',
+ 'the database blocks child messages when threads are disabled'
+);
+
+-- Announcement channels can be write-restricted to explicitly authorised publishers.
+select extensions.throws_ok(
+ $insert into public.messages(channel_id,sender_id,body)
+   values ('64000000-0000-4000-8000-000000000009',
+           '61000000-0000-4000-8000-000000000002','Member announcement attempt')$,
+ 'P0001',
+ 'Only authorised announcement publishers can post',
+ 'regular members cannot publish in a publisher-only announcement channel'
+);
+
+-- Message reactions remain persistent and scoped to a visible channel message.
+reset role;
+set local role authenticated;
+set local request.jwt.claim.sub = '61000000-0000-4000-8000-000000000001';
+insert into public.message_reactions(message_id,user_id,emoji)
+values ('65000000-0000-4000-8000-000000000001',
+        '61000000-0000-4000-8000-000000000001','🔥');
+select extensions.is(
+ (select count(*) from public.message_reactions
+  where message_id='65000000-0000-4000-8000-000000000001'
+    and user_id=auth.uid() and emoji='🔥'),
+ 1::bigint,
+ 'an authorised channel member can persist and read a message reaction'
+);
+reset role;
+set local role authenticated;
+set local request.jwt.claim.sub = '61000000-0000-4000-8000-000000000002';
 
 -- Slow mode allows the first message and rejects a second message from the same sender.
 insert into public.messages(id,channel_id,sender_id,body)
