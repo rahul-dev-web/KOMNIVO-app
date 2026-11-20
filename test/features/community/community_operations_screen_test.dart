@@ -98,6 +98,18 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
             'allow_everyone_mention': false,
           },
         },
+        {
+          'id': 'channel-2',
+          'name': 'scrim-hub',
+          'kind': 'text',
+          'settings': {},
+        },
+        {
+          'id': 'channel-3',
+          'name': 'looking-for-team',
+          'kind': 'text',
+          'settings': {},
+        },
       ];
 
   @override
@@ -246,6 +258,29 @@ void main() {
     expect(find.text('Invite configuration draft'), findsOneWidget);
     expect(find.text('Invite-only'), findsOneWidget);
     expect(find.text('Off'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Onboarding preferences recommend actual visible community channels',
+      (tester) async {
+    addTearDown(() => _reset(tester));
+    await _pumpOperations(tester);
+    await tester.tap(find.text('Onboarding'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Battle Royale').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Competitive scrims'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Review my answers'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Suggested community channels'), findsOneWidget);
+    expect(find.text('scrim-hub'), findsOneWidget);
+    expect(find.text('looking-for-team'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
