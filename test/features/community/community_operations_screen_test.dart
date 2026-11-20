@@ -356,7 +356,7 @@ Future<void> _pumpOperations(
   await tester.pumpWidget(MaterialApp(
     theme: KomnivoTheme.dark,
     home: CommunityOperationsScreen(
-      community: const {
+      community: {
         'id': 'community-test',
         'name': 'UI Test Community',
         'visibility': communityVisibility,
