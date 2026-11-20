@@ -358,6 +358,30 @@ Deno.serve(async (req: Request) => {
         return json({ error: "A valid request id is required." }, 400);
       }
 
+      const idempotencyKey = stringValue(body.idempotency_key);
+      if (idempotencyKey.length < 8 || idempotencyKey.length > 120) {
+        return json({ error: "A valid request id is required." }, 400);
+      }
+
+      const { data: prior } = await admin.from("tournament_proposals")
+        .select("id,status,payload,expires_at,event_id,conversation_id")
+        .eq("owner_user_id", user.id)
+        .eq("idempotency_key", idempotencyKey)
+        .maybeSingle();
+      if (prior) {
+        return json({
+          conversation_id: prior.conversation_id,
+          proposal: {
+            id: prior.id,
+            status: prior.status,
+            expires_at: prior.expires_at,
+            event_id: prior.event_id,
+            ...objectValue(prior.payload),
+          },
+          already_received: true,
+        });
+      }
+
       let conversationId = stringValue(body.conversation_id) || null;
       if (conversationId) {
         const { data: conversation, error } = await admin.from("ai_conversations")
@@ -378,27 +402,6 @@ Deno.serve(async (req: Request) => {
         conversationId = String(conversation.id);
       }
 
-      const { data: prior } = await admin.from("tournament_proposals")
-        .select("id,status,payload,expires_at,event_id")
-        .eq("owner_user_id", user.id)
-        .eq("idempotency_key", idempotencyKey)
-        .maybeSingle();
-      if (prior) {
-        return json({
-          conversation_id: conversationId,
-          proposal: {
-            id: prior.id,
-            status: prior.status,
-            expires_at: prior.expires_at,
-            event_id: prior.event_id,
-            ...objectValue(prior.payload),
-          },
-          already_received: true,
-        });
-      }
-
-      const savedEventConfig = objectValue(payload.event_config);
-      const selectedRulebook = objectValue(savedEventConfig.rulebook);
       const sourceRefs = selectedRulebook.id
         ? [{ document: stringValue(selectedRulebook.title), source: stringValue(selectedRulebook.source_url), version: stringValue(selectedRulebook.version) }]
         : [];
@@ -414,11 +417,11 @@ Deno.serve(async (req: Request) => {
       }).select("id,status,expires_at,event_id").single();
       if (proposalError || !proposal) {
         const { data: recovered } = await admin.from("tournament_proposals")
-          .select("id,status,payload,expires_at,event_id")
+          .select("id,status,payload,expires_at,event_id,conversation_id")
           .eq("owner_user_id", user.id).eq("idempotency_key", idempotencyKey).maybeSingle();
         if (recovered) {
           return json({
-            conversation_id: conversationId,
+            conversation_id: recovered.conversation_id ?? conversationId,
             proposal: {
               id: recovered.id,
               status: recovered.status,
