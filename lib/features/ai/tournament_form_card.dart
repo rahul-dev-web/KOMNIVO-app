@@ -949,7 +949,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                                     : 'Open official source PDF'),
                               ),
                               Text(
-                                'Scoring loaded from this rulebook version: ${const JsonEncoder.withIndent('  ').convert(_asMap(selectedRulebook?['scoring_config']))}',
+                                "Scoring loaded from this rulebook version: ${const JsonEncoder.withIndent('  ').convert(_asMap(selectedRulebook?['scoring_config']))}",
                                 style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.35),
                               ),
                               const SizedBox(height: 5),
