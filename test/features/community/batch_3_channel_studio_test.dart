@@ -246,6 +246,9 @@ void main() {
     addTearDown(() => resetView(tester));
     await pumpStudio(tester);
     await openStudioTab(tester, 'Text');
+    await scrollStudioListUntilVisible(
+      tester, 'batch3-text-list', find.text('Allowed mentions'),
+    );
 
     final mentionLabel = find.text('Allowed mentions');
     expect(mentionLabel, findsOneWidget);
