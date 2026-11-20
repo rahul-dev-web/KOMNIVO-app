@@ -69,7 +69,16 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
 
   @override
   Future<List<Map<String, dynamic>>> loadInvites(String communityId) async =>
-      const [];
+      const [
+        {
+          'id': 'invite-12345678',
+          'created_by': 'owner-1',
+          'created_at': '2026-11-20T08:00:00Z',
+          'expires_at': '2026-12-01T08:00:00Z',
+          'max_uses': 25,
+          'uses': 4,
+        },
+      ];
 
   @override
   Future<List<Map<String, dynamic>>> loadReports(String communityId) async =>
@@ -191,6 +200,52 @@ void main() {
     expect(find.text('Community membership'), findsOneWidget);
     expect(find.textContaining('Verification proof pending'), findsOneWidget);
     expect(find.textContaining('Accepted · member'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Invite revoke requires confirmation and remains a draft',
+      (tester) async {
+    addTearDown(() => _reset(tester));
+    await _pumpOperations(
+      tester,
+      permissions: {'community.manage_invites'},
+    );
+    await tester.tap(find.text('Invites'));
+    await tester.pumpAndSettle();
+    expect(find.text('Prepare revoke'), findsOneWidget);
+
+    await tester.tap(find.text('Prepare revoke'));
+    await tester.pumpAndSettle();
+    expect(find.text('Revoke invite?'), findsOneWidget);
+    await tester.tap(find.text('Review revoke'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Invite revoke review'), findsOneWidget);
+    expect(find.text('NOT REVOKED'), findsOneWidget);
+    expect(find.textContaining('remains usable'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Invite draft exposes invite-only and approval choices',
+      (tester) async {
+    addTearDown(() => _reset(tester));
+    await _pumpOperations(
+      tester,
+      permissions: {'community.manage_invites'},
+    );
+    await tester.tap(find.text('Invites'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(SwitchListTile).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Review settings'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Invite configuration draft'), findsOneWidget);
+    expect(find.text('Invite-only'), findsOneWidget);
+    expect(find.text('Off'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
