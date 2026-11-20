@@ -9,9 +9,120 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
       : permissions = permissions ?? <String>{};
 
   final Set<String> permissions;
+  bool configurationSaved = false;
+  Map<String, dynamic> savedAnswers = {};
+  final Map<String, Map<String, List<String>>> savedChannelTags = {};
+
+  List<Map<String, dynamic>> onboardingQuestions = [
+    {
+      'question_key': 'game_mode',
+      'prompt': 'Which game mode do you play?',
+      'question_type': 'single_select',
+      'options': ['Battle Royale', 'Clash Squad'],
+      'is_enabled': true,
+      'is_required': false,
+      'display_order': 1,
+    },
+    {
+      'question_key': 'player_interests',
+      'prompt': 'What are you interested in?',
+      'question_type': 'multi_select',
+      'options': ['Rank push', 'Competitive scrims', 'Casual matches', 'Content creation', 'Coaching', 'Team building'],
+      'is_enabled': true,
+      'is_required': false,
+      'display_order': 2,
+    },
+    {
+      'question_key': 'region',
+      'prompt': 'Which region are you from?',
+      'question_type': 'text',
+      'options': [],
+      'is_enabled': true,
+      'is_required': false,
+      'display_order': 3,
+    },
+    {
+      'question_key': 'preferred_activities',
+      'prompt': 'What would you like to do here?',
+      'question_type': 'multi_select',
+      'options': ['Find a team', 'Join tournaments', 'Play scrims', 'Learn strategies', 'Join voice sessions', 'Help organise events'],
+      'is_enabled': true,
+      'is_required': false,
+      'display_order': 4,
+    },
+  ];
 
   @override
   Future<Set<String>> loadPermissions(String communityId) async => permissions;
+
+  @override
+  Future<Map<String, dynamic>> loadOnboardingData(String communityId) async => {
+    'questions': onboardingQuestions,
+    'answers': savedAnswers,
+    'can_configure': permissions.contains('community.manage_members'),
+  };
+
+  @override
+  Future<void> saveOnboardingConfiguration(
+    String communityId,
+    List<Map<String, dynamic>> questions,
+  ) async {
+    onboardingQuestions = questions.map((q) => Map<String, dynamic>.from(q)).toList();
+    configurationSaved = true;
+  }
+
+  @override
+  Future<void> submitOnboardingAnswers(
+    String communityId,
+    Map<String, dynamic> answers,
+  ) async {
+    savedAnswers = Map<String, dynamic>.from(answers);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> loadChannelRecommendations(
+    String communityId,
+  ) async {
+    final interests = (savedAnswers['player_interests'] as List? ?? const [])
+        .map((value) => value.toString()).toSet();
+    final activities = (savedAnswers['preferred_activities'] as List? ?? const [])
+        .map((value) => value.toString()).toSet();
+    if (!interests.contains('Competitive scrims') &&
+        !activities.contains('Play scrims')) {
+      return const [];
+    }
+    return const [
+      {
+        'channel_id': 'channel-2',
+        'name': 'scrim-hub',
+        'kind': 'text',
+        'matched_topics': ['Competitive scrims'],
+        'matched_game_modes': ['Battle Royale'],
+        'match_score': 2,
+      },
+      {
+        'channel_id': 'channel-3',
+        'name': 'looking-for-team',
+        'kind': 'text',
+        'matched_topics': ['Team building'],
+        'matched_game_modes': [],
+        'match_score': 1,
+      },
+    ];
+  }
+
+  @override
+  Future<void> saveChannelOnboardingTags(
+    String communityId,
+    String channelId,
+    List<String> topics,
+    List<String> gameModes,
+  ) async {
+    savedChannelTags[channelId] = {
+      'topics': List<String>.from(topics),
+      'game_modes': List<String>.from(gameModes),
+    };
+  }
 
   @override
   Future<CommunityDirectoryData> loadDirectory(String communityId) async =>
@@ -86,11 +197,14 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
 
   @override
   Future<List<Map<String, dynamic>>> loadChannelPolicies(String communityId) async =>
-      const [
+      [
         {
           'id': 'channel-1',
           'name': 'general',
           'kind': 'text',
+          'event_id': null,
+          'onboarding_topics': savedChannelTags['channel-1']?['topics'] ?? <String>[],
+          'onboarding_game_modes': savedChannelTags['channel-1']?['game_modes'] ?? <String>[],
           'settings': {
             'read_only': false,
             'slow_mode_seconds': 15,
@@ -102,12 +216,18 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
           'id': 'channel-2',
           'name': 'scrim-hub',
           'kind': 'text',
+          'event_id': null,
+          'onboarding_topics': savedChannelTags['channel-2']?['topics'] ?? <String>[],
+          'onboarding_game_modes': savedChannelTags['channel-2']?['game_modes'] ?? <String>[],
           'settings': {},
         },
         {
           'id': 'channel-3',
           'name': 'looking-for-team',
           'kind': 'text',
+          'event_id': null,
+          'onboarding_topics': savedChannelTags['channel-3']?['topics'] ?? <String>[],
+          'onboarding_game_modes': savedChannelTags['channel-3']?['game_modes'] ?? <String>[],
           'settings': {},
         },
       ];
@@ -121,6 +241,7 @@ Future<void> _pumpOperations(
   WidgetTester tester, {
   Set<String> permissions = const {},
   Size size = const Size(430, 900),
+  _FakeCommunityOperationsSource? source,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -132,7 +253,7 @@ Future<void> _pumpOperations(
         'name': 'UI Test Community',
         'visibility': 'private',
       },
-      dataSource: _FakeCommunityOperationsSource(permissions: permissions),
+      dataSource: source ?? _FakeCommunityOperationsSource(permissions: permissions),
     ),
   ));
   await tester.pumpAndSettle();
@@ -225,6 +346,73 @@ void main() {
     expect(find.text('Community membership'), findsOneWidget);
     expect(find.textContaining('Verification proof pending'), findsOneWidget);
     expect(find.textContaining('Accepted · member'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Member answers persist and recommendations come from saved answers',
+      (tester) async {
+    addTearDown(() => _reset(tester));
+    final source = _FakeCommunityOperationsSource();
+    await _pumpOperations(tester, source: source);
+    await _openOperationsTab(tester, 'Onboarding');
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Battle Royale').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Competitive scrims'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Save my preferences'));
+    await tester.tap(find.text('Save my preferences'));
+    await tester.pumpAndSettle();
+
+    expect(source.savedAnswers['game_mode'], 'Battle Royale');
+    expect(source.savedAnswers['player_interests'], contains('Competitive scrims'));
+    expect(find.text('Suggested community channels'), findsOneWidget);
+    expect(find.text('scrim-hub'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Manager can save the four configured onboarding questions',
+      (tester) async {
+    addTearDown(() => _reset(tester));
+    final source = _FakeCommunityOperationsSource(
+      permissions: {'community.manage_members'},
+    );
+    await _pumpOperations(
+      tester,
+      permissions: {'community.manage_members'},
+      source: source,
+    );
+    await _openOperationsTab(tester, 'Onboarding');
+    await tester.ensureVisible(find.text('Save onboarding configuration'));
+    await tester.tap(find.text('Save onboarding configuration'));
+    await tester.pumpAndSettle();
+
+    expect(source.configurationSaved, isTrue);
+    expect(source.onboardingQuestions, hasLength(4));
+    expect(find.text('Onboarding questions saved for this community.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Manager can persist channel recommendation tags',
+      (tester) async {
+    addTearDown(() => _reset(tester));
+    final source = _FakeCommunityOperationsSource(
+      permissions: {'community.manage_members'},
+    );
+    await _pumpOperations(
+      tester,
+      permissions: {'community.manage_members'},
+      source: source,
+    );
+    await _openOperationsTab(tester, 'Onboarding');
+    await tester.ensureVisible(find.text('Save channel tags'));
+    await tester.tap(find.text('Save channel tags').first);
+    await tester.pumpAndSettle();
+
+    expect(source.savedChannelTags.containsKey('channel-1'), isTrue);
     expect(tester.takeException(), isNull);
   });
 
