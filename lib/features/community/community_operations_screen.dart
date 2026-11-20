@@ -3310,7 +3310,6 @@ class _SafetyTabState extends State<_SafetyTab> {
   String _messageWindow = '10 seconds';
   String _mentionWindow = '1 minute';
   String _duration = '30 minutes';
-  String _scope = 'All text channels';
   String _raidTrigger = 'Message flood';
   bool _pauseInvites = true;
   bool _restrictLinks = false;
