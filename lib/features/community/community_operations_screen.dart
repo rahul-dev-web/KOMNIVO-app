@@ -449,6 +449,15 @@ class _MemberDirectoryTabState extends State<_MemberDirectoryTab> {
   }
 
   Future<void> _openMember(Map<String, dynamic> member) async {
+    List<Map<String, dynamic>> channels = [];
+    if (widget.canManageMembers) {
+      try {
+        channels = await widget.source.loadChannelPolicies(widget.communityId);
+      } catch (_) {
+        channels = [];
+      }
+    }
+    if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context, isScrollControlled: true, useSafeArea: true,
       backgroundColor: KomnivoTheme.surface,
@@ -456,6 +465,7 @@ class _MemberDirectoryTabState extends State<_MemberDirectoryTab> {
         member: member,
         name: _name(member),
         canManageMembers: widget.canManageMembers,
+        availableChannels: channels,
       ),
     );
   }
@@ -606,10 +616,12 @@ class _MemberDetailsSheet extends StatelessWidget {
     required this.member,
     required this.name,
     required this.canManageMembers,
+    this.availableChannels = const [],
   });
   final Map<String, dynamic> member;
   final String name;
   final bool canManageMembers;
+  final List<Map<String, dynamic>> availableChannels;
   @override
   Widget build(BuildContext context) {
     final profile = member['profiles'] is Map ? Map<String, dynamic>.from(member['profiles'] as Map) : <String, dynamic>{};
@@ -676,6 +688,7 @@ class _MemberDetailsSheet extends StatelessWidget {
                       builder: (_) => _ModerationActionDialog(
                         memberName: name,
                         targetUserId: member['user_id']?.toString(),
+                        availableChannels: availableChannels,
                       ),
                     );
                     if (action != null && context.mounted) {
@@ -1796,12 +1809,20 @@ class _ModerationTabState extends State<_ModerationTab> {
     String? targetUserId,
     String? messageId,
   }) async {
+    List<Map<String, dynamic>> channels = [];
+    try {
+      channels = await widget.source.loadChannelPolicies(widget.communityId);
+    } catch (_) {
+      channels = [];
+    }
+    if (!mounted) return;
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => _ModerationActionDialog(
         memberName: memberName,
         targetUserId: targetUserId,
         messageId: messageId,
+        availableChannels: channels,
       ),
     );
     if (result != null && mounted) setState(() => _draft = result);
@@ -1894,10 +1915,12 @@ class _ModerationActionDialog extends StatefulWidget {
     this.memberName,
     this.targetUserId,
     this.messageId,
+    this.availableChannels = const [],
   });
   final String? memberName;
   final String? targetUserId;
   final String? messageId;
+  final List<Map<String, dynamic>> availableChannels;
   @override
   State<_ModerationActionDialog> createState() => _ModerationActionDialogState();
 }
@@ -1954,13 +1977,20 @@ class _ModerationActionDialogState extends State<_ModerationActionDialog> {
       ),
       if (_needsChannel) ...[
         const SizedBox(height: 10),
-        TextField(
-          onChanged: (v) { _channel = v; setState(() {}); },
-          decoration: const InputDecoration(
-            labelText: 'Channel ID (required)',
-            hintText: 'Choose a channel in the connected channel selector',
+        if (widget.availableChannels.isEmpty)
+          const _PrivacyNote(text: 'No channel list is available to this moderator. Select a channel from the community list before preparing a channel-scoped action.')
+        else
+          DropdownButtonFormField<String>(
+            isExpanded: true,
+            value: _channel.isEmpty ? null : _channel,
+            decoration: const InputDecoration(labelText: 'Target channel (required)'),
+            items: widget.availableChannels.map((channel) {
+              final id = channel['id']?.toString() ?? '';
+              final name = channel['name']?.toString() ?? 'Channel';
+              return DropdownMenuItem(value: id, child: Text('#$name'));
+            }).toList(),
+            onChanged: (value) => setState(() => _channel = value ?? ''),
           ),
-        ),
       ],
       if (_needsMessage) ...[
         const SizedBox(height: 10),
