@@ -934,9 +934,14 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                                 style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35),
                               ),
                               TextButton.icon(
-                                onPressed: () => _openSource(selectedRulebook?['source_url']?.toString()),
-                                icon: const Icon(Icons.open_in_new, size: 15),
-                                label: const Text('Open official source PDF'),
+                                onPressed: () => _openSource(
+                                  selectedRulebook?['download_url']?.toString() ??
+                                      selectedRulebook?['source_url']?.toString(),
+                                ),
+                                icon: const Icon(Icons.download_outlined, size: 15),
+                                label: Text(selectedRulebook?['official_downloaded'] == true
+                                    ? 'Open private KOMNIVO PDF copy'
+                                    : 'Open official source PDF'),
                               ),
                               Text(
                                 'Scoring is loaded from the selected rulebook version. This does not assume it is universal for every tournament.',
