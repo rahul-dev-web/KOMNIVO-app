@@ -278,7 +278,9 @@ void main() {
     await tester.tap(find.text('Review my answers'));
     await tester.pumpAndSettle();
 
+    expect(find.text('Your answer review'), findsOneWidget);
     expect(find.text('Suggested community channels'), findsOneWidget);
+    expect(find.text('NOT SUBMITTED'), findsOneWidget);
     expect(find.text('scrim-hub'), findsOneWidget);
     expect(find.text('looking-for-team'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -398,7 +400,7 @@ void main() {
         'community.audit.read',
       },
     );
-    expect(find.text('Members & Safety Centre'), findsNothing);
+    expect(find.text('MEMBERS & SAFETY CENTRE'), findsOneWidget);
     expect(find.text('Member directory'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
