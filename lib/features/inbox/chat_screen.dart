@@ -185,7 +185,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 _ThreadComposer(
                   enabled: !_composerReadOnly,
-                  onPreview: (text) async {
+                  onSend: (text) async {
                     try {
                       final messageId = await KomnivoRepository.instance.sendMessage(
                         _channelId, text, parentMessageId: rootId,
@@ -205,7 +205,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const Padding(
                   padding: EdgeInsets.only(top: 5),
-                  child: Text('Replies added here are UI previews only. Persistent thread writes connect in the backend phase.',
+                  child: Text('Replies are saved to this channel and appear in the message thread.',
                     style: TextStyle(color: KomnivoTheme.muted, fontSize: 8)),
                 ),
               ]),
@@ -936,10 +936,10 @@ class _ThreadMessageCard extends StatelessWidget {
 }
 
 class _ThreadComposer extends StatefulWidget {
-  const _ThreadComposer({required this.enabled, required this.onPreview});
+  const _ThreadComposer({required this.enabled, required this.onSend});
 
   final bool enabled;
-  final ValueChanged<String> onPreview;
+  final ValueChanged<String> onSend;
 
   @override
   State<_ThreadComposer> createState() => _ThreadComposerState();
@@ -957,7 +957,7 @@ class _ThreadComposerState extends State<_ThreadComposer> {
   void _submit() {
     final text = _controller.text.trim();
     if (!widget.enabled || text.isEmpty) return;
-    widget.onPreview(text);
+    widget.onSend(text);
     _controller.clear();
   }
 
