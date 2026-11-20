@@ -3,7 +3,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(20);
+select extensions.plan(26);
 
 select extensions.has_column('public','events','registration_opens_at',
   'Events persist the registration opening time separately from the closing time');
@@ -91,6 +91,50 @@ select extensions.ok(
 select extensions.ok(
   (select relrowsecurity from pg_class where oid='public.tournament_config_versions'::regclass),
   'Tournament configuration history has RLS enabled'
+);
+
+select extensions.ok(
+  exists(select 1 from public.games where code='free_fire_india' and name='Free Fire India' and is_active),
+  'Free Fire India is a distinct active game record, separate from Free Fire MAX'
+);
+select extensions.ok(
+  exists(
+    select 1 from public.tournament_rulebooks rb
+    join public.games g on g.id=rb.game_id
+    where g.code='free_fire_india'
+      and rb.title='Free Fire India Rulebook'
+      and rb.scope='general'
+      and rb.mode_scope @> ARRAY['squad']::text[]
+      and not (rb.mode_scope @> ARRAY['duo']::text[])
+      and rb.is_active
+  ),
+  'Cleaned Free Fire India rulebook is available only for Squad baseline'
+);
+select extensions.is(
+  (select scoring_config->>'kill_point'
+   from public.tournament_rulebooks rb join public.games g on g.id=rb.game_id
+   where g.code='free_fire_india' and rb.title='Free Fire India Rulebook'),
+  '1',
+  'Free Fire India curated baseline awards one point per kill'
+);
+select extensions.is(
+  (select scoring_config->'placement_points'->>'1'
+   from public.tournament_rulebooks rb join public.games g on g.id=rb.game_id
+   where g.code='free_fire_india' and rb.title='Free Fire India Rulebook'),
+  '12',
+  'Free Fire India curated baseline records first-place points as 12'
+);
+select extensions.ok(
+  (select rules_config->>'not_garena_issued' = 'true'
+   from public.tournament_rulebooks rb join public.games g on g.id=rb.game_id
+   where g.code='free_fire_india' and rb.title='Free Fire India Rulebook'),
+  'Free Fire India document is explicitly labelled as a KOMNIVO-curated baseline, not Garena-issued'
+);
+select extensions.ok(
+  exists(select 1 from pg_policies where schemaname='storage' and tablename='objects'
+    and policyname='tournament_banners_upload_manager'
+    and with_check like '%can_access_ai_scope%'),
+  'Tournament banner uploads accept the scoped organiser permission check'
 );
 
 select * from finish();
