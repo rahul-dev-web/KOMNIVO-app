@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/komnivo_theme.dart';
@@ -26,6 +28,8 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
   List<Map<String, dynamic>> _posts = <Map<String, dynamic>>[];
   bool _loading = true;
   bool _saving = false;
+  Timer? _filterDebounce;
+  int _requestToken = 0;
 
   @override
   void initState() {
@@ -38,9 +42,44 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _filterDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _applyFilters({String? query, String? status, String? tag}) {
+    if (widget.initialPosts.isNotEmpty) {
+      setState(() {
+        if (query != null) _query = query;
+        if (status != null) _status = status;
+        if (tag != null) _tag = tag;
+      });
+      return;
+    }
+    setState(() {
+      if (query != null) _query = query;
+      if (status != null) _status = status;
+      if (tag != null) _tag = tag;
+    });
+    // Invalidate any in-flight result before starting the next server query.
+    _requestToken++;
+    _filterDebounce?.cancel();
+    _filterDebounce = Timer(const Duration(milliseconds: 300), _loadPosts);
+  }
+
   Future<void> _loadPosts() async {
+    final requestToken = ++_requestToken;
+    final query = _query;
+    final status = _status;
+    final tag = _tag;
     try {
-      final rows = await KomnivoRepository.instance.forumPosts(widget.channel['id'].toString());
+      final rows = await KomnivoRepository.instance.forumPosts(
+        widget.channel['id'].toString(),
+        query: query,
+        status: status,
+        tag: tag,
+      );
       final postIds = rows.map((row) => row['id']?.toString() ?? '')
           .where((id) => id.isNotEmpty).toList();
       final replyCounts = await KomnivoRepository.instance.forumPostReplyCounts(postIds);
@@ -56,9 +95,9 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
           'locked': row['is_locked'] == true,
         };
       }).toList();
-      if (mounted) setState(() { _posts = mapped; _loading = false; });
+      if (mounted && requestToken == _requestToken) setState(() { _posts = mapped; _loading = false; });
     } catch (error) {
-      if (mounted) {
+      if (mounted && requestToken == _requestToken) {
         setState(() => _loading = false);
         showMessage(context, 'Could not load forum posts: $error');
       }
@@ -95,13 +134,19 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final rows = _posts.where((post) {
-      final query = _query.trim().toLowerCase();
-      final inText = query.isEmpty || post['title'].toString().toLowerCase().contains(query) || post['body'].toString().toLowerCase().contains(query);
-      final inStatus = _status == 'All' || post['status'] == _status;
-      final inTag = _tag == 'All tags' || post['tag'] == _tag;
-      return inText && inStatus && inTag;
-    }).toList();
+    // Live Forum queries are already filtered by the server-side FTS RPC.
+    // InitialPosts is reserved for isolated widget previews and is filtered locally.
+    final rows = widget.initialPosts.isEmpty
+        ? _posts
+        : _posts.where((post) {
+            final query = _query.trim().toLowerCase();
+            final inText = query.isEmpty ||
+                post['title'].toString().toLowerCase().contains(query) ||
+                post['body'].toString().toLowerCase().contains(query);
+            final inStatus = _status == 'All' || post['status'] == _status;
+            final inTag = _tag == 'All tags' || post['tag'] == _tag;
+            return inText && inStatus && inTag;
+          }).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -134,7 +179,7 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
           child: TextField(
             decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search topics…'),
-            onChanged: (value) => setState(() => _query = value),
+            onChanged: (value) => _applyFilters(query: value),
           ),
         ),
         SizedBox(
@@ -146,7 +191,7 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
               for (final status in ['All', 'Open', 'In discussion', 'Filled', 'Closed'])
                 Padding(
                   padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(label: Text(status), selected: _status == status, onSelected: (_) => setState(() => _status = status)),
+                  child: ChoiceChip(label: Text(status), selected: _status == status, onSelected: (_) => _applyFilters(status: status)),
                 ),
             ],
           ),
@@ -157,7 +202,7 @@ class _ForumChannelScreenState extends State<ForumChannelScreen> {
             value: _tag,
             decoration: const InputDecoration(labelText: 'Tag filter', isDense: true),
             items: const ['All tags', 'LFG', 'Recruitment', 'Scrims', 'Support', 'Suggestions'].map((tag) => DropdownMenuItem(value: tag, child: Text(tag))).toList(),
-            onChanged: (value) => setState(() => _tag = value ?? 'All tags'),
+            onChanged: (value) => _applyFilters(tag: value ?? 'All tags'),
           ),
         ),
         Expanded(
