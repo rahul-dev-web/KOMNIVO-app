@@ -1,7 +1,7 @@
 -- Batch 3 approved event-template creation, idempotency and scoped lifecycle integration.
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(16);
+select extensions.plan(18);
 
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_user_meta_data)
 values
@@ -57,6 +57,27 @@ insert into public.event_staff_assignments(
  'match_operator','stage','75000000-0000-4000-8000-000000000001',
  '71000000-0000-4000-8000-000000000001'
 );
+
+-- Stage-scoped staff must not gain event-wide template or lifecycle authority.
+set local role authenticated;
+set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000002';
+select extensions.throws_ok(
+ $select public.create_event_communication_channels(
+   '74000000-0000-4000-8000-000000000001','results_disputes',null,null,null
+ )$,
+ 'P0001',
+ 'You cannot create event communication channels',
+ 'stage-scoped staff cannot create event-wide communication templates'
+);
+select extensions.throws_ok(
+ $select public.save_event_channel_lifecycle_rule(
+   '74000000-0000-4000-8000-000000000001','event',null,'completed','archive',true,true,false
+ )$,
+ 'P0001',
+ 'You cannot manage this event lifecycle',
+ 'stage-scoped staff cannot change event-wide channel lifecycle rules'
+);
+reset role;
 
 insert into public.matches(
  id,event_id,round_number,group_label,match_number,status,stage_id,group_id,group_match_number,match_code
