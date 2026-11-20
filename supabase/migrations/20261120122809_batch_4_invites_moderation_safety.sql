@@ -157,7 +157,7 @@ begin
  v_result:=app_private.join_community_with_invite(p_community_id,p_token_hash,'');
  return v_result->>'status' in ('joined','already_member');
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app_private.detect_community_join_raid()
@@ -186,7 +186,7 @@ begin
  end if;
  return new;
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app_private.guard_batch4_member_restrictions()
@@ -240,7 +240,7 @@ begin
  end if;
  return new;
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app_private.is_community_member(p_community_id uuid)
@@ -255,7 +255,7 @@ AS $function$
    where r.community_id=p_community_id and r.target_user_id=(select auth.uid())
      and r.restriction_type='ban' and r.revoked_at is null
      and (r.expires_at is null or r.expires_at>now()));
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app_private.join_community_with_invite(p_community_id uuid, p_token_hash text DEFAULT NULL::text, p_applicant_note text DEFAULT ''::text)
@@ -315,7 +315,7 @@ begin
  if v_invite.id is not null then update public.community_invites set uses=uses+1 where id=v_invite.id; end if;
  return jsonb_build_object('status','joined','community_id',p_community_id);
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION app_private.resolve_permission(p_permission_key text, p_scope_type text, p_scope_id uuid, p_related_id uuid DEFAULT NULL::uuid, p_resource_id uuid DEFAULT NULL::uuid)
@@ -770,7 +770,7 @@ begin
 
   return false;
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.apply_community_moderation_action(p_community_id uuid, p_action_type text, p_target_user_id uuid, p_reason text, p_duration_minutes integer DEFAULT NULL::integer, p_channel_id uuid DEFAULT NULL::uuid, p_message_id uuid DEFAULT NULL::uuid)
@@ -868,14 +868,14 @@ begin
    'message_id',p_message_id,'duration_minutes',p_duration_minutes,'restriction_id',v_restriction_id));
  return v_action_id;
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.join_community_with_invite(p_community_id uuid, p_token_hash text DEFAULT NULL::text, p_applicant_note text DEFAULT ''::text)
  RETURNS jsonb
  LANGUAGE sql
  SET search_path TO ''
-AS $function$ select app_private.join_community_with_invite(p_community_id,p_token_hash,p_applicant_note); $function$
+AS $function$ select app_private.join_community_with_invite(p_community_id,p_token_hash,p_applicant_note); $function$;
 
 
 CREATE OR REPLACE FUNCTION public.review_community_join_request(p_request_id uuid, p_decision text, p_reason text DEFAULT ''::text)
@@ -912,7 +912,7 @@ begin
   nullif(btrim(coalesce(p_reason,'')),''));
  return jsonb_build_object('status',case when p_decision='approve' then 'approved' else 'rejected' end);
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.review_community_moderation_appeal(p_appeal_id uuid, p_decision text, p_response text, p_new_duration_minutes integer DEFAULT NULL::integer)
@@ -973,7 +973,7 @@ begin
   btrim(p_response),jsonb_build_object('moderation_action_id',v_action.id,'new_duration_minutes',p_new_duration_minutes));
  return jsonb_build_object('status',p_decision);
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.revoke_community_invite(p_invite_id uuid)
@@ -994,7 +994,7 @@ begin
  values(v_uid,v_community_id,'community_invite',p_invite_id,'community.invite.revoked');
  return jsonb_build_object('revoked',true,'invite_id',p_invite_id);
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.save_community_safety_settings(p_community_id uuid, p_message_burst_limit integer, p_message_window_seconds integer, p_mention_burst_limit integer, p_mention_window_seconds integer, p_restrict_links_for_new_members boolean, p_new_member_link_restriction_hours integer, p_pause_invites_during_lockdown boolean, p_raid_join_threshold integer, p_raid_window_seconds integer, p_lockdown_minutes integer DEFAULT 0, p_lockdown_reason text DEFAULT ''::text)
@@ -1040,7 +1040,7 @@ begin
    'lockdown_until',v_until));
  return jsonb_build_object('saved',true,'lockdown_until',v_until);
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.submit_community_moderation_appeal(p_moderation_action_id uuid, p_reason text, p_details text, p_evidence_reference text DEFAULT ''::text)
@@ -1068,7 +1068,7 @@ begin
   jsonb_build_object('moderation_action_id',v_action.id));
  return v_appeal;
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.submit_community_moderation_report(p_community_id uuid, p_target_user_id uuid DEFAULT NULL::uuid, p_message_id uuid DEFAULT NULL::uuid, p_reason text DEFAULT 'Other'::text, p_details text DEFAULT ''::text)
@@ -1103,7 +1103,7 @@ begin
   jsonb_build_object('reason',p_reason,'has_message',p_message_id is not null));
  return v_report_id;
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.update_community_join_policy(p_community_id uuid, p_require_approval boolean)
@@ -1124,7 +1124,7 @@ begin
   jsonb_build_object('join_approval_required',p_require_approval));
  return jsonb_build_object('saved',true,'join_approval_required',p_require_approval);
 end;
-$function$
+$function$;
 
 
 revoke all on function app_private.is_community_member(uuid) from public,anon;
