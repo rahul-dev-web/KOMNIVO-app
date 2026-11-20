@@ -11,6 +11,7 @@ import '../inbox/chat_screen.dart';
 import '../inbox/voice_room_screen.dart';
 import 'role_management_screen.dart';
 import 'channel_studio_screen.dart';
+import 'community_operations_screen.dart';
 import '../inbox/forum_channel_screen.dart';
 
 class CommunityDetailScreen extends StatefulWidget {
@@ -139,6 +140,26 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
         builder: (_) => RoleManagementScreen(
           communityId: _communityId,
           communityName: _community['name']?.toString() ?? 'Community roles',
+        ),
+      ),
+    );
+    if (mounted) await _loadPermissions();
+  }
+
+  Future<void> _openCommunityOperations() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => CommunityOperationsScreen(
+          community: _community,
+          onOpenChannelStudio: () async {
+            if (!await _verifyPermission('community.manage_structure')) {
+              if (mounted) showMessage(context, 'You do not have permission to manage channel safety settings.');
+              await _loadPermissions();
+              return;
+            }
+            final rows = await _channelsFuture;
+            if (mounted) await _openChannelStudio(rows);
+          },
         ),
       ),
     );
@@ -635,6 +656,19 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                             label: 'OWNER / ADMIN',
                           ),
                       ],
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: _openCommunityOperations,
+                        icon: const Icon(Icons.groups_2_outlined, size: 16),
+                        label: const Text('Members & safety'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 38),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                      ),
                     ),
                     if (!_permissionsLoading && (_canManageSettings || _canManageRoles)) ...[
                       const SizedBox(height: 13),
