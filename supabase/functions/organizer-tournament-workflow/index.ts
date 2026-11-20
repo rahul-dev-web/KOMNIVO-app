@@ -369,6 +369,10 @@ Deno.serve(async (req: Request) => {
         .eq("idempotency_key", idempotencyKey)
         .maybeSingle();
       if (prior) {
+        if (prior.conversation_id) {
+          await admin.from("ai_conversations").update({ updated_at: new Date().toISOString() })
+            .eq("id", prior.conversation_id).eq("owner_user_id", user.id);
+        }
         return json({
           conversation_id: prior.conversation_id,
           proposal: {
@@ -435,6 +439,9 @@ Deno.serve(async (req: Request) => {
         throw new Error("Could not save the tournament proposal.");
       }
 
+      await admin.from("ai_conversations").update({ updated_at: new Date().toISOString() })
+        .eq("id", conversationId).eq("owner_user_id", user.id);
+
       return json({
         conversation_id: conversationId,
         proposal: {
@@ -465,6 +472,13 @@ Deno.serve(async (req: Request) => {
           : message.includes("not awaiting") || message.includes("expired") ? 409
           : 400;
         return json({ error: message || "Could not resolve the tournament proposal." }, status);
+      }
+      const { data: linkedProposal } = await admin.from("tournament_proposals")
+        .select("conversation_id")
+        .eq("id", proposalId).eq("owner_user_id", user.id).maybeSingle();
+      if (linkedProposal?.conversation_id) {
+        await admin.from("ai_conversations").update({ updated_at: new Date().toISOString() })
+          .eq("id", linkedProposal.conversation_id).eq("owner_user_id", user.id);
       }
       return json({
         ...(result && typeof result === "object" ? result as JsonObject : { result }),
