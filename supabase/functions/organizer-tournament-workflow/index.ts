@@ -324,8 +324,10 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const sourceRefs = payload.event_config.rulebook
-        ? [{ document: payload.event_config.rulebook.title, source: payload.event_config.rulebook.source_url, version: payload.event_config.rulebook.version }]
+      const savedEventConfig = objectValue(payload.event_config);
+      const selectedRulebook = objectValue(savedEventConfig.rulebook);
+      const sourceRefs = selectedRulebook.id
+        ? [{ document: stringValue(selectedRulebook.title), source: stringValue(selectedRulebook.source_url), version: stringValue(selectedRulebook.version) }]
         : [];
       const { data: proposal, error: proposalError } = await admin.from("tournament_proposals").insert({
         conversation_id: conversationId,
