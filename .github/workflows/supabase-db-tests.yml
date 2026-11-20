@@ -1,5 +1,9 @@
 name: KOMNIVO Supabase Database Tests
 
+concurrency:
+  group: komnivo-supabase-db-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
   push:
     branches: [main]
