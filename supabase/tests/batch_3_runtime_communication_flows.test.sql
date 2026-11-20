@@ -2,7 +2,7 @@
 -- Exercises the actual RLS policies and BEFORE triggers with SET ROLE authenticated.
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(23);
+select extensions.plan(28);
 
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_user_meta_data)
 values
@@ -259,10 +259,58 @@ select extensions.throws_ok(
  'ordinary members cannot pin messages without moderation authority'
 );
 
--- Owner moderation and announcement scheduling use the authenticated API path.
+-- Category create/rename/reorder/archive/restore persist through the authorised database path.
 reset role;
 set local role authenticated;
 set local request.jwt.claim.sub = '61000000-0000-4000-8000-000000000001';
+insert into public.channel_categories(
+ id,community_id,name,description,position,created_by
+) values (
+ '63000000-0000-4000-8000-000000000002',
+ '62000000-0000-4000-8000-000000000001',
+ 'Created Runtime Category','CRUD fixture',2,
+ '61000000-0000-4000-8000-000000000001'
+);
+select extensions.is(
+ (select count(*) from public.channel_categories
+  where id='63000000-0000-4000-8000-000000000002'),
+ 1::bigint,
+ 'a community owner can create a channel category'
+);
+update public.channel_categories set name='Renamed Runtime Category'
+where id='63000000-0000-4000-8000-000000000002';
+select extensions.is(
+ (select name from public.channel_categories
+  where id='63000000-0000-4000-8000-000000000002'),
+ 'Renamed Runtime Category'::text,
+ 'a community owner can rename a channel category'
+);
+update public.channel_categories set position=3
+where id='63000000-0000-4000-8000-000000000002';
+select extensions.is(
+ (select position from public.channel_categories
+  where id='63000000-0000-4000-8000-000000000002'),
+ 3,
+ 'a community owner can persist channel category reordering'
+);
+update public.channel_categories set archived_at=now()
+where id='63000000-0000-4000-8000-000000000002';
+select extensions.is(
+ (select archived_at is not null from public.channel_categories
+  where id='63000000-0000-4000-8000-000000000002'),
+ true,
+ 'a community owner can archive a channel category without deleting it'
+);
+update public.channel_categories set archived_at=null
+where id='63000000-0000-4000-8000-000000000002';
+select extensions.is(
+ (select archived_at is null from public.channel_categories
+  where id='63000000-0000-4000-8000-000000000002'),
+ true,
+ 'a community owner can restore an archived channel category'
+);
+
+-- Owner moderation and announcement scheduling use the authenticated API path.
 select extensions.is(
  (public.set_forum_post_status(
    '66000000-0000-4000-8000-000000000001','Closed',true,true
