@@ -347,7 +347,9 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
     final today = _todayInIndia();
     final date = await showDatePicker(
       context: context,
-      initialDate: currentDate ?? today,
+      initialDate: currentDate != null && currentDate.isBefore(today)
+          ? today
+          : currentDate ?? today,
       firstDate: today,
       lastDate: DateTime(2100),
       helpText: '$title date (IST)',
@@ -840,6 +842,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                             const SizedBox(height: 10),
                             TextField(
                               controller: _stageNames,
+                              onChanged: (_) => setState(() {}),
                               minLines: 2,
                               maxLines: 4,
                               decoration: _decoration(
@@ -946,6 +949,11 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                                 const Text(
                                   'Garena’s public India website does not expose a downloadable, universal India tournament rulebook. Use organiser-confirmed custom rules until an official India rules document is provided.',
                                   style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35),
+                                ),
+                                TextButton.icon(
+                                  onPressed: () => _openSource('https://ff.garena.com/ind/'),
+                                  icon: const Icon(Icons.open_in_new, size: 15),
+                                  label: const Text('Open Garena Free Fire India website'),
                                 ),
                               TextField(
                                 controller: _rules,
