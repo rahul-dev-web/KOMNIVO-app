@@ -544,7 +544,10 @@ void main() {
     await tester.scrollUntilVisible(
       find.text('Save channel tags'),
       280,
-      scrollable: find.byType(ListView).last,
+      scrollable: find.descendant(
+        of: find.byType(ListView).last,
+        matching: find.byType(Scrollable),
+      ).first,
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save channel tags').first);
@@ -619,7 +622,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Invite settings'), findsOneWidget);
-    final inviteOnly = find.text('Invite-only community');
+    final inviteOnly = find.widgetWithText(
+      SwitchListTile,
+      'Invite-only community',
+    );
     await tester.ensureVisible(inviteOnly);
     await tester.tap(inviteOnly);
     await tester.pumpAndSettle();
