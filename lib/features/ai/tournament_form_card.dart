@@ -419,6 +419,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
       fileOptions: FileOptions(contentType: contentType, upsert: false),
     );
     _bannerPath = path;
+    _bannerFile = null;
     _bannerSignedUrl = await _client.storage.from('tournament-banners')
         .createSignedUrl(path, 3600);
   }
