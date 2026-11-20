@@ -162,6 +162,54 @@ begin
     or has_table_privilege('authenticated','public.community_onboarding_responses','UPDATE')
     or has_table_privilege('authenticated','public.community_onboarding_responses','DELETE')
   then raise exception 'Batch 4: onboarding answers can be written outside the validated RPC'; end if;
+  if has_table_privilege('authenticated','public.community_invites','INSERT')
+    or has_table_privilege('authenticated','public.community_invites','UPDATE')
+    or has_table_privilege('authenticated','public.community_invites','DELETE')
+  then raise exception 'Batch 4: invites can be created or revoked directly without the audited RPC'; end if;
+
+  if not has_function_privilege(
+    'authenticated',
+    'public.create_community_invite(uuid,text,integer,timestamp with time zone,boolean)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'anon',
+    'public.create_community_invite(uuid,text,integer,timestamp with time zone,boolean)',
+    'EXECUTE'
+  ) then
+    raise exception 'Batch 4: atomic invite creation RPC grants are missing or over-broad';
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname='public' and tablename='community_invites'
+      and policyname='community_invites_read_manager'
+      and cmd='SELECT'
+      and position('community.manage_invites' in coalesce(qual,''))>0
+  ) then
+    raise exception 'Batch 4: invite reads are not restricted to invite managers';
+  end if;
+
+  select coalesce(qual,'') into v_policy
+  from pg_policies
+  where schemaname='public' and tablename='community_members'
+    and policyname='community_members_leave_self';
+  if v_policy is null
+    or position('auth.uid' in v_policy)=0
+    or position('manage_members' in v_policy)>0
+  then
+    raise exception 'Batch 4: moderators can still remove members directly outside the audited kick/ban RPC';
+  end if;
+
+  if not exists (
+    select 1 from pg_trigger t
+    join pg_class c on c.oid=t.tgrelid
+    join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname='public' and c.relname='communities'
+      and t.tgname='communities_batch4_guard_access_policy' and not t.tgisinternal
+  ) then
+    raise exception 'Batch 4: community visibility and join approval can be changed outside the access-policy RPC';
+  end if;
+
 
   select p.prosecdef into v_security_definer
   from pg_proc p join pg_namespace n on n.oid=p.pronamespace
