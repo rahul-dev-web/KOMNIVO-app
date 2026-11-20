@@ -97,11 +97,7 @@ values (
  '72000000-0000-4000-8000-000000000001',
  '71000000-0000-4000-8000-000000000001',false
 );
-insert into public.team_members(team_id,user_id,role)
-values (
- '78000000-0000-4000-8000-000000000001',
- '71000000-0000-4000-8000-000000000001','captain'
-);
+-- Team creation automatically creates the owner's captain membership.
 insert into public.event_group_teams(group_id,team_id,seeded_by)
 values (
  '76000000-0000-4000-8000-000000000001',
