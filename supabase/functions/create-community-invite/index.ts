@@ -8,8 +8,7 @@ Deno.serve(async (req: Request) => {
   const authorization = readBearer(req);
   if (!authorization) return json({ error: "Authentication required" }, 401);
   const url = Deno.env.get("SUPABASE_URL")!;
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-  const client = createClient(url, anonKey, {
+  const client = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, {
     global: { headers: { Authorization: authorization } },
     auth: { persistSession: false },
   });
@@ -21,62 +20,61 @@ Deno.serve(async (req: Request) => {
     const communityId = String(body.community_id ?? "");
     if (!communityId) return json({ error: "community_id is required" }, 400);
 
-    const { data: allowed, error: permissionError } = await client.rpc("has_permission", {
-      p_permission_key: "community.manage_invites",
-      p_scope_type: "community",
-      p_scope_id: communityId,
-      p_related_id: null,
-      p_resource_id: null,
-    });
-    if (permissionError || allowed !== true) {
-      return json({ error: "You do not have permission to create invites for this community." }, 403);
+    let maxUses: number | null = null;
+    if (body.max_uses !== undefined && body.max_uses !== null) {
+      if (!Number.isInteger(body.max_uses) || body.max_uses < 1 || body.max_uses > 500) {
+        return json({ error: "max_uses must be an integer from 1 to 500." }, 400);
+      }
+      maxUses = body.max_uses;
     }
 
-    const tokenBytes = crypto.getRandomValues(new Uint8Array(24));
-    const token = Array.from(tokenBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-    const tokenHash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
-
-    const maxUses = Number.isInteger(body.max_uses)
-      ? Math.min(Math.max(Number(body.max_uses), 1), 500)
-      : null;
-    const expiresInHours = Number.isInteger(body.expires_in_hours)
-      ? Math.min(Math.max(Number(body.expires_in_hours), 1), 720)
-      : null;
+    let expiresInHours: number | null = null;
+    if (body.expires_in_hours !== undefined && body.expires_in_hours !== null) {
+      if (!Number.isInteger(body.expires_in_hours) ||
+          body.expires_in_hours < 1 || body.expires_in_hours > 720) {
+        return json({ error: "expires_in_hours must be an integer from 1 to 720." }, 400);
+      }
+      expiresInHours = body.expires_in_hours;
+    }
     const expiresAt = expiresInHours === null
       ? null
       : new Date(Date.now() + expiresInHours * 3600000).toISOString();
     const requiresApproval = body.requires_approval === true;
 
-    const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
-      auth: { persistSession: false },
-    });
+    // The RPC rechecks permission and locks community safety settings while creating
+    // the invite, so a concurrent raid lockdown cannot race the invitation insert.
+    const tokenBytes = crypto.getRandomValues(new Uint8Array(24));
+    const token = Array.from(tokenBytes)
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(token),
+    );
+    const tokenHash = Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
 
-    const { data: safety } = await admin.from("community_safety_settings")
-      .select("pause_invites_during_lockdown,lockdown_until")
-      .eq("community_id", communityId)
-      .maybeSingle();
-    const lockedUntil = safety?.lockdown_until ? new Date(safety.lockdown_until) : null;
-    if (safety?.pause_invites_during_lockdown === true && lockedUntil && lockedUntil > new Date()) {
-      return json({ error: "Invite creation is paused during raid lockdown.", lockdown_until: lockedUntil.toISOString() }, 423);
+    const { data: invite, error } = await client.rpc("create_community_invite", {
+      p_community_id: communityId,
+      p_token_hash: tokenHash,
+      p_max_uses: maxUses,
+      p_expires_at: expiresAt,
+      p_requires_approval: requiresApproval,
+    });
+    if (error) {
+      const status = error.code === "42501" ? 403 : error.code === "P0002" ? 404 : 400;
+      return json({ error: error.message }, status);
     }
 
-    const { data, error } = await admin.from("community_invites").insert({
-      community_id: communityId,
-      token_hash: tokenHash,
-      created_by: user.id,
-      max_uses: maxUses,
-      expires_at: expiresAt,
-      requires_approval: requiresApproval,
-    }).select("id,expires_at,max_uses,requires_approval,created_at").single();
-    if (error) return json({ error: error.message }, 400);
-
     return json({
-      invite: data,
+      invite,
       code: token,
-      warning: "Copy this invite code now. It is stored as a hash and cannot be retrieved later.",
+      warning: "Copy this invite code now. Only its SHA-256 hash is stored; the code cannot be retrieved later.",
     }, 201);
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : "Invalid request" }, 400);
+    return json({
+      error: error instanceof Error ? error.message : "Invalid request",
+    }, 400);
   }
 });
