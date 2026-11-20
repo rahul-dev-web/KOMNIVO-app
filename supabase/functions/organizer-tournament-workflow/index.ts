@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -225,6 +226,245 @@ async function validatePayload(
   };
 }
 
+async function buildCleanFreeFireIndiaRulebook(): Promise<Uint8Array> {
+  const pdf = await PDFDocument.create();
+  pdf.setTitle("Free Fire India Rulebook - KOMNIVO Curated Baseline");
+  pdf.setAuthor("KOMNIVO");
+  pdf.setSubject("Game settings, map rotation, match scoring and tie-breakers");
+  pdf.setKeywords(["Free Fire India", "tournament", "rules", "scoring"]);
+  const regular = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const navy = rgb(0.055, 0.085, 0.15);
+  const ink = rgb(0.12, 0.16, 0.22);
+  const muted = rgb(0.35, 0.40, 0.47);
+  const cyan = rgb(0.0, 0.48, 0.57);
+  const amber = rgb(0.92, 0.60, 0.12);
+  const white = rgb(1, 1, 1);
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const margin = 48;
+  let page = pdf.addPage([pageWidth, pageHeight]);
+  let y = pageHeight - margin;
+
+  const footer = (target: typeof page, pageNo: number) => {
+    target.drawLine({
+      start: { x: margin, y: 38 },
+      end: { x: pageWidth - margin, y: 38 },
+      thickness: 0.6,
+      color: rgb(0.82, 0.85, 0.89),
+    });
+    target.drawText("KOMNIVO | FREE FIRE INDIA RULEBOOK | CURATED BASELINE", {
+      x: margin, y: 23, size: 7.2, font: regular, color: muted,
+    });
+    target.drawText("Page " + pageNo, {
+      x: pageWidth - margin - 38, y: 23, size: 7.2, font: regular, color: muted,
+    });
+  };
+
+  const newPage = (title?: string) => {
+    page = pdf.addPage([pageWidth, pageHeight]);
+    y = pageHeight - margin;
+    page.drawText("KOMNIVO  /  FREE FIRE INDIA RULEBOOK", {
+      x: margin, y, size: 8, font: bold, color: cyan,
+    });
+    y -= 28;
+    if (title) {
+      page.drawText(title, { x: margin, y, size: 18, font: bold, color: navy });
+      y -= 30;
+    }
+    return page;
+  };
+
+  const wrap = (text: string, font: typeof regular, size: number, maxWidth: number): string[] => {
+    const words = text.split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let line = "";
+    for (const word of words) {
+      const candidate = line ? line + " " + word : word;
+      if (font.widthOfTextAtSize(candidate, size) <= maxWidth || !line) {
+        line = candidate;
+      } else {
+        lines.push(line);
+        line = word;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  };
+
+  const paragraph = (
+    text: string,
+    options: { size?: number; font?: typeof regular; color?: typeof ink; indent?: number; gap?: number } = {},
+  ) => {
+    const size = options.size ?? 10;
+    const font = options.font ?? regular;
+    const color = options.color ?? ink;
+    const indent = options.indent ?? 0;
+    const gap = options.gap ?? 6;
+    for (const line of wrap(text, font, size, pageWidth - margin * 2 - indent)) {
+      if (y < 62) newPage();
+      page.drawText(line, { x: margin + indent, y, size, font, color });
+      y -= size * 1.45;
+    }
+    y -= gap;
+  };
+
+  const heading = (text: string) => {
+    if (y < 100) newPage();
+    y -= 6;
+    page.drawText(text, { x: margin, y, size: 14, font: bold, color: navy });
+    y -= 22;
+  };
+
+  const bullet = (text: string) => paragraph("- " + text, { indent: 10, gap: 3 });
+
+  // Cover and status: the PDF is deliberately not presented as a Garena-issued document.
+  page.drawRectangle({
+    x: margin, y: pageHeight - 285, width: pageWidth - margin * 2, height: 245, color: navy,
+  });
+  page.drawText("KOMNIVO", { x: margin + 30, y: pageHeight - 82, size: 10, font: bold, color: rgb(0.78,0.85,0.92) });
+  page.drawText("FREE FIRE INDIA", { x: margin + 30, y: pageHeight - 145, size: 28, font: bold, color: white });
+  page.drawText("RULEBOOK", { x: margin + 30, y: pageHeight - 181, size: 28, font: bold, color: white });
+  page.drawText("Tournament gameplay settings, map selection and scoring baseline", {
+    x: margin + 30, y: pageHeight - 216, size: 10.5, font: regular, color: rgb(0.84,0.89,0.95),
+  });
+  page.drawText("Version 1.0  |  21 November 2026  |  Squad / team Battle Royale", {
+    x: margin + 30, y: pageHeight - 254, size: 8.5, font: regular, color: rgb(0.84,0.89,0.95),
+  });
+  y = pageHeight - 325;
+  page.drawRectangle({
+    x: margin, y: y - 80, width: pageWidth - margin * 2, height: 78,
+    color: rgb(1,0.96,0.88), borderColor: amber, borderWidth: 0.8,
+  });
+  page.drawText("IMPORTANT STATUS", { x: margin + 12, y: y - 21, size: 9, font: bold, color: rgb(0.53,0.32,0.03) });
+  y -= 39;
+  for (const line of wrap(
+    "This is a KOMNIVO-curated organiser baseline prepared from the PDF supplied for this project. It is not an official Garena publication and must not be represented as one. The source PDF was an Esports World Cup 2026 competition rulebook; EWC-only participant, qualification, stage, schedule, prize, region, staffing and event-administration rules have been removed.",
+    regular, 8.5, pageWidth - margin * 2 - 24,
+  )) {
+    page.drawText(line, { x: margin + 12, y, size: 8.5, font: regular, color: ink });
+    y -= 12;
+  }
+  y -= 60;
+  heading("How to apply this document");
+  paragraph(
+    "Use these settings as a starting preset for a Free Fire India Squad tournament. The organiser must confirm the current in-game options, active map pool, available modes and tournament-specific changes before publishing an event.",
+  );
+  paragraph(
+    "The source map pool and settings are version-sensitive. Custom organiser rules may override this baseline only when the change is stated in the event rules and communicated consistently to all teams.",
+    { color: muted, size: 8.5 },
+  );
+
+  newPage("1. Scope and organiser responsibilities");
+  paragraph(
+    "This baseline covers match setup, map selection, scoring and ranking for a Free Fire India Squad tournament. It does not prescribe participant eligibility, roster locks, regional qualification, team ownership, prize distribution, travel, venue operations, referee staffing, sanctions, privacy terms or any named competition format.",
+  );
+  heading("1.1 Organiser confirmation before each event");
+  bullet("Confirm the current Free Fire India client version and the options available in the tournament lobby.");
+  bullet("Confirm the active map pool. Maps can change as the game is updated; the list below is a source-derived starting point, not a permanent guarantee.");
+  bullet("Publish the selected mode, match settings, map policy, scoring table and tie-breakers before registration closes.");
+  bullet("State any event-specific exception explicitly. Do not assume that a past competition rule remains current.");
+  paragraph("Version-sensitive values: the five-map list and match-setting toggles are retained from the supplied 2026 document and must be checked against the current Free Fire India game client.", {
+    size: 8.7, font: bold, color: cyan,
+  });
+
+  newPage("2. Game settings baseline");
+  paragraph(
+    "Recommended starting configuration from the supplied source. An organiser may change a setting only when the change is stated in the event rules and communicated consistently to all teams.",
+  );
+  const settings = [
+    ["Game mode", "Esports"],
+    ["Gun Property / Weapon Stats", "Off"],
+    ["Revival", "On"],
+    ["Hide Nickname and Kill Feed", "On"],
+    ["Generic Enemy Outfit", "On"],
+    ["High-tier Loot Zone", "Off"],
+    ["Death Cam", "On"],
+    ["In-game Missions", "On"],
+    ["In-game Quests", "Off"],
+    ["Safe Zone Moving", "On"],
+    ["Loadouts", "Allowed"],
+  ];
+  const rowHeight = 22;
+  const col1 = margin;
+  const col2 = margin + 265;
+  const tableWidth = pageWidth - margin * 2;
+  page.drawRectangle({ x: col1, y: y - rowHeight, width: tableWidth, height: rowHeight, color: navy });
+  page.drawText("Setting", { x: col1 + 8, y: y - 15, size: 9, font: bold, color: white });
+  page.drawText("Baseline", { x: col2 + 8, y: y - 15, size: 9, font: bold, color: white });
+  y -= rowHeight;
+  for (let i = 0; i < settings.length; i++) {
+    const [label, value] = settings[i];
+    page.drawRectangle({
+      x: col1, y: y - rowHeight, width: tableWidth, height: rowHeight,
+      color: i % 2 === 0 ? rgb(0.94,0.96,0.98) : white,
+      borderColor: rgb(0.82,0.85,0.89), borderWidth: 0.35,
+    });
+    page.drawText(label, { x: col1 + 8, y: y - 15, size: 8.5, font: bold, color: ink });
+    page.drawText(value, { x: col2 + 8, y: y - 15, size: 8.5, font: regular, color: ink });
+    y -= rowHeight;
+  }
+  y -= 18;
+  heading("2.1 Map pool");
+  paragraph("Source-listed starting pool: Bermuda, Purgatory, Kalahari, NexTerra and Solara. Use only maps currently available in the Free Fire India client. If the live pool differs, publish the corrected pool in the tournament rules before the first match.");
+
+  newPage("3. Map selection and rotation");
+  paragraph(
+    "The source document randomises maps from the five-map pool without repeats during the first full cycle. Its fixed Group Stage, Survival Stage and Finals schedules have deliberately been removed.",
+  );
+  heading("3.1 Generic organiser baseline");
+  bullet("Publish the eligible map pool and randomisation method before the first match.");
+  bullet("For the first full five-match cycle, select each eligible map once in a random order.");
+  bullet("For later cycles, reshuffle the pool and avoid repeating a map until the current cycle has used all eligible maps, unless the event rules explicitly define a different policy.");
+  bullet("Record the generated order so that organisers can resolve disputes consistently.");
+  bullet("If fewer than five maps are available in the live game client, build the cycle from the confirmed available pool and state the change before the event.");
+  heading("3.2 No fixed tournament stage schedule");
+  paragraph(
+    "This baseline does not define group count, survival stages, finals, match count per day, fixed dates, seeding pools, qualification slots or a Match Point threshold. These values belong to the organiser's own tournament roadmap and must be configured separately.",
+    { color: muted },
+  );
+
+  newPage("4. Match scoring and ranking");
+  paragraph("The source scoring system awards one point per kill plus placement points. The table below reproduces the values from the supplied source document.");
+  heading("4.1 Placement points");
+  const placements = [
+    ["1", "12"], ["2", "9"], ["3", "8"], ["4", "7"], ["5", "6"], ["6", "5"],
+    ["7", "4"], ["8", "3"], ["9", "2"], ["10", "1"], ["11", "0"], ["12", "0"],
+  ];
+  const half = (pageWidth - margin * 2) / 2;
+  page.drawRectangle({ x: margin, y: y - rowHeight, width: half, height: rowHeight, color: navy });
+  page.drawRectangle({ x: margin + half, y: y - rowHeight, width: half, height: rowHeight, color: navy });
+  page.drawText("Placement", { x: margin + 8, y: y - 15, size: 9, font: bold, color: white });
+  page.drawText("Points", { x: margin + half + 8, y: y - 15, size: 9, font: bold, color: white });
+  y -= rowHeight;
+  for (let i = 0; i < placements.length; i++) {
+    const [place, points] = placements[i];
+    page.drawRectangle({ x: margin, y: y - rowHeight, width: half, height: rowHeight, color: i % 2 === 0 ? rgb(0.94,0.96,0.98) : white, borderColor: rgb(0.82,0.85,0.89), borderWidth: 0.35 });
+    page.drawRectangle({ x: margin + half, y: y - rowHeight, width: half, height: rowHeight, color: i % 2 === 0 ? rgb(0.94,0.96,0.98) : white, borderColor: rgb(0.82,0.85,0.89), borderWidth: 0.35 });
+    page.drawText(place, { x: margin + 8, y: y - 15, size: 8.5, font: bold, color: ink });
+    page.drawText(points, { x: margin + half + 8, y: y - 15, size: 8.5, font: regular, color: ink });
+    y -= rowHeight;
+  }
+  y -= 10;
+  paragraph("Kill point: 1 kill = 1 point.", { font: bold });
+  heading("4.2 Tie-breakers");
+  paragraph("When teams finish on equal total points, use the following order:");
+  bullet("Total Booyahs across all matches in the tournament phase.");
+  bullet("Total accumulated kills across all matches in the tournament phase.");
+  bullet("Placement in the most recent match in which all tied teams competed together.");
+  paragraph(
+    "These tie-breakers have been generalised from the source wording. An organiser must define the period of calculation (for example, a round or the full event) and publish it before competition starts.",
+    { color: muted, size: 8.5 },
+  );
+  heading("5. Source and exclusions");
+  paragraph("Source supplied by the organiser: Free Fire at 2026 Esports World Cup - Game Rulebook (29 pages), sections 5.1, 5.1.1, 5.4 and 5.5, printed source pages 16-22. Source link: https://drive.google.com/file/d/1JJG27CKPvGDh-azyqxFpDzuL0QM0bLuB/view?usp=drive_link", { size: 8.2 });
+  paragraph("Removed: EWC eligibility and participant clauses, age and roster rules, region/residency restrictions, qualification slots, group/seeding structure, Survival Stage/Finals format, fixed event dates and match counts, Match Point threshold, EWC-only character/pet restrictions, event-specific banned skins, administration procedures, penalties, staff rules, prizes, travel, venue, equipment logistics and privacy clauses.", { size: 8.2 });
+  paragraph("This is a curated baseline, not a replacement for current Garena game policies or tournament-specific organiser rules. The current patch and event requirements always take precedence.", { font: bold, color: cyan, size: 8.2 });
+
+  for (let i = 0; i < pdf.getPageCount(); i++) footer(pdf.getPage(i), i + 1);
+  return await pdf.save();
+}
+
 async function preparePrivateRulebookDownload(
   admin: SupabaseClient,
   rulebook: Record<string, unknown>,
@@ -234,20 +474,27 @@ async function preparePrivateRulebookDownload(
   let downloadError: string | null = null;
 
   if (!storagePath) {
-    const sourceUrl = stringValue(rulebook.source_url);
-    if (!sourceUrl.toLowerCase().endsWith(".pdf")) {
-      return { ...rulebook, storage_path: null, download_url: sourceUrl, official_downloaded: false };
-    }
-
     try {
-      const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(20000) });
-      if (!response.ok) throw new Error("Official source returned HTTP " + response.status + ".");
-      const bytes = new Uint8Array(await response.arrayBuffer());
+      let bytes: Uint8Array;
+      if (stringValue(rulebook.title) === "Free Fire India Rulebook") {
+        // Build a clean copy from only the reusable gameplay and scoring clauses
+        // already curated from the organiser-supplied EWC source document.
+        bytes = await buildCleanFreeFireIndiaRulebook();
+      } else {
+        const sourceUrl = stringValue(rulebook.source_url);
+        if (!sourceUrl.toLowerCase().endsWith(".pdf")) {
+          return { ...rulebook, storage_path: null, download_url: sourceUrl, official_downloaded: false };
+        }
+        const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(20000) });
+        if (!response.ok) throw new Error("Official source returned HTTP " + response.status + ".");
+        bytes = new Uint8Array(await response.arrayBuffer());
+      }
+
       if (bytes.length < 100 || bytes.length > 25 * 1024 * 1024) {
-        throw new Error("Official PDF size is outside the allowed 25 MB limit.");
+        throw new Error("Rulebook PDF size is outside the allowed 25 MB limit.");
       }
       const signature = new TextDecoder().decode(bytes.slice(0, 5));
-      if (signature !== "%PDF-") throw new Error("Official source response is not a PDF file.");
+      if (signature !== "%PDF-") throw new Error("Generated rulebook output is not a valid PDF.");
 
       const safeVersion = stringValue(rulebook.version).replace(/[^a-zA-Z0-9._-]+/g, "-");
       const safeTitle = stringValue(rulebook.title).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 70);
@@ -257,7 +504,7 @@ async function preparePrivateRulebookDownload(
         bytes,
         { contentType: "application/pdf", upsert: true },
       );
-      if (uploadError) throw new Error("Could not save the official PDF in private Storage.");
+      if (uploadError) throw new Error("Could not save the curated rulebook in private Storage.");
       fileSize = bytes.length;
 
       await admin.from("tournament_rulebooks").update({
@@ -268,12 +515,12 @@ async function preparePrivateRulebookDownload(
         source_checked_at: new Date().toISOString(),
       }).eq("id", String(rulebook.id));
     } catch (error) {
-      downloadError = error instanceof Error ? error.message : "Official PDF download failed.";
+      downloadError = error instanceof Error ? error.message : "Rulebook PDF preparation failed.";
       await admin.from("tournament_rulebooks").update({
         download_error: downloadError.slice(0, 240),
         source_checked_at: new Date().toISOString(),
       }).eq("id", String(rulebook.id));
-      console.warn("[organizer-tournament-workflow] Official rulebook download could not be cached:", downloadError);
+      console.warn("[organizer-tournament-workflow] Rulebook PDF preparation failed:", downloadError);
     }
   }
 
@@ -294,7 +541,6 @@ async function preparePrivateRulebookDownload(
     download_error: downloadError ?? rulebook.download_error ?? null,
   };
 }
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -345,7 +591,7 @@ Deno.serve(async (req: Request) => {
         .order("title");
       if (error) throw new Error("Could not load standard rulebooks.");
       const prepared = await Promise.all((data ?? []).map((row) =>
-        preparePrivateRulebookDownload(admin, row as Record<string, unknown>),
+        preparePrivateRulebookDownload(admin, row as unknown as Record<string, unknown>),
       ));
       return json({ rulebooks: prepared, community_name: community.name });
     }
@@ -358,17 +604,15 @@ Deno.serve(async (req: Request) => {
         return json({ error: "A valid request id is required." }, 400);
       }
 
-      const idempotencyKey = stringValue(body.idempotency_key);
-      if (idempotencyKey.length < 8 || idempotencyKey.length > 120) {
-        return json({ error: "A valid request id is required." }, 400);
-      }
-
       const { data: prior } = await admin.from("tournament_proposals")
-        .select("id,status,payload,expires_at,event_id,conversation_id")
+        .select("id,status,payload,expires_at,event_id,conversation_id,community_id")
         .eq("owner_user_id", user.id)
         .eq("idempotency_key", idempotencyKey)
         .maybeSingle();
       if (prior) {
+        if (prior.community_id !== communityId) {
+          return json({ error: "This request id is already assigned to a different community." }, 409);
+        }
         if (prior.conversation_id) {
           await admin.from("ai_conversations").update({ updated_at: new Date().toISOString() })
             .eq("id", prior.conversation_id).eq("owner_user_id", user.id);
@@ -406,8 +650,13 @@ Deno.serve(async (req: Request) => {
         conversationId = String(conversation.id);
       }
 
-      const sourceRefs = selectedRulebook.id
-        ? [{ document: stringValue(selectedRulebook.title), source: stringValue(selectedRulebook.source_url), version: stringValue(selectedRulebook.version) }]
+      const selectedRulebook = objectValue(objectValue(payload.event_config).rulebook);
+      const sourceRefs = stringValue(selectedRulebook.id)
+        ? [{
+            document: stringValue(selectedRulebook.title),
+            source: stringValue(selectedRulebook.source_url),
+            version: stringValue(selectedRulebook.version),
+          }]
         : [];
       const { data: proposal, error: proposalError } = await admin.from("tournament_proposals").insert({
         conversation_id: conversationId,
