@@ -78,7 +78,7 @@ function systemPrompt(capabilities: AiCapabilities): string {
         ? "Organizer access exists in the listed communities, but no scope is selected yet. Ask which listed community to use before preparing any organizer action. Do not say permissions are missing."
         : "Organizer capabilities are not enabled in the selected scope. Continue as a player-facing assistant. Do not expose organiser-only data or offer to execute organiser actions.",
     capabilities.canCreateEventDraft
-      ? "The only currently executable AI write action is propose_event_draft. You may call it only when the user clearly asks to create an event and all mandatory details are known. CRITICAL: the user must explicitly provide a future event start DATE and CLOCK TIME before you call this tool. A timezone must also be explicit; for a user who says India/IST/local India time, encode the timestamp with +05:30. If date, clock time, or timezone is missing, DO NOT call the tool and DO NOT invent any value; ask one concise clarification question. Do not treat the current time, a guessed date, or an inferred default as the event start time. It creates a pending proposal, not an event. An authorised user must explicitly approve it; approval creates a DRAFT event only. Do not publish."
+      ? "You may read and explain the selected organiser scope, but you have NO event-creation or paid-scrim write tool. Tournament creation is handled only by the separate Create Tournament form in the chat, followed by explicit organiser approval. Paid Scrim currently has only a Coming soon entry point. If asked to create either item in free-form chat, direct the organiser to the corresponding action button. Never claim a proposal, event, scrim or setting was created."
       : "Do not call or claim availability of organiser write tools. You may explain or help plan, but do not claim that you created or changed platform data.",
     "Never invent rules, dates, scores, team eligibility, qualification or live platform state. Ask a concise question when a missing fact changes the outcome.",
     "Scoring, qualification, permissions and event state are controlled by KOMNIVO's deterministic backend, never by your own arithmetic or judgement.",
@@ -979,7 +979,9 @@ Deno.serve(async (req: Request) => {
   if (runError || !runRow) return json({ error: "Could not start AI run." }, 500);
 
   try {
-    const result = await callModel(messages, capabilities.canCreateEventDraft);
+    // Structured tournament creation is handled by organizer-tournament-workflow.
+    // Never send organiser write tools through model inference.
+    const result = await callModel(messages, false);
     const durationMs = Date.now() - startedAt;
     const estimatedCost = result.provider === "cloudflare"
       ? ((result.inputTokens * 0.45) + (result.outputTokens * 3.20)) / 1000000
@@ -989,37 +991,8 @@ Deno.serve(async (req: Request) => {
     const proposalCards: ProposalCard[] = [];
     let proposalIssue: string | null = null;
 
-    if (result.toolCalls.length > 0 && capabilities.canCreateEventDraft) {
-      const supportedCall = result.toolCalls.find((call) => call.function?.name === "propose_event_draft");
-      if (supportedCall) {
-        try {
-          const args = applyExplicitTimestampsFromMessage(
-            parseToolArguments(supportedCall),
-            message,
-          );
-          const card = await prepareEventDraftProposal(
-            admin,
-            args,
-            user.id,
-            conversationId,
-            String(runRow.id),
-            communityId,
-            eventId,
-            contextSnapshot,
-          );
-          proposalCards.push(card);
-          assistantText = "Maine event ka draft proposal taiyar kiya hai. Abhi event create ya publish nahi hua hai. Neeche details check karke Approve draft ya Reject choose karo.";
-        } catch (error) {
-          proposalIssue = error instanceof Error ? error.message : "Proposal could not be prepared.";
-          if (proposalIssue.includes("explicit timezone") || proposalIssue.includes("start time")) {
-            assistantText = "Tournament ki start date aur exact time batao, timezone ke saath (jaise: 25 November 2026, 7:00 PM IST). Abhi koi event create nahi hua.";
-          } else {
-            assistantText = "Main abhi safe draft proposal nahi bana saka: " + proposalIssue + " Missing details confirm karke dobara try karo. Abhi koi event create nahi hua.";
-          }
-        }
-      } else {
-        assistantText = "Is action ke liye abhi approved backend tool available nahi hai. Maine koi data change nahi kiya.";
-      }
+    if (result.toolCalls.length > 0) {
+      assistantText = "Tournament aur Paid Scrim creation ke liye chat ke neeche dedicated action buttons use karo. Free-form AI chat koi tournament create ya change nahi karti.";
     }
 
     const { error: assistantError } = await admin.from("ai_messages").insert({
