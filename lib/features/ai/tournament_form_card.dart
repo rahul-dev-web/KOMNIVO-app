@@ -115,7 +115,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
   String? _communityId;
   String? _gameId;
   String _format = 'squad';
-  String _rulesSource = 'custom';
+  String _rulesSource = 'standard';
   String? _rulebookId;
   String _entryType = 'free';
   DateTime? _registrationStartDate;
@@ -239,7 +239,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
       final games = await _client.from('games')
           .select('id,code,name,is_active')
           .eq('is_active', true)
-          .inFilter('code', ['free_fire_max', 'bgmi'])
+          .inFilter('code', ['free_fire_india', 'bgmi'])
           .order('name');
       _games = List<Map<String, dynamic>>.from(games);
 
@@ -249,7 +249,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
             .map((row) => row['id'].toString()));
       }
       if (_gameId == null) {
-        _gameId = _firstOrNull(_games.where((row) => row['code'] == 'free_fire_max')
+        _gameId = _firstOrNull(_games.where((row) => row['code'] == 'free_fire_india')
             .map((row) => row['id'].toString()));
       }
       if (_communityId == null && _communities.length == 1) {
@@ -298,10 +298,15 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
       if (!mounted) return;
       setState(() {
         _rulebooks = rows;
-        if (_rulebookId != null &&
+        if (_rulebooks.isEmpty && _rulesSource == 'standard') {
+          _rulesSource = 'custom';
+          _rulebookId = null;
+        } else if (_rulesSource == 'standard') {
+          final hasCurrent = _rulebooks.any((row) => row['id'].toString() == _rulebookId);
+          if (!hasCurrent) _rulebookId = _rulebooks.first['id'].toString();
+        } else if (_rulebookId != null &&
             !_rulebooks.any((row) => row['id'].toString() == _rulebookId)) {
           _rulebookId = null;
-          if (_rulesSource == 'standard') _rulesSource = 'custom';
         }
       });
     } catch (error) {
@@ -527,6 +532,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
         'scope': selected['scope'],
         'source_title': selected['source_title'],
         'source_url': selected['source_url'],
+        'notes': selected['notes'],
       };
     } else {
       final customRules = _rules.text.trim();
@@ -636,6 +642,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
           'conversation_id': data['conversation_id'],
           'proposal': {
             'workflow_type': 'tournament',
+            'community_id': _communityId,
             'id': proposal['id'],
             'status': proposal['status'] ?? 'pending_approval',
             'expires_at': proposal['expires_at'],
@@ -792,7 +799,11 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                               decoration: _decoration('Game'),
                               items: _games.map((game) => DropdownMenuItem<String>(
                                 value: game['id'].toString(),
-                                child: Text(game['name']?.toString() ?? 'Game'),
+                                child: Text(
+                                  game['code'] == 'free_fire_india'
+                                      ? 'Free Fire India'
+                                      : game['name']?.toString() ?? 'Game',
+                                ),
                               )).toList(),
                               onChanged: _saving ? null : (value) async {
                                 setState(() {
@@ -959,7 +970,8 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                selectedRulebook?['notes']?.toString() ?? 'Official rulebook source; verify the competition scope before applying.',
+                                selectedRulebook?['notes']?.toString() ??
+                                    'Source-linked rulebook. Check whether it is a general baseline or specific to one competition.',
                                 style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35),
                               ),
                               TextButton.icon(
@@ -968,33 +980,29 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                                       selectedRulebook?['source_url']?.toString(),
                                 ),
                                 icon: const Icon(Icons.download_outlined, size: 15),
-                                label: Text(selectedRulebook?['official_downloaded'] == true
-                                    ? 'Open private KOMNIVO PDF copy'
-                                    : 'Open official source PDF'),
+                                label: Text(selectedRulebook?['storage_path'] != null
+                                    ? 'Open stored KOMNIVO PDF copy'
+                                    : 'Open source document'),
                               ),
                               Text(
                                 "Scoring loaded from this rulebook version: ${const JsonEncoder.withIndent('  ').convert(_asMap(selectedRulebook?['scoring_config']))}",
                                 style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.35),
                               ),
                               const SizedBox(height: 5),
-                              const Text(
-                                'This competition-specific scoring is not assumed to be universal for every BGMI event.',
-                                style: TextStyle(color: KomnivoTheme.cyan, fontSize: 11),
+                              Text(
+                                selectedRulebook?['scope'] == 'competition_specific'
+                                    ? 'Competition-specific rulebook. Do not treat these scoring values as universal for every event.'
+                                    : 'Curated gameplay baseline, not an official Garena publication. Verify map pool and settings against the current game client.',
+                                style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 11),
                               ),
                             ],
                             if (_rulesSource == 'custom') ...[
                               const SizedBox(height: 10),
-                              if (_games.any((row) => row['id'].toString() == _gameId && row['code'] == 'free_fire_max')) ...[
+                              if (_games.any((row) => row['id'].toString() == _gameId && row['code'] == 'free_fire_india'))
                                 const Text(
-                                  'Garena’s public India website does not expose a downloadable, universal India tournament rulebook. Use organiser-confirmed custom rules until an official India rules document is provided.',
+                                  'KOMNIVO-curated Free Fire India baseline available for Squad. This is adapted from the organiser-supplied source PDF, not issued or endorsed by Garena.',
                                   style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35),
                                 ),
-                                TextButton.icon(
-                                  onPressed: () => _openSource('https://ff.garena.com/ind/'),
-                                  icon: const Icon(Icons.open_in_new, size: 15),
-                                  label: const Text('Open Garena Free Fire India website'),
-                                ),
-                              ],
                               TextField(
                                 controller: _rules,
                                 minLines: 3,
