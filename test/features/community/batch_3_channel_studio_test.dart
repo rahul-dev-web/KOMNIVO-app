@@ -111,11 +111,13 @@ void main() {
 
     await openStudioTab(tester, 'Forum');
     expect(find.text('Forum channels'), findsOneWidget);
+    expect(find.textContaining('Layout preview only'), findsOneWidget);
     expect(find.text('In discussion'), findsWidgets);
     expect(find.text('New post'), findsOneWidget);
 
     await openStudioTab(tester, 'Engage');
     expect(find.text('Threads & replies'), findsOneWidget);
+    expect(find.textContaining('Preview only · sample threads'), findsOneWidget);
     await scrollStudioListUntilVisible(
       tester, 'batch3-engagement-list', find.text('Polls'),
     );
@@ -235,6 +237,24 @@ void main() {
       find.widgetWithText(OutlinedButton, 'Sync with category'),
     );
     expect(sync.onPressed, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+
+  testWidgets('Text mention settings only expose persisted permission choices',
+      (tester) async {
+    addTearDown(() => resetView(tester));
+    await pumpStudio(tester);
+    await openStudioTab(tester, 'Text');
+
+    final mentionField = find.byType(DropdownButtonFormField<String>).last;
+    await tester.tap(mentionField);
+    await tester.pumpAndSettle();
+
+    expect(find.text('No broad mentions'), findsOneWidget);
+    expect(find.text('Role mentions only'), findsOneWidget);
+    expect(find.text('Members and roles'), findsOneWidget);
+    expect(find.text('Channel moderators only'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
