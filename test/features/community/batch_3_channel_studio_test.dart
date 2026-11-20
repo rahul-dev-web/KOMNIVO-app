@@ -259,8 +259,12 @@ void main() {
       matching: find.byTooltip('Move down'),
     ));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('ANNOUNCEMENTS'));
-    await tester.ensureVisible(find.text('COMMUNITY'));
+    await scrollStudioListUntilVisible(
+      tester, 'batch3-structure-list', find.text('ANNOUNCEMENTS'), delta: 220,
+    );
+    await scrollStudioListUntilVisible(
+      tester, 'batch3-structure-list', find.text('COMMUNITY'), delta: -220,
+    );
     expect(
       tester.getTopLeft(find.text('COMMUNITY')).dy,
       lessThan(tester.getTopLeft(find.text('ANNOUNCEMENTS')).dy),
