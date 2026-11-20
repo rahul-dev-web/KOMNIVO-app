@@ -86,10 +86,10 @@ select extensions.is(
  'a member can send text in a channel where attachments are disabled'
 );
 select extensions.throws_ok(
- $insert into public.message_attachments(message_id,uploaded_by,storage_path,content_type,file_size)
+ $$insert into public.message_attachments(message_id,uploaded_by,storage_path,content_type,file_size)
    values ('65000000-0000-4000-8000-000000000003',
            '61000000-0000-4000-8000-000000000002',
-           'batch3-runtime/blocked.png','image/png',128)$,
+           'batch3-runtime/blocked.png','image/png',128)$$,
  'P0001',
  'Attachments are disabled in this channel',
  'the database rejects attachments when channel settings disable them'
@@ -104,17 +104,17 @@ select extensions.is(
  'a plain text message is accepted when link and broad-mention controls are enabled'
 );
 select extensions.throws_ok(
- $insert into public.messages(channel_id,sender_id,body)
+ $$insert into public.messages(channel_id,sender_id,body)
    values ('64000000-0000-4000-8000-000000000008',
-           '61000000-0000-4000-8000-000000000002','Please visit https://example.test')$,
+           '61000000-0000-4000-8000-000000000002','Please visit https://example.test')$$,
  'P0001',
  'Links are disabled in this channel',
  'the database rejects links in a channel with links disabled'
 );
 select extensions.throws_ok(
- $insert into public.messages(channel_id,sender_id,body)
+ $$insert into public.messages(channel_id,sender_id,body)
    values ('64000000-0000-4000-8000-000000000008',
-           '61000000-0000-4000-8000-000000000002','@everyone please join')$,
+           '61000000-0000-4000-8000-000000000002','@everyone please join')$$,
  'P0001',
  'Broad mentions are disabled in this channel',
  'the database rejects broad mentions when they are disabled'
@@ -130,9 +130,9 @@ select extensions.is(
  'the first message in a slow-mode channel is accepted'
 );
 select extensions.throws_ok(
- $$insert into public.messages(channel_id,sender_id,body)
+ $$$insert into public.messages(channel_id,sender_id,body)
    values ('64000000-0000-4000-8000-000000000002',
-           '61000000-0000-4000-8000-000000000002','Second slow-mode message')$$,
+           '61000000-0000-4000-8000-000000000002','Second slow-mode message')$$$,
  'P0001',
  'Slow mode is active. Please wait before sending again',
  'slow mode is enforced by the database for authenticated members'
@@ -140,9 +140,9 @@ select extensions.throws_ok(
 
 -- Read-only is enforced in the database, not only by disabling the composer.
 select extensions.throws_ok(
- $$insert into public.messages(channel_id,sender_id,body)
+ $$$insert into public.messages(channel_id,sender_id,body)
    values ('64000000-0000-4000-8000-000000000003',
-           '61000000-0000-4000-8000-000000000002','This must be rejected')$$,
+           '61000000-0000-4000-8000-000000000002','This must be rejected')$$$,
  'P0001',
  'This channel is read-only',
  'read-only channels reject member message writes'
