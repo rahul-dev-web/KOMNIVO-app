@@ -270,6 +270,31 @@ class KomnivoRepository {
     ).toList();
   }
 
+  /// Returns only this user's private 1:1 and group conversations.
+  /// Community channels (including text, announcement, voice and match
+  /// channels) are deliberately excluded from the DM destination.
+  Future<List<Map<String, dynamic>>> directConversations() async {
+    final memberships = await client.from('channel_members')
+        .select('channel_id')
+        .eq('user_id', userId);
+    final channelIds = memberships
+        .map((row) => row['channel_id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+    if (channelIds.isEmpty) return <Map<String, dynamic>>[];
+
+    final rows = await client.from('channels')
+        .select()
+        .inFilter('id', channelIds)
+        .isFilter('community_id', null)
+        .inFilter('kind', ['dm', 'group'])
+        .eq('is_private', true)
+        .isFilter('archived_at', null)
+        .order('created_at', ascending: false)
+        .limit(100);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
   Future<String> uploadCommunityLogo({
     required String communityId,
     required Uint8List bytes,

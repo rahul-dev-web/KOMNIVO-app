@@ -161,4 +161,51 @@ void main() {
     expect(find.text('RAVEN'), findsOneWidget);
     expect(find.text('KAI'), findsOneWidget);
   });
+
+  testWidgets('Compete is a promotion hub and saves a local promotion draft',
+      (tester) async {
+    addTearDown(() => _resetTestView(tester));
+    await _pumpKOMNIVO(tester);
+
+    await tester.tap(find.text('Compete'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('PROMOTION HUB'), findsOneWidget);
+    expect(find.text('No open events'), findsNothing);
+    expect(find.text('What do you want to promote?'), findsOneWidget);
+
+    await tester.tap(find.text('Create promotion'));
+    await tester.pumpAndSettle();
+    expect(find.text('Create a promotion'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('promotion-title-field')),
+      'Friday Night Scrims',
+    );
+    await tester.tap(find.text('Save draft'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Friday Night Scrims'), findsOneWidget);
+    expect(find.text('Draft'), findsOneWidget);
+    expect(find.text('No open events'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('DM destination shows private user conversations without community voice rooms',
+      (tester) async {
+    addTearDown(() => _resetTestView(tester));
+    await _pumpKOMNIVO(tester);
+
+    await tester.tap(find.text('DM'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Messages'), findsOneWidget);
+    expect(find.text('Nova'), findsOneWidget);
+    expect(find.text('Rank Push Trio'), findsOneWidget);
+    expect(find.text('Night Owls Gaming'), findsNothing);
+    expect(find.text('Voice room'), findsNothing);
+    expect(find.text('Join voice room'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
 }
