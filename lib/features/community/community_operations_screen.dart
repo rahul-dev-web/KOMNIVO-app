@@ -522,7 +522,9 @@ class _CommunityOperationsScreenState extends State<CommunityOperationsScreen> {
         )),
         if (access.contains('community.manage_invites'))
           _OperationsSection('Invites', Icons.link_outlined, _InvitesTab(
-            community: widget.community, source: _source,
+            community: widget.community,
+            source: _source,
+            canReviewRequests: access.contains('community.manage_members'),
           )),
         if (access.contains('community.manage_members'))
           _OperationsSection('Moderation', Icons.shield_outlined, _ModerationTab(
@@ -1830,7 +1832,6 @@ class _InvitesTab extends StatefulWidget {
 
 class _InvitesTabState extends State<_InvitesTab> {
   late Future<List<Map<String, dynamic>>> _invites;
-  late Future<Map<String, dynamic>> _accessPolicy;
   Future<List<Map<String, dynamic>>>? _requests;
   bool _saving = false;
   bool _inviteOnly = false;
@@ -1844,7 +1845,6 @@ class _InvitesTabState extends State<_InvitesTab> {
     _inviteOnly = widget.community['visibility']?.toString() == 'private';
     _approvalRequired = widget.community['join_approval_required'] == true;
     _invites = widget.source.loadInvites(_communityId);
-    _accessPolicy = widget.source.loadCommunityAccessPolicy(_communityId);
     if (widget.canReviewRequests) {
       _requests = widget.source.loadJoinRequests(_communityId);
     }
@@ -1853,7 +1853,6 @@ class _InvitesTabState extends State<_InvitesTab> {
   void _refresh() {
     setState(() {
       _invites = widget.source.loadInvites(_communityId);
-      _accessPolicy = widget.source.loadCommunityAccessPolicy(_communityId);
       if (widget.canReviewRequests) {
         _requests = widget.source.loadJoinRequests(_communityId);
       }
@@ -2354,37 +2353,6 @@ class _InvitePolicyCard extends StatelessWidget {
   );
 }
 
-class _InviteDraftCard extends StatelessWidget {
-  const _InviteDraftCard({required this.draft, required this.onDiscard});
-  final Map<String, dynamic> draft;
-  final VoidCallback onDiscard;
-  @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Icon(Icons.edit_note_rounded, color: KomnivoTheme.cyan),
-          SizedBox(width: 7),
-          Expanded(child: Text('Invite configuration draft', style: TextStyle(fontWeight: FontWeight.w900))),
-          _StatusTag(label: 'UNSAVED', tone: _TagTone.warning),
-        ]),
-        const SizedBox(height: 8),
-        _DetailRow(label: 'Expiry', value: draft['expiry'].toString()),
-        _DetailRow(label: 'Usage', value: draft['limit'].toString()),
-        _DetailRow(label: 'Approval', value: draft['approval'] == true ? 'Required' : 'Not required'),
-        _DetailRow(label: 'Single use', value: draft['single_use'] == true ? 'Yes' : 'No'),
-        _DetailRow(label: 'Invite-only', value: draft['invite_only'] == true ? 'On' : 'Off'),
-        const _WritePendingNote(text: 'The invite is not issued. No token or shareable URL exists for this draft.'),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(onPressed: onDiscard, child: const Text('Discard draft')),
-        ),
-      ]),
-    ),
-  );
-}
-
 class _InviteCard extends StatelessWidget {
   const _InviteCard({required this.invite, required this.onRevoke});
   final Map<String, dynamic> invite;
@@ -2397,6 +2365,8 @@ class _InviteCard extends StatelessWidget {
     final maxUses = (invite['max_uses'] as num?)?.toInt();
     final expired = expiry != null && expiry.isBefore(DateTime.now());
     final exhausted = maxUses != null && uses >= maxUses;
+    final revoked = invite['revoked_at'] != null;
+    final requiresApproval = invite['requires_approval'] == true;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
@@ -2406,19 +2376,23 @@ class _InviteCard extends StatelessWidget {
             const Icon(Icons.link_rounded, color: KomnivoTheme.cyan),
             const SizedBox(width: 8),
             const Expanded(child: Text('Community invite', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11))),
-            _StatusTag(label: expired ? 'EXPIRED' : exhausted ? 'USED UP' : 'NOT EXPIRED', tone: expired || exhausted ? _TagTone.warning : _TagTone.neutral),
+            _StatusTag(
+              label: revoked ? 'REVOKED' : expired ? 'EXPIRED' : exhausted ? 'USED UP' : 'ACTIVE',
+              tone: revoked || expired || exhausted ? _TagTone.warning : _TagTone.success,
+            ),
           ]),
           const SizedBox(height: 8),
           _DetailRow(label: 'Usage', value: maxUses == null ? '$uses · unlimited' : '$uses / $maxUses'),
           _DetailRow(label: 'Created', value: created == null ? 'Unavailable' : _dateLabel(created)),
           _DetailRow(label: 'Expires', value: expiry == null ? 'Never' : _dateLabel(expiry)),
-          const _PrivacyNote(text: 'Invite secrets are not displayed from their stored hash. This status reflects expiry and usage only; the current schema does not expose revoke state. Revoke and rotation require a privileged server operation.'),
+          _DetailRow(label: 'Join approval', value: requiresApproval ? 'Required' : 'Not required'),
+          const _PrivacyNote(text: 'Invite secrets are displayed only once when created. Revoked codes cannot be used again; the database stores a one-way hash.'),
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
-              onPressed: onRevoke,
+              onPressed: revoked ? null : onRevoke,
               icon: const Icon(Icons.link_off_outlined, size: 14),
-              label: const Text('Prepare revoke'),
+              label: Text(revoked ? 'Revoked' : 'Revoke now'),
             ),
           ),
         ]),
