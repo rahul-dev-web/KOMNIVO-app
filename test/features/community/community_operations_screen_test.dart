@@ -17,6 +17,9 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
   Map<String, dynamic>? savedModerationAction;
   bool reportStatusSaved = false;
   Map<String, dynamic>? savedInviteConfiguration;
+  final List<Map<String, dynamic>> joinRequests = [];
+  final List<Map<String, dynamic>> reports = [];
+  Map<String, dynamic>? savedSafetySettings;
 
   List<Map<String, dynamic>> onboardingQuestions = [
     {
@@ -206,18 +209,38 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> loadJoinRequests(String communityId) async => const [];
+  Future<List<Map<String, dynamic>>> loadJoinRequests(String communityId) async =>
+      List<Map<String, dynamic>>.from(joinRequests);
 
   @override
-  Future<void> reviewJoinRequest(String requestId, String decision, String reason) async {}
+  Future<void> reviewJoinRequest(String requestId, String decision, String reason) async {
+    final request = joinRequests.firstWhere((row) => row['id'] == requestId);
+    request['status'] = decision == 'approve' ? 'approved' : 'rejected';
+    request['review_reason'] = reason;
+  }
 
   @override
   Future<void> reviewModerationReport(String reportId, String status, String note) async {
     reportStatusSaved = true;
+    final report = reports.firstWhere((row) => row['id'] == reportId);
+    report['status'] = status;
+    report['review_note'] = note;
   }
 
   @override
-  Future<String> submitModerationReport(String communityId, String? targetUserId, String? messageId, String reason, String details) async => 'report-1';
+  Future<String> submitModerationReport(String communityId, String? targetUserId, String? messageId, String reason, String details) async {
+    reports.add({
+      'id': 'report-12345678',
+      'reporter_id': 'member-1',
+      'target_user_id': targetUserId,
+      'message_id': messageId,
+      'reason': reason,
+      'details': details,
+      'status': 'open',
+      'created_at': '2026-11-20T09:00:00Z',
+    });
+    return 'report-12345678';
+  }
 
   @override
   Future<List<Map<String, dynamic>>> loadModerationActions(String communityId) async => const [
@@ -282,7 +305,9 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
   };
 
   @override
-  Future<void> saveSafetySettings(String communityId, Map<String, dynamic> settings) async {}
+  Future<void> saveSafetySettings(String communityId, Map<String, dynamic> settings) async {
+    savedSafetySettings = Map<String, dynamic>.from(settings);
+  }
 
   @override
   Future<List<Map<String, dynamic>>> loadInvites(String communityId) async => [
@@ -300,7 +325,7 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
 
   @override
   Future<List<Map<String, dynamic>>> loadReports(String communityId) async =>
-      const [];
+      List<Map<String, dynamic>>.from(reports);
 
   @override
   Future<List<Map<String, dynamic>>> loadChannelPolicies(String communityId) async =>
@@ -608,6 +633,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Authorised members can approve pending community join requests',
+      (tester) async {
+    addTearDown(() => _reset(tester));
+    final source = _FakeCommunityOperationsSource(
+      permissions: {'community.manage_members', 'community.manage_invites'},
+    );
+    source.joinRequests.add({
+      'id': 'request-12345678',
+      'user_id': 'member-2',
+      'status': 'pending',
+      'applicant_note': 'I want to join the competitive scrim group.',
+      'created_at': '2026-11-20T08:30:00Z',
+      'profiles': {'display_name': 'Orbit Mod', 'username': 'orbit'},
+    });
+    await _pumpOperations(
+      tester,
+      permissions: {'community.manage_members', 'community.manage_invites'},
+      source: source,
+      communityVisibility: 'public',
+      size: const Size(430, 1700),
+    );
+    await _openOperationsTab(tester, 'Invites');
+
+    expect(find.text('Join application queue'), findsOneWidget);
+    expect(find.text('Orbit Mod'), findsOneWidget);
+    await tester.ensureVisible(find.text('Approve').first);
+    await tester.tap(find.text('Approve').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Approve application?'), findsOneWidget);
+    await tester.tap(find.text('Approve').last);
+    await tester.pumpAndSettle();
+
+    expect(source.joinRequests.single['status'], 'approved');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Invite settings create a one-time code and persist invite policy',
       (tester) async {
     addTearDown(() => _reset(tester));
@@ -643,6 +705,50 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+
+  testWidgets('Members can submit reports and moderators can review their status',
+      (tester) async {
+    addTearDown(() => _reset(tester));
+    final source = _FakeCommunityOperationsSource(
+      permissions: {'community.manage_members'},
+    );
+    await _pumpOperations(
+      tester,
+      permissions: {'community.manage_members'},
+      source: source,
+      size: const Size(430, 1700),
+    );
+
+    await tester.tap(find.text('Nova Ace').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Prepare report'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'What happened?'),
+      'Repeated abusive language in the public community channel.',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Submit report'));
+    await tester.pumpAndSettle();
+
+    expect(source.reports, hasLength(1));
+    expect(source.reports.single['status'], 'open');
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await _openOperationsTab(tester, 'Moderation');
+
+    expect(find.text('Harassment or abuse'), findsOneWidget);
+    await tester.ensureVisible(find.text('Update status'));
+    await tester.tap(find.text('Update status'));
+    await tester.pumpAndSettle();
+    expect(find.text('Update report status'), findsOneWidget);
+    await tester.tap(find.text('Save status'));
+    await tester.pumpAndSettle();
+
+    expect(source.reportStatusSaved, isTrue);
+    expect(source.reports.single['status'], 'reviewing');
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('Moderation centre applies a scoped action and records it',
       (tester) async {
@@ -727,6 +833,13 @@ void main() {
     expect(find.text('NOT APPLIED'), findsOneWidget);
     expect(find.textContaining('6 / 10 seconds'), findsOneWidget);
     expect(find.text('Message flood'), findsNWidgets(2));
+    await tester.ensureVisible(find.text('Apply safety policy'));
+    await tester.tap(find.text('Apply safety policy'));
+    await tester.pumpAndSettle();
+
+    expect(source.savedSafetySettings?['message_burst_limit'], 6);
+    expect(source.savedSafetySettings?['lockdown_minutes'], 30);
+    expect(find.text('Community safety policy saved and enforcement is active.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
