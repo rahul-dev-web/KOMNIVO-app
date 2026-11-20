@@ -412,6 +412,12 @@ void main() {
     await _openOperationsTab(tester, 'Onboarding');
 
     expect(find.text('Save onboarding configuration'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Save channel tags').first,
+      320,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('Save channel tags'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
@@ -428,7 +434,11 @@ void main() {
       source: source,
     );
     await _openOperationsTab(tester, 'Onboarding');
-    await tester.ensureVisible(find.text('Save channel tags'));
+    await tester.scrollUntilVisible(
+      find.text('Save channel tags').first,
+      320,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save channel tags').first);
     await tester.pumpAndSettle();
@@ -460,6 +470,12 @@ void main() {
 
     expect(find.text('Appeal review draft'), findsOneWidget);
     expect(find.text('NOT SUBMITTED'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('My appeal history'),
+      320,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('My appeal history'), findsOneWidget);
 
     _reset(tester);
@@ -574,7 +590,11 @@ void main() {
     await _openOperationsTab(tester, 'Safety');
 
     expect(find.text('Community safety'), findsOneWidget);
-    await tester.ensureVisible(find.text('#general'));
+    await tester.scrollUntilVisible(
+      find.text('#general'),
+      320,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.pumpAndSettle();
     expect(find.text('#general'), findsOneWidget);
     expect(find.text('SLOW MODE 15s'), findsOneWidget);
@@ -606,7 +626,7 @@ void main() {
     expect(find.text('Safety policy review'), findsOneWidget);
     expect(find.text('NOT APPLIED'), findsOneWidget);
     expect(find.textContaining('6 / 10 seconds'), findsOneWidget);
-    expect(find.textContaining('Message flood'), findsOneWidget);
+    expect(find.text('Message flood'), findsNWidgets(2));
     expect(tester.takeException(), isNull);
   });
 
