@@ -97,7 +97,7 @@ class SupabaseCommunityOperationsDataSource
     );
     final accounts = await _optionalRows(
       _db.from('game_accounts')
-          .select('user_id,ownership_status,nickname,region')
+          .select('user_id,ownership_status')
           .inFilter('user_id', ids),
     );
     final captains = await _optionalRows(
@@ -515,7 +515,7 @@ class _MemberDirectoryTabState extends State<_MemberDirectoryTab> {
               )),
             const SizedBox(height: 8),
             const _PrivacyNote(
-              text: 'Member visibility follows community access and profile privacy. Free Fire UID values and private profile fields are not exposed in this directory.',
+              text: 'Member visibility follows community access and profile privacy. Free Fire UIDs and private profile fields are never fetched here. Current game-account RLS exposes ownership status to the owner only; the Verified players directory filter will show only statuses permitted by the current account policy until a safe public classification is added in the Batch 4 backend.',
             ),
           ],
         ),
@@ -1229,7 +1229,6 @@ class _InviteCard extends StatelessWidget {
     final maxUses = (invite['max_uses'] as num?)?.toInt();
     final expired = expiry != null && expiry.isBefore(DateTime.now());
     final exhausted = maxUses != null && uses >= maxUses;
-    final status = expired ? 'EXPIRED' : exhausted ? 'USED UP' : 'ACTIVE';
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
