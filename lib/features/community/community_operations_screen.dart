@@ -1764,7 +1764,7 @@ class _ModerationTabState extends State<_ModerationTab> {
       final reports = snapshot.data ?? const <Map<String, dynamic>>[];
       final open = reports.where((r) => !const {'resolved', 'dismissed'}.contains((r['status'] ?? '').toString().toLowerCase())).toList();
       final resolved = reports.where((r) => const {'resolved', 'dismissed'}.contains((r['status'] ?? '').toString().toLowerCase())).toList();
-      final shown = _view == 'Open' ? open : _view == 'Resolved' ? resolved : const <Map<String, dynamic>>[];
+      final shown = _view == 'Open' ? open : resolved;
       return ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 28), children: [
         Row(children: [
           const Expanded(child: _PageHeading(title: 'Moderation centre', subtitle: 'Review reports and prepare scoped, reasoned actions.')),
@@ -1774,20 +1774,14 @@ class _ModerationTabState extends State<_ModerationTab> {
         Wrap(spacing: 7, children: [
           ChoiceChip(label: Text('Open (' + open.length.toString() + ')'), selected: _view == 'Open', onSelected: (_) => setState(() => _view = 'Open')),
           ChoiceChip(label: Text('Resolved (' + resolved.length.toString() + ')'), selected: _view == 'Resolved', onSelected: (_) => setState(() => _view = 'Resolved')),
-          ChoiceChip(label: const Text('Appeals'), selected: _view == 'Appeals', onSelected: (_) => setState(() => _view = 'Appeals')),
+
         ]),
         const SizedBox(height: 10),
         if (_draft != null) ...[
           _ModerationDraftCard(draft: _draft!, onDiscard: () => setState(() => _draft = null)),
           const SizedBox(height: 10),
         ],
-        if (_view == 'Appeals')
-          const _PendingFeatureCard(
-            title: 'Appeal workflow',
-            detail: 'Appeal submission, reviewer assignment, evidence and decision history need the Batch 4 appeal endpoint and persistence model. No placeholder appeals are shown as real cases.',
-            icon: Icons.balance_outlined,
-          )
-        else if (shown.isEmpty)
+        if (shown.isEmpty)
           _EmptyState(
             icon: _view == 'Open' ? Icons.inbox_outlined : Icons.task_alt_outlined,
             title: _view == 'Open' ? 'No open reports' : 'No resolved reports',
