@@ -240,7 +240,7 @@ void main() {
     expect(find.text('NOT SUBMITTED'), findsOneWidget);
     expect(find.text('My appeal history'), findsOneWidget);
 
-    await _reset(tester);
+    _reset(tester);
   });
 
   testWidgets('Invite revoke requires confirmation and remains a draft',
