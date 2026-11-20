@@ -100,7 +100,7 @@ begin
  order by cm.joined_at desc,p.display_name
  limit 1000;
 end;
-$function$
+$function$;
 
 
 revoke all on function app_private.get_community_member_directory(uuid) from public,anon;
@@ -111,7 +111,7 @@ CREATE OR REPLACE FUNCTION public.get_community_member_directory(p_community_id 
  LANGUAGE sql
  STABLE
  SET search_path TO ''
-AS $function$ select * from app_private.get_community_member_directory(p_community_id); $function$
+AS $function$ select * from app_private.get_community_member_directory(p_community_id); $function$;
 
 
 revoke all on function public.get_community_member_directory(uuid) from public,anon;
