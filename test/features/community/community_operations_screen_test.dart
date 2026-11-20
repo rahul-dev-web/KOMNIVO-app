@@ -494,7 +494,11 @@ void main() {
       source: source,
     );
     await _openOperationsTab(tester, 'Onboarding');
-    await tester.ensureVisible(find.text('Save onboarding configuration'));
+    await tester.scrollUntilVisible(
+      find.text('Save onboarding configuration'),
+      260,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save onboarding configuration'));
     await tester.pumpAndSettle();
@@ -617,7 +621,7 @@ void main() {
     expect(find.text('Invite settings'), findsOneWidget);
     await tester.tap(find.byType(SwitchListTile).last);
     await tester.pump();
-    await tester.tap(find.text('Review settings'));
+    await tester.tap(find.text('Create invite'));
     await tester.pump();
     for (var i = 0; i < 12; i++) {
       await tester.pump(const Duration(milliseconds: 100));
@@ -693,8 +697,18 @@ void main() {
     await _openOperationsTab(tester, 'Safety');
 
     await tester.enterText(find.byType(TextField).first, '6');
+    await tester.scrollUntilVisible(
+      find.text('Prepare lockdown'),
+      260,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Prepare lockdown'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Review safety policy'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.tap(find.text('Review safety policy'));
     await tester.pumpAndSettle();
 
