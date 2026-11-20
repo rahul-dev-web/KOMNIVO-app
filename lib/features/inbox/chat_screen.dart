@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
+import 'channel_history_policy.dart';
 import '../../core/ui.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -17,7 +18,6 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  static const int _recentHistoryLimit = 50;
   final _controller = TextEditingController();
   final _searchController = TextEditingController();
   bool _sending = false;
@@ -64,12 +64,12 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     if (_sending || (text.isEmpty && attachment == null)) return;
 
-    setState(() => _sending = true);
     final parentId = _replyTo?['id'] as String?;
     if (parentId != null && !_allowThreads) {
       showMessage(context, 'Message threads are disabled in this channel.');
       return;
     }
+    setState(() => _sending = true);
     try {
       if (text.isNotEmpty) {
         await KomnivoRepository.instance.sendMessage(
@@ -667,10 +667,11 @@ class _ChatScreenState extends State<ChatScreen> {
               }
               final query = _searchController.text.trim().toLowerCase();
               final allMessages = snapshot.data ?? [];
-              final visibleHistory = !_keepHistory && !_canManageMessages &&
-                      allMessages.length > _recentHistoryLimit
-                  ? allMessages.sublist(allMessages.length - _recentHistoryLimit)
-                  : allMessages;
+              final visibleHistory = applyChannelHistoryPolicy(
+                allMessages,
+                keepHistory: _keepHistory,
+                canManageMessages: _canManageMessages,
+              );
               // History is retained in the database for audit/evidence purposes.
               // This setting changes member presentation only; moderators retain full history.
               _latestMessages = List<Map<String, dynamic>>.from(visibleHistory);
