@@ -352,6 +352,61 @@ async function buildContext(
       snapshot.community_channels = (channels ?? []).map((row) => ({
         name: row.name, description: row.description, kind: row.kind, private: row.is_private,
       }));
+
+      // Give Organizer AI a compact, permission-checked community operations
+      // overview even when no single event is selected. Do not include player
+      // identifiers, roster details, room credentials or personal data.
+      const { data: communityEvents } = await admin.from("events")
+        .select("id,name,status,format,starts_at,registration_opens_at,registration_closes_at,capacity,games(name,code)")
+        .eq("community_id", capabilities.communityId)
+        .order("starts_at", { ascending: false })
+        .limit(12);
+      const eventRows = communityEvents ?? [];
+      if (eventRows.length > 0) {
+        const eventIds = eventRows.map((row) => String(row.id));
+        const [registrationResult, matchResult] = await Promise.all([
+          admin.from("event_registrations").select("event_id,status")
+            .in("event_id", eventIds).limit(1200),
+          admin.from("matches").select("event_id,status,starts_at")
+            .in("event_id", eventIds).limit(1200),
+        ]);
+        const registrationCounts = new Map<string, Record<string, number>>();
+        for (const row of registrationResult.data ?? []) {
+          const eventKey = String(row.event_id);
+          const counts = registrationCounts.get(eventKey) ?? {};
+          const status = String(row.status ?? "unknown");
+          counts[status] = (counts[status] ?? 0) + 1;
+          registrationCounts.set(eventKey, counts);
+        }
+        const matchCounts = new Map<string, Record<string, number>>();
+        for (const row of matchResult.data ?? []) {
+          const eventKey = String(row.event_id);
+          const counts = matchCounts.get(eventKey) ?? {};
+          const status = String(row.status ?? "unknown");
+          counts[status] = (counts[status] ?? 0) + 1;
+          matchCounts.set(eventKey, counts);
+        }
+        snapshot.community_events = eventRows.map((row) => {
+          const game = row.games && typeof row.games === "object"
+            ? row.games as Record<string, unknown>
+            : {};
+          return {
+            id: row.id,
+            name: row.name,
+            status: row.status,
+            format: row.format,
+            game: game.name ?? game.code ?? null,
+            capacity: row.capacity,
+            registration_opens_at: row.registration_opens_at,
+            registration_closes_at: row.registration_closes_at,
+            starts_at: row.starts_at,
+            registration_counts: registrationCounts.get(String(row.id)) ?? {},
+            match_counts: matchCounts.get(String(row.id)) ?? {},
+          };
+        });
+      } else {
+        snapshot.community_events = [];
+      }
     }
   }
 
