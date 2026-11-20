@@ -501,7 +501,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '\${_community['member_count'] ?? 1} members',
+                        '${_community['member_count'] ?? 1} members',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
