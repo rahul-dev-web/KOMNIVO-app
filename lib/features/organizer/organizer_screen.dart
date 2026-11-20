@@ -5,7 +5,6 @@ import '../ai/ai_assistant_screen.dart';
 import '../ai/tournament_form_card.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
-import '../teams/teams_screen.dart';
 import 'event_operations_screen.dart';
 
 class OrganizerScreen extends StatefulWidget {
