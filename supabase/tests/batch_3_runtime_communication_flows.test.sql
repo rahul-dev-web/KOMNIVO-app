@@ -2,7 +2,7 @@
 -- Exercises the actual RLS policies and BEFORE triggers with SET ROLE authenticated.
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(18);
+select extensions.plan(23);
 
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_user_meta_data)
 values
@@ -39,7 +39,9 @@ insert into public.channels(
  ('64000000-0000-4000-8000-000000000003','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-readonly','Read-only test','text',false,'61000000-0000-4000-8000-000000000001'),
  ('64000000-0000-4000-8000-000000000004','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-forum','Forum test','forum',false,'61000000-0000-4000-8000-000000000001'),
  ('64000000-0000-4000-8000-000000000005','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-polls','Poll test','text',false,'61000000-0000-4000-8000-000000000001'),
- ('64000000-0000-4000-8000-000000000006','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-announcements','Announcement test','announcement',false,'61000000-0000-4000-8000-000000000001');
+ ('64000000-0000-4000-8000-000000000006','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-announcements','Announcement test','announcement',false,'61000000-0000-4000-8000-000000000001'),
+ ('64000000-0000-4000-8000-000000000007','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-attachments-off','Attachments disabled test','text',false,'61000000-0000-4000-8000-000000000001'),
+ ('64000000-0000-4000-8000-000000000008','62000000-0000-4000-8000-000000000001','63000000-0000-4000-8000-000000000001','runtime-restricted-text','Links and broad mentions disabled test','text',false,'61000000-0000-4000-8000-000000000001');
 
 insert into public.channel_settings(
  channel_id,community_id,read_only,slow_mode_seconds,
@@ -48,7 +50,9 @@ insert into public.channel_settings(
 ) values
  ('64000000-0000-4000-8000-000000000002','62000000-0000-4000-8000-000000000001',false,60,true,true,false,false,'61000000-0000-4000-8000-000000000001'),
  ('64000000-0000-4000-8000-000000000003','62000000-0000-4000-8000-000000000001',true,0,true,true,false,false,'61000000-0000-4000-8000-000000000001'),
- ('64000000-0000-4000-8000-000000000006','62000000-0000-4000-8000-000000000001',true,0,true,false,false,true,'61000000-0000-4000-8000-000000000001');
+ ('64000000-0000-4000-8000-000000000006','62000000-0000-4000-8000-000000000001',true,0,true,false,false,true,'61000000-0000-4000-8000-000000000001'),
+ ('64000000-0000-4000-8000-000000000007','62000000-0000-4000-8000-000000000001',false,0,false,true,false,false,'61000000-0000-4000-8000-000000000001'),
+ ('64000000-0000-4000-8000-000000000008','62000000-0000-4000-8000-000000000001',false,0,true,false,false,false,'61000000-0000-4000-8000-000000000001');
 
 -- A member's category collapse choice is isolated to their own account.
 set local role authenticated;
@@ -70,6 +74,50 @@ select extensions.is(
  (select count(*) from public.messages where id='65000000-0000-4000-8000-000000000001'),
  1::bigint,
  'a community member can send a message in an ordinary text channel'
+);
+
+-- Attachment and content restrictions are enforced by the database write triggers.
+insert into public.messages(id,channel_id,sender_id,body)
+values ('65000000-0000-4000-8000-000000000003','64000000-0000-4000-8000-000000000007',
+        '61000000-0000-4000-8000-000000000002','Attachment policy fixture message');
+select extensions.is(
+ (select count(*) from public.messages where id='65000000-0000-4000-8000-000000000003'),
+ 1::bigint,
+ 'a member can send text in a channel where attachments are disabled'
+);
+select extensions.throws_ok(
+ $insert into public.message_attachments(message_id,uploaded_by,storage_path,content_type,file_size)
+   values ('65000000-0000-4000-8000-000000000003',
+           '61000000-0000-4000-8000-000000000002',
+           'batch3-runtime/blocked.png','image/png',128)$,
+ 'P0001',
+ 'Attachments are disabled in this channel',
+ 'the database rejects attachments when channel settings disable them'
+);
+
+insert into public.messages(id,channel_id,sender_id,body)
+values ('65000000-0000-4000-8000-000000000004','64000000-0000-4000-8000-000000000008',
+        '61000000-0000-4000-8000-000000000002','A safe message without links or broad mentions');
+select extensions.is(
+ (select count(*) from public.messages where id='65000000-0000-4000-8000-000000000004'),
+ 1::bigint,
+ 'a plain text message is accepted when link and broad-mention controls are enabled'
+);
+select extensions.throws_ok(
+ $insert into public.messages(channel_id,sender_id,body)
+   values ('64000000-0000-4000-8000-000000000008',
+           '61000000-0000-4000-8000-000000000002','Please visit https://example.test')$,
+ 'P0001',
+ 'Links are disabled in this channel',
+ 'the database rejects links in a channel with links disabled'
+);
+select extensions.throws_ok(
+ $insert into public.messages(channel_id,sender_id,body)
+   values ('64000000-0000-4000-8000-000000000008',
+           '61000000-0000-4000-8000-000000000002','@everyone please join')$,
+ 'P0001',
+ 'Broad mentions are disabled in this channel',
+ 'the database rejects broad mentions when they are disabled'
 );
 
 -- Slow mode allows the first message and rejects a second message from the same sender.
