@@ -348,7 +348,14 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.byType(TextField).last,
+      find.byWidgetPredicate(
+        (widget) => widget is TextField &&
+            widget.decoration?.labelText == 'Target member ID / reference (required)',
+      ),
+      'member-1',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Reason (required)'),
       'Repeated harassment after community warning',
     );
     await tester.pumpAndSettle();
