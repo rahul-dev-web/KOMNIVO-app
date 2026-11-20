@@ -600,7 +600,10 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
             : {
                 'action': 'create_proposal',
                 'community_id': _communityId,
-                'conversation_id': widget.conversationId,
+                'conversation_id': (widget.initialCommunityId != null &&
+                        widget.initialCommunityId != _communityId)
+                    ? null
+                    : widget.conversationId,
                 'idempotency_key': 'tournament_${DateTime.now().microsecondsSinceEpoch}_${math.Random.secure().nextInt(1 << 24)}',
                 'payload': payload,
               },
@@ -759,7 +762,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                                 decoration: _decoration('Community'),
                                 child: Text(
                                   _firstOrNull(_communities.where((row) => row['id'] == _communityId)
-                                      .map((row) => row['name'])) ?? 'Choose a managed community',
+                                      .map((row) => row['name'] ?? 'Community')) ?? 'Choose a managed community',
                                 ),
                               ),
                             const SizedBox(height: 10),
@@ -909,10 +912,12 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                                 const DropdownMenuItem(value: 'custom', child: Text('Enter custom rules')),
                               ],
                               onChanged: _saving ? null : (value) {
-                                if (value != null) setState(() {
-                                  _rulesSource = value;
-                                  _rulebookId = value == 'standard' ? _rulebooks.first['id'].toString() : null;
-                                });
+                                if (value != null) {
+                                  setState(() {
+                                    _rulesSource = value;
+                                    _rulebookId = value == 'standard' ? _rulebooks.first['id'].toString() : null;
+                                  });
+                                }
                               },
                             ),
                             if (_loadingRulebooks)
