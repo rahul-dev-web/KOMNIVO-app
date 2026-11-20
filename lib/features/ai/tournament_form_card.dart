@@ -66,6 +66,11 @@ Map<String, dynamic> _asMap(dynamic value) => value is Map
     ? Map<String, dynamic>.from(value)
     : <String, dynamic>{};
 
+T? _firstOrNull<T>(Iterable<T> values) {
+  final iterator = values.iterator;
+  return iterator.moveNext() ? iterator.current : null;
+}
+
 class TournamentFormScreen extends StatefulWidget {
   const TournamentFormScreen({
     super.key,
@@ -238,12 +243,12 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
 
       if (_gameId == null) {
         final eventGame = widget.event?['game_id']?.toString();
-        _gameId = _games.where((row) => row['id'].toString() == eventGame)
-            .map((row) => row['id'].toString()).firstOrNull;
+        _gameId = _firstOrNull(_games.where((row) => row['id'].toString() == eventGame)
+            .map((row) => row['id'].toString()));
       }
       if (_gameId == null) {
-        _gameId = _games.where((row) => row['code'] == 'free_fire_max')
-            .map((row) => row['id'].toString()).firstOrNull;
+        _gameId = _firstOrNull(_games.where((row) => row['code'] == 'free_fire_max')
+            .map((row) => row['id'].toString()));
       }
       if (_communityId == null && _communities.length == 1) {
         _communityId = _communities.first['id'];
@@ -494,7 +499,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
       _showError('Paid entry requires a positive fee up to ₹10,00,000.');
       return;
     }
-    final game = _games.where((row) => row['id'].toString() == _gameId).firstOrNull;
+    final game = _firstOrNull(_games.where((row) => row['id'].toString() == _gameId));
     if (game == null) {
       _showError('Select a supported game.');
       return;
@@ -504,7 +509,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
     Map<String, dynamic> scoringConfig;
     Map<String, dynamic>? rulebookMeta;
     if (_rulesSource == 'standard') {
-      final selected = _rulebooks.where((row) => row['id'].toString() == _rulebookId).firstOrNull;
+      final selected = _firstOrNull(_rulebooks.where((row) => row['id'].toString() == _rulebookId));
       if (selected == null) {
         _showError('No official standard rulebook is available for this game and mode. Choose Custom rules.');
         return;
@@ -691,8 +696,8 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
   Widget build(BuildContext context) {
     final editing = widget.isEditing;
     final canSelectCommunity = _communities.length > 1 && !editing;
-    final selectedGame = _games.where((row) => row['id'].toString() == _gameId).firstOrNull;
-    final selectedRulebook = _rulebooks.where((row) => row['id'].toString() == _rulebookId).firstOrNull;
+    final selectedGame = _firstOrNull(_games.where((row) => row['id'].toString() == _gameId));
+    final selectedRulebook = _firstOrNull(_rulebooks.where((row) => row['id'].toString() == _rulebookId));
 
     return Scaffold(
       appBar: AppBar(
@@ -753,8 +758,8 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                               InputDecorator(
                                 decoration: _decoration('Community'),
                                 child: Text(
-                                  _communities.where((row) => row['id'] == _communityId)
-                                      .map((row) => row['name']).firstOrNull ?? 'Choose a managed community',
+                                  _firstOrNull(_communities.where((row) => row['id'] == _communityId)
+                                      .map((row) => row['name'])) ?? 'Choose a managed community',
                                 ),
                               ),
                             const SizedBox(height: 10),
