@@ -901,55 +901,180 @@ class _InvitesTab extends StatefulWidget {
 
 class _InvitesTabState extends State<_InvitesTab> {
   late Future<List<Map<String, dynamic>>> _future;
+  late bool _inviteOnlyDraft;
   Map<String, dynamic>? _draft;
+  Map<String, dynamic>? _revokeDraft;
+  bool _joinApprovalRequired = false;
+  bool _approvalPolicyDraftReady = false;
+
+  String get _communityId => widget.community['id'].toString();
+
   @override
-  void initState() { super.initState(); _future = widget.source.loadInvites(widget.community['id'].toString()); }
-  void _refresh() => setState(() => _future = widget.source.loadInvites(widget.community['id'].toString()));
+  void initState() {
+    super.initState();
+    _future = widget.source.loadInvites(_communityId);
+    _inviteOnlyDraft = widget.community['visibility']?.toString() == 'private';
+  }
+
+  void _refresh() => setState(() => _future = widget.source.loadInvites(_communityId));
 
   Future<void> _createDraft() async {
-    final draft = await showDialog<Map<String, dynamic>>(context: context, builder: (_) => const _InviteSettingsDialog());
-    if (draft != null && mounted) setState(() => _draft = draft);
+    final draft = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _InviteSettingsDialog(initialInviteOnly: _inviteOnlyDraft),
+    );
+    if (draft != null && mounted) {
+      setState(() {
+        _draft = draft;
+        _inviteOnlyDraft = draft['invite_only'] == true;
+      });
+    }
+  }
+
+  Future<void> _prepareRevoke(Map<String, dynamic> invite) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Revoke invite?'),
+        content: const Text(
+          'This review will invalidate the selected link for future use. Existing members will not be removed.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Keep invite'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Review revoke'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) setState(() => _revokeDraft = invite);
   }
 
   @override
   Widget build(BuildContext context) => FutureBuilder<List<Map<String, dynamic>>>(
     future: _future,
     builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) return const Center(child: CircularProgressIndicator());
-      if (snapshot.hasError) return _LoadFailure(title: 'Invites could not be loaded', details: snapshot.error.toString(), onRetry: _refresh);
+      if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (snapshot.hasError) {
+        return _LoadFailure(
+          title: 'Invites could not be loaded',
+          details: snapshot.error.toString(),
+          onRetry: _refresh,
+        );
+      }
       final invites = snapshot.data ?? const <Map<String, dynamic>>[];
-      return ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 28), children: [
-        Row(children: [
-          const Expanded(child: _PageHeading(title: 'Invite controls', subtitle: 'Manage expiry, usage limits, invite-only access and join approval.')),
-          FilledButton.icon(onPressed: _createDraft, icon: const Icon(Icons.add_link_rounded, size: 17), label: const Text('Create')),
-        ]),
-        const SizedBox(height: 12),
-        _InvitePolicyCard(visibility: widget.community['visibility']?.toString() ?? 'public'),
-        if (_draft != null) ...[
-          const SizedBox(height: 9),
-          _InviteDraftCard(draft: _draft!, onDiscard: () => setState(() => _draft = null)),
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+        children: [
+          Row(children: [
+            const Expanded(child: _PageHeading(
+              title: 'Invite controls',
+              subtitle: 'Manage expiry, usage limits, invite-only access and join approval.',
+            )),
+            FilledButton.icon(
+              onPressed: _createDraft,
+              icon: const Icon(Icons.add_link_rounded, size: 17),
+              label: const Text('Create'),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          _InvitePolicyCard(
+            inviteOnly: _inviteOnlyDraft,
+            onChanged: (value) => setState(() {
+              _inviteOnlyDraft = value;
+              _draft = null;
+            }),
+          ),
+          if (_inviteOnlyDraft != (widget.community['visibility']?.toString() == 'private'))
+            const _WritePendingNote(
+              text: 'Invite-only visibility is a local policy draft. Community visibility has not been updated.',
+            ),
+          if (_draft != null) ...[
+            const SizedBox(height: 9),
+            _InviteDraftCard(
+              draft: _draft!,
+              onDiscard: () => setState(() => _draft = null),
+            ),
+          ],
+          if (_revokeDraft != null) ...[
+            const SizedBox(height: 9),
+            _InviteRevokeDraftCard(
+              invite: _revokeDraft!,
+              onDiscard: () => setState(() => _revokeDraft = null),
+            ),
+          ],
+          const SizedBox(height: 16),
+          const Text(
+            'Existing invite links',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 7),
+          if (invites.isEmpty)
+            const _EmptyState(
+              icon: Icons.link_off_outlined,
+              title: 'No invite records',
+              body: 'There are no invite records visible for this community. Link issuance and revoke operations will be connected with the Batch 4 backend.',
+            )
+          else
+            ...invites.map((row) => _InviteCard(
+              invite: row,
+              onRevoke: () => _prepareRevoke(row),
+            )),
+          const SizedBox(height: 18),
+          const _SectionHeader(
+            title: 'Join approval policy',
+            subtitle: 'Decide whether applications must be reviewed by an authorised moderator.',
+          ),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Require moderator approval'),
+                  subtitle: const Text(
+                    'New applications remain pending until an authorised reviewer accepts or rejects them.',
+                    style: TextStyle(color: KomnivoTheme.muted, fontSize: 9),
+                  ),
+                  value: _joinApprovalRequired,
+                  onChanged: (value) => setState(() {
+                    _joinApprovalRequired = value;
+                    _approvalPolicyDraftReady = false;
+                  }),
+                ),
+                FilledButton.icon(
+                  onPressed: () => setState(() => _approvalPolicyDraftReady = true),
+                  icon: const Icon(Icons.rule_folder_outlined, size: 16),
+                  label: const Text('Review approval policy'),
+                ),
+                if (_approvalPolicyDraftReady)
+                  const _WritePendingNote(
+                    text: 'Approval policy is ready for review. It has not changed community join behaviour.',
+                  ),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const _PendingFeatureCard(
+            title: 'Pending application queue',
+            detail: 'The approve / reject queue UI is defined. The current database has no community join-request record, so no applications can be listed or decided yet.',
+            icon: Icons.fact_check_outlined,
+          ),
         ],
-        const SizedBox(height: 16),
-        const Text('Existing invite links', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 7),
-        if (invites.isEmpty) const _EmptyState(
-          icon: Icons.link_off_outlined, title: 'No invite records',
-          body: 'There are no invite records visible for this community. Link issuance and revoke operations will be connected with the Batch 4 backend.',
-        ) else ...invites.map((row) => _InviteCard(invite: row)),
-        const SizedBox(height: 18),
-        const _SectionHeader(title: 'Join approval queue', subtitle: 'Applications are reviewed separately from invite redemption.'),
-        const _PendingFeatureCard(
-          title: 'Application approvals',
-          detail: 'The approval queue UI is defined. A community join-request record and approve / reject operation are not available in the current schema; no application is fabricated here.',
-          icon: Icons.fact_check_outlined,
-        ),
-      ]);
+      );
     },
   );
 }
 
 class _InviteSettingsDialog extends StatefulWidget {
-  const _InviteSettingsDialog();
+  const _InviteSettingsDialog({required this.initialInviteOnly});
+  final bool initialInviteOnly;
   @override
   State<_InviteSettingsDialog> createState() => _InviteSettingsDialogState();
 }
@@ -959,57 +1084,102 @@ class _InviteSettingsDialogState extends State<_InviteSettingsDialog> {
   String _limit = '25 uses';
   bool _approval = false;
   bool _singleUse = false;
+  late bool _inviteOnly;
+
+  @override
+  void initState() {
+    super.initState();
+    _inviteOnly = widget.initialInviteOnly;
+  }
+
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('Invite settings'),
-    content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
-      DropdownButtonFormField<String>(
-        value: _expiry, decoration: const InputDecoration(labelText: 'Link expiry'),
-        items: const ['1 day', '7 days', '30 days', 'Never'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-        onChanged: (v) => setState(() => _expiry = v ?? _expiry),
-      ),
-      const SizedBox(height: 10),
-      DropdownButtonFormField<String>(
-        value: _limit, decoration: const InputDecoration(labelText: 'Usage limit'),
-        items: const ['1 use', '5 uses', '25 uses', '100 uses', 'Unlimited'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-        onChanged: (v) => setState(() => _limit = v ?? _limit),
-      ),
-      SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Require join approval'),
-        subtitle: const Text('New applicants wait for an authorised moderator.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
-        value: _approval, onChanged: (v) => setState(() => _approval = v)),
-      SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Single-use invite'),
-        value: _singleUse, onChanged: (v) => setState(() { _singleUse = v; if (v) _limit = '1 use'; })),
-      const _WritePendingNote(text: 'These settings configure the invite UX only. A server-issued secret link is not generated in this UI pass.'),
-    ])),
+    content: SizedBox(width: 420, child: SingleChildScrollView(child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DropdownButtonFormField<String>(
+          value: _expiry,
+          decoration: const InputDecoration(labelText: 'Link expiry'),
+          items: const ['1 day', '7 days', '30 days', 'Never']
+              .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+          onChanged: (v) => setState(() => _expiry = v ?? _expiry),
+        ),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String>(
+          value: _limit,
+          decoration: const InputDecoration(labelText: 'Usage limit'),
+          items: const ['1 use', '5 uses', '25 uses', '100 uses', 'Unlimited']
+              .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+          onChanged: (v) => setState(() => _limit = v ?? _limit),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Require join approval'),
+          subtitle: const Text('New applicants wait for an authorised moderator.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+          value: _approval,
+          onChanged: (v) => setState(() => _approval = v),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Single-use invite'),
+          value: _singleUse,
+          onChanged: (v) => setState(() {
+            _singleUse = v;
+            if (v) _limit = '1 use';
+          }),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Invite-only community'),
+          subtitle: const Text('Only accepted invites or approved applications can join.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+          value: _inviteOnly,
+          onChanged: (v) => setState(() => _inviteOnly = v),
+        ),
+        const _WritePendingNote(
+          text: 'These settings configure the invite UX only. A server-issued secret link is not generated in this UI pass.',
+        ),
+      ],
+    ))),
     actions: [
-      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-      FilledButton(onPressed: () => Navigator.pop(context, {
-        'expiry': _expiry, 'limit': _limit, 'approval': _approval, 'single_use': _singleUse,
-      }), child: const Text('Review settings')),
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, {
+          'expiry': _expiry,
+          'limit': _limit,
+          'approval': _approval,
+          'single_use': _singleUse,
+          'invite_only': _inviteOnly,
+        }),
+        child: const Text('Review settings'),
+      ),
     ],
   );
 }
 
 class _InvitePolicyCard extends StatelessWidget {
-  const _InvitePolicyCard({required this.visibility});
-  final String visibility;
+  const _InvitePolicyCard({required this.inviteOnly, required this.onChanged});
+  final bool inviteOnly;
+  final ValueChanged<bool> onChanged;
   @override
-  Widget build(BuildContext context) {
-    final inviteOnly = visibility == 'private';
-    return Card(child: Padding(
+  Widget build(BuildContext context) => Card(
+    child: Padding(
       padding: const EdgeInsets.all(13),
       child: Row(children: [
         Icon(inviteOnly ? Icons.lock_outline : Icons.public_outlined, color: KomnivoTheme.cyan),
         const SizedBox(width: 10),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(inviteOnly ? 'Invite-only community' : 'Public community', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
-          Text(inviteOnly ? 'Membership is restricted by current community visibility.' : 'Public discovery is enabled; invite links may still apply limits.',
+          Text(inviteOnly ? 'Membership is restricted by current invite-only policy.' : 'Public discovery is enabled; invite links may still apply limits.',
             style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
         ])),
-        _StatusTag(label: inviteOnly ? 'PRIVATE' : 'PUBLIC', tone: inviteOnly ? _TagTone.warning : _TagTone.success),
+        Switch(value: inviteOnly, onChanged: onChanged),
       ]),
-    ));
-  }
+    ),
+  );
 }
 
 class _InviteDraftCard extends StatelessWidget {
@@ -1017,28 +1187,36 @@ class _InviteDraftCard extends StatelessWidget {
   final Map<String, dynamic> draft;
   final VoidCallback onDiscard;
   @override
-  Widget build(BuildContext context) => Card(child: Padding(
-    padding: const EdgeInsets.all(12),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Row(children: [
-        Icon(Icons.edit_note_rounded, color: KomnivoTheme.cyan), SizedBox(width: 7),
-        Expanded(child: Text('Invite configuration draft', style: TextStyle(fontWeight: FontWeight.w900))),
-        _StatusTag(label: 'UNSAVED', tone: _TagTone.warning),
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.edit_note_rounded, color: KomnivoTheme.cyan),
+          SizedBox(width: 7),
+          Expanded(child: Text('Invite configuration draft', style: TextStyle(fontWeight: FontWeight.w900))),
+          _StatusTag(label: 'UNSAVED', tone: _TagTone.warning),
+        ]),
+        const SizedBox(height: 8),
+        _DetailRow(label: 'Expiry', value: draft['expiry'].toString()),
+        _DetailRow(label: 'Usage', value: draft['limit'].toString()),
+        _DetailRow(label: 'Approval', value: draft['approval'] == true ? 'Required' : 'Not required'),
+        _DetailRow(label: 'Single use', value: draft['single_use'] == true ? 'Yes' : 'No'),
+        _DetailRow(label: 'Invite-only', value: draft['invite_only'] == true ? 'On' : 'Off'),
+        const _WritePendingNote(text: 'The invite is not issued. No token or shareable URL exists for this draft.'),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(onPressed: onDiscard, child: const Text('Discard draft')),
+        ),
       ]),
-      const SizedBox(height: 8),
-      _DetailRow(label: 'Expiry', value: draft['expiry'].toString()),
-      _DetailRow(label: 'Usage', value: draft['limit'].toString()),
-      _DetailRow(label: 'Approval', value: draft['approval'] == true ? 'Required' : 'Not required'),
-      _DetailRow(label: 'Single use', value: draft['single_use'] == true ? 'Yes' : 'No'),
-      const _WritePendingNote(text: 'The invite is not issued. No token or shareable URL exists for this draft.'),
-      Align(alignment: Alignment.centerRight, child: TextButton(onPressed: onDiscard, child: const Text('Discard draft'))),
-    ]),
-  ));
+    ),
+  );
 }
 
 class _InviteCard extends StatelessWidget {
-  const _InviteCard({required this.invite});
+  const _InviteCard({required this.invite, required this.onRevoke});
   final Map<String, dynamic> invite;
+  final VoidCallback onRevoke;
   @override
   Widget build(BuildContext context) {
     final created = DateTime.tryParse(invite['created_at']?.toString() ?? '');
@@ -1048,22 +1226,62 @@ class _InviteCard extends StatelessWidget {
     final expired = expiry != null && expiry.isBefore(DateTime.now());
     final exhausted = maxUses != null && uses >= maxUses;
     final status = expired ? 'EXPIRED' : exhausted ? 'USED UP' : 'ACTIVE';
-    return Card(margin: const EdgeInsets.only(bottom: 8), child: Padding(
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.link_rounded, color: KomnivoTheme.cyan),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('Community invite', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11))),
+            _StatusTag(label: status, tone: expired || exhausted ? _TagTone.warning : _TagTone.success),
+          ]),
+          const SizedBox(height: 8),
+          _DetailRow(label: 'Usage', value: maxUses == null ? '$uses · unlimited' : '$uses / $maxUses'),
+          _DetailRow(label: 'Created', value: created == null ? 'Unavailable' : _dateLabel(created)),
+          _DetailRow(label: 'Expires', value: expiry == null ? 'Never' : _dateLabel(expiry)),
+          const _PrivacyNote(text: 'Invite secrets are not displayed from their stored hash. Revoke and rotation will use a privileged server operation.'),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onRevoke,
+              icon: const Icon(Icons.link_off_outlined, size: 14),
+              label: const Text('Prepare revoke'),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _InviteRevokeDraftCard extends StatelessWidget {
+  const _InviteRevokeDraftCard({required this.invite, required this.onDiscard});
+  final Map<String, dynamic> invite;
+  final VoidCallback onDiscard;
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
       padding: const EdgeInsets.all(12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(Icons.link_rounded, color: KomnivoTheme.cyan), const SizedBox(width: 8),
-          const Expanded(child: Text('Community invite', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11))),
-          _StatusTag(label: status, tone: expired || exhausted ? _TagTone.warning : _TagTone.success),
+        const Row(children: [
+          Icon(Icons.link_off_outlined, color: KomnivoTheme.danger),
+          SizedBox(width: 7),
+          Expanded(child: Text('Invite revoke review', style: TextStyle(fontWeight: FontWeight.w900))),
+          _StatusTag(label: 'NOT REVOKED', tone: _TagTone.warning),
         ]),
         const SizedBox(height: 8),
-        _DetailRow(label: 'Usage', value: maxUses == null ? '$uses · unlimited' : '$uses / $maxUses'),
-        _DetailRow(label: 'Created', value: created == null ? 'Unavailable' : _dateLabel(created)),
-        _DetailRow(label: 'Expires', value: expiry == null ? 'Never' : _dateLabel(expiry)),
-        const _PrivacyNote(text: 'Invite secrets are not displayed from their stored hash. Revoke and rotation will use a privileged server operation.'),
+        _DetailRow(label: 'Invite', value: invite['id'].toString().substring(0, 8)),
+        _DetailRow(label: 'Used', value: (invite['uses'] ?? 0).toString()),
+        const _WritePendingNote(text: 'Revoke confirmation is prepared. The invite remains usable until a privileged server revoke operation is connected.'),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(onPressed: onDiscard, child: const Text('Discard review')),
+        ),
       ]),
-    ));
-  }
+    ),
+  );
 }
 
 class _ModerationTab extends StatefulWidget {
