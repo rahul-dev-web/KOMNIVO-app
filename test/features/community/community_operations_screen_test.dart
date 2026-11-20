@@ -407,17 +407,12 @@ void main() {
     await _pumpOperations(
       tester,
       permissions: {'community.manage_structure'},
+      size: const Size(430, 2800),
       source: source,
     );
     await _openOperationsTab(tester, 'Onboarding');
 
     expect(find.text('Save onboarding configuration'), findsNothing);
-    await tester.scrollUntilVisible(
-      find.text('Save channel tags').first,
-      320,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.pumpAndSettle();
     expect(find.text('Save channel tags'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
@@ -431,14 +426,11 @@ void main() {
     await _pumpOperations(
       tester,
       permissions: {'community.manage_members', 'community.manage_structure'},
+      size: const Size(430, 2800),
       source: source,
     );
     await _openOperationsTab(tester, 'Onboarding');
-    await tester.scrollUntilVisible(
-      find.text('Save channel tags').first,
-      320,
-      scrollable: find.byType(Scrollable).last,
-    );
+    await tester.ensureVisible(find.text('Save channel tags').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save channel tags').first);
     await tester.pumpAndSettle();
@@ -450,7 +442,7 @@ void main() {
   testWidgets('Members can prepare appeals and reviewers see a separate queue',
       (tester) async {
     addTearDown(() => _reset(tester));
-    await _pumpOperations(tester);
+    await _pumpOperations(tester, size: const Size(430, 1400));
     await _openOperationsTab(tester, 'Appeals');
 
     await tester.ensureVisible(find.text('Moderation decision reference'));
@@ -470,12 +462,6 @@ void main() {
 
     expect(find.text('Appeal review draft'), findsOneWidget);
     expect(find.text('NOT SUBMITTED'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('My appeal history'),
-      320,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.pumpAndSettle();
     expect(find.text('My appeal history'), findsOneWidget);
 
     _reset(tester);
@@ -586,16 +572,11 @@ void main() {
     await _pumpOperations(
       tester,
       permissions: {'community.manage_settings'},
+      size: const Size(430, 2100),
     );
     await _openOperationsTab(tester, 'Safety');
 
     expect(find.text('Community safety'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('#general'),
-      320,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.pumpAndSettle();
     expect(find.text('#general'), findsOneWidget);
     expect(find.text('SLOW MODE 15s'), findsOneWidget);
     expect(find.text('LINKS BLOCKED'), findsOneWidget);
@@ -608,17 +589,12 @@ void main() {
     await _pumpOperations(
       tester,
       permissions: {'community.manage_settings'},
+      size: const Size(430, 2100),
     );
     await _openOperationsTab(tester, 'Safety');
 
-    await tester.ensureVisible(find.text('Message burst limit'));
-    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '6');
-    await tester.ensureVisible(find.text('Prepare lockdown'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Prepare lockdown'));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Review safety policy'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Review safety policy'));
     await tester.pumpAndSettle();
