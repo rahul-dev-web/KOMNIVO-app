@@ -421,7 +421,7 @@ async function buildContext(
   }
 
   const { data: event } = await admin.from("events")
-    .select("id,name,description,format,status,starts_at,registration_closes_at,capacity,rules_json,scoring_config,community_id,game_id")
+    .select("id,name,description,format,status,starts_at,registration_opens_at,registration_closes_at,capacity,rules_json,scoring_config,event_config,banner_path,community_id,game_id")
     .eq("id", capabilities.eventId).maybeSingle();
   if (!event) return snapshot;
   snapshot.event = event;
