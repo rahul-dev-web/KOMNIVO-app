@@ -949,13 +949,18 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                                     : 'Open official source PDF'),
                               ),
                               Text(
-                                'Scoring is loaded from the selected rulebook version. This does not assume it is universal for every tournament.',
-                                style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 11),
+                                'Scoring loaded from this rulebook version: ${const JsonEncoder.withIndent('  ').convert(_asMap(selectedRulebook?['scoring_config']))}',
+                                style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.35),
+                              ),
+                              const SizedBox(height: 5),
+                              const Text(
+                                'This competition-specific scoring is not assumed to be universal for every BGMI event.',
+                                style: TextStyle(color: KomnivoTheme.cyan, fontSize: 11),
                               ),
                             ],
                             if (_rulesSource == 'custom') ...[
                               const SizedBox(height: 10),
-                              if (_games.any((row) => row['id'].toString() == _gameId && row['code'] == 'free_fire_max'))
+                              if (_games.any((row) => row['id'].toString() == _gameId && row['code'] == 'free_fire_max')) ...[
                                 const Text(
                                   'Garena’s public India website does not expose a downloadable, universal India tournament rulebook. Use organiser-confirmed custom rules until an official India rules document is provided.',
                                   style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35),
@@ -965,6 +970,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                                   icon: const Icon(Icons.open_in_new, size: 15),
                                   label: const Text('Open Garena Free Fire India website'),
                                 ),
+                              ],
                               TextField(
                                 controller: _rules,
                                 minLines: 3,
