@@ -388,7 +388,7 @@ async function buildContext(
         }
         snapshot.community_events = eventRows.map((row) => {
           const game = row.games && typeof row.games === "object"
-            ? row.games as Record<string, unknown>
+            ? row.games as unknown as Record<string, unknown>
             : {};
           return {
             id: row.id,
