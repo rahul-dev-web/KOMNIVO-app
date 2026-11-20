@@ -3343,28 +3343,72 @@ class _SafetyTab extends StatefulWidget {
 
 class _SafetyTabState extends State<_SafetyTab> {
   late Future<List<Map<String, dynamic>>> _future;
-  final _messageRate = TextEditingController();
-  final _mentionRate = TextEditingController();
+  final _messageRate = TextEditingController(text: '6');
+  final _mentionRate = TextEditingController(text: '4');
+  final _raidJoinThreshold = TextEditingController(text: '10');
+  final _raidWindowSeconds = TextEditingController(text: '60');
+  final _newMemberLinkHours = TextEditingController(text: '24');
   String _messageWindow = '10 seconds';
   String _mentionWindow = '1 minute';
   String _duration = '30 minutes';
   String _scope = 'All text channels';
   String _raidTrigger = 'Message flood';
   bool _pauseInvites = true;
-  bool _restrictLinks = true;
+  bool _restrictLinks = false;
   bool _lockdown = false;
+  bool _loadingSettings = true;
   Map<String, dynamic>? _safetyDraft;
 
   @override
   void initState() {
     super.initState();
     _future = widget.source.loadChannelPolicies(widget.communityId);
+    _loadSafetySettings();
+  }
+
+  Future<void> _loadSafetySettings() async {
+    try {
+      final settings = await widget.source.loadSafetySettings(widget.communityId);
+      if (!mounted) return;
+      setState(() {
+        _messageRate.text = (settings['message_burst_limit'] ?? 6).toString();
+        _mentionRate.text = (settings['mention_burst_limit'] ?? 4).toString();
+        _raidJoinThreshold.text = (settings['raid_join_threshold'] ?? 10).toString();
+        _raidWindowSeconds.text = (settings['raid_window_seconds'] ?? 60).toString();
+        _newMemberLinkHours.text = (settings['new_member_link_restriction_hours'] ?? 24).toString();
+        _messageWindow = switch ((settings['message_window_seconds'] as num?)?.toInt() ?? 10) {
+          5 => '5 seconds',
+          30 => '30 seconds',
+          60 => '1 minute',
+          300 => '5 minutes',
+          _ => '10 seconds',
+        };
+        _mentionWindow = switch ((settings['mention_window_seconds'] as num?)?.toInt() ?? 60) {
+          10 => '10 seconds',
+          30 => '30 seconds',
+          300 => '5 minutes',
+          900 => '15 minutes',
+          _ => '1 minute',
+        };
+        _restrictLinks = settings['restrict_links_for_new_members'] == true;
+        _pauseInvites = settings['pause_invites_during_lockdown'] != false;
+        final until = DateTime.tryParse(settings['lockdown_until']?.toString() ?? '');
+        _lockdown = until != null && until.isAfter(DateTime.now());
+      });
+    } catch (error) {
+      if (mounted) showMessage(context, 'Saved community safety settings could not be loaded: ' + error.toString());
+    } finally {
+      if (mounted) setState(() => _loadingSettings = false);
+    }
   }
 
   @override
   void dispose() {
     _messageRate.dispose();
     _mentionRate.dispose();
+    _raidJoinThreshold.dispose();
+    _raidWindowSeconds.dispose();
+    _newMemberLinkHours.dispose();
     super.dispose();
   }
 
@@ -3450,6 +3494,29 @@ class _SafetyTabState extends State<_SafetyTab> {
                       _mentionWindow = v ?? _mentionWindow;
                       _safetyDraft = null;
                     }),
+                  ),
+                  TextField(
+                    controller: _newMemberLinkHours,
+                    onChanged: (_) => _invalidateDraft(),
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'New-member link restriction (hours)',
+                      helperText: 'Applied to links in messages until this many hours after joining.',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _raidJoinThreshold,
+                    onChanged: (_) => _invalidateDraft(),
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Raid join threshold'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _raidWindowSeconds,
+                    onChanged: (_) => _invalidateDraft(),
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Raid detection window (seconds)'),
                   ),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
@@ -3546,6 +3613,14 @@ class _SafetyTabState extends State<_SafetyTab> {
                   if (_safetyDraft != null) ...[
                     const SizedBox(height: 10),
                     _SafetyPolicyDraftCard(draft: _safetyDraft!),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      onPressed: _saving || _loadingSettings ? null : _saveSafetyPolicy,
+                      icon: _saving
+                          ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.save_outlined),
+                      label: Text(_saving ? 'Saving…' : 'Apply safety policy'),
+                    ),
                   ],
                 ],
               ),
@@ -3572,27 +3647,97 @@ class _SafetyTabState extends State<_SafetyTab> {
     },
   );
 
+  int? _messageWindowSeconds() => switch (_messageWindow) {
+    '5 seconds' => 5,
+    '10 seconds' => 10,
+    '30 seconds' => 30,
+    '1 minute' => 60,
+    '5 minutes' => 300,
+    _ => null,
+  };
+
+  int? _mentionWindowSeconds() => switch (_mentionWindow) {
+    '10 seconds' => 10,
+    '30 seconds' => 30,
+    '1 minute' => 60,
+    '5 minutes' => 300,
+    '15 minutes' => 900,
+    _ => null,
+  };
+
+  int _lockdownMinutes() => _lockdown
+      ? switch (_duration) {
+          '15 minutes' => 15,
+          '30 minutes' => 30,
+          '1 hour' => 60,
+          '6 hours' => 360,
+          _ => 30,
+        }
+      : 0;
+
   void _prepareSafetyDraft() {
     final messages = int.tryParse(_messageRate.text.trim());
     final mentions = int.tryParse(_mentionRate.text.trim());
-    if ((_messageRate.text.trim().isNotEmpty && (messages == null || messages < 1)) ||
-        (_mentionRate.text.trim().isNotEmpty && (mentions == null || mentions < 1))) {
-      showMessage(context, 'Rate limits must be positive whole numbers.');
+    final threshold = int.tryParse(_raidJoinThreshold.text.trim());
+    final raidWindow = int.tryParse(_raidWindowSeconds.text.trim());
+    final linkHours = int.tryParse(_newMemberLinkHours.text.trim());
+    if (messages == null || messages < 1 || messages > 60 ||
+        mentions == null || mentions < 1 || mentions > 30 ||
+        threshold == null || threshold < 3 || threshold > 100 ||
+        raidWindow == null || raidWindow < 10 || raidWindow > 600 ||
+        linkHours == null || linkHours < 1 || linkHours > 720) {
+      showMessage(context, 'Check the values: message 1–60, mentions 1–30, raid threshold 3–100, windows 10–600 seconds and link restriction 1–720 hours.');
       return;
     }
     setState(() => _safetyDraft = {
-      'message_limit': _messageRate.text.trim().isEmpty ? 'Disabled' : _messageRate.text.trim(),
+      'message_limit': messages,
       'message_window': _messageWindow,
-      'mention_limit': _mentionRate.text.trim().isEmpty ? 'Disabled' : _mentionRate.text.trim(),
+      'mention_limit': mentions,
       'mention_window': _mentionWindow,
       'restrict_links': _restrictLinks,
+      'link_hours': linkHours,
       'pause_invites': _pauseInvites,
+      'raid_threshold': threshold,
+      'raid_window': raidWindow,
       'lockdown': _lockdown,
       'raid_trigger': _lockdown ? _raidTrigger : 'Not set',
       'scope': _lockdown ? _scope : 'Not set',
       'duration': _lockdown ? _duration : 'Not set',
     });
   }
+
+  Future<void> _saveSafetyPolicy() async {
+    final draft = _safetyDraft;
+    if (draft == null) return;
+    setState(() => _saving = true);
+    try {
+      await widget.source.saveSafetySettings(widget.communityId, {
+        'message_burst_limit': draft['message_limit'],
+        'message_window_seconds': _messageWindowSeconds(),
+        'mention_burst_limit': draft['mention_limit'],
+        'mention_window_seconds': _mentionWindowSeconds(),
+        'restrict_links_for_new_members': draft['restrict_links'],
+        'new_member_link_restriction_hours': draft['link_hours'],
+        'pause_invites_during_lockdown': draft['pause_invites'],
+        'raid_join_threshold': draft['raid_threshold'],
+        'raid_window_seconds': draft['raid_window'],
+        'lockdown_minutes': _lockdownMinutes(),
+        'lockdown_reason': _lockdown ? 'Manual raid response: ' + _raidTrigger : '',
+      });
+      if (!mounted) return;
+      showMessage(context, 'Community safety policy saved and enforcement is active.');
+      setState(() {
+        _safetyDraft = null;
+        _loadingSettings = true;
+      });
+      await _loadSafetySettings();
+    } catch (error) {
+      if (mounted) showMessage(context, 'Community safety policy was not saved: ' + error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
 }
 
 class _SafetyPolicyDraftCard extends StatelessWidget {
