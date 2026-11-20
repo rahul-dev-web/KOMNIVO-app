@@ -347,6 +347,44 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Safety centre reviews anti-spam windows and raid lockdown without applying',
+      (tester) async {
+    addTearDown(() => _reset(tester));
+    await _pumpOperations(
+      tester,
+      permissions: {'community.manage_settings'},
+    );
+    await tester.tap(find.text('Safety'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, '6');
+    await tester.tap(find.text('Prepare lockdown'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Review safety policy'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Safety policy review'), findsOneWidget);
+    expect(find.text('NOT APPLIED'), findsOneWidget);
+    expect(find.textContaining('6 / 10 seconds'), findsOneWidget);
+    expect(find.textContaining('Message flood'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Audit tab opens only for audit readers and shows real empty state',
+      (tester) async {
+    addTearDown(() => _reset(tester));
+    await _pumpOperations(
+      tester,
+      permissions: {'community.audit.read'},
+    );
+    expect(find.text('Audit'), findsOneWidget);
+    await tester.tap(find.text('Audit'));
+    await tester.pumpAndSettle();
+    expect(find.text('Audit history'), findsOneWidget);
+    expect(find.text('No audit records'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Operations centre remains usable at desktop width',
       (tester) async {
     addTearDown(() => _reset(tester));
