@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/komnivo_repository.dart';
 import '../ai/ai_assistant_screen.dart';
+import '../ai/tournament_form_card.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
 import '../teams/teams_screen.dart';
@@ -17,10 +18,7 @@ class OrganizerScreen extends StatefulWidget {
 }
 
 class _OrganizerScreenState extends State<OrganizerScreen> {
-  final _name = TextEditingController();
-  final _capacity = TextEditingController(text: '48');
-  bool _busy = false;
-  String _status = 'Create an event and manage its competition flow from one workspace.';
+  String _status = 'Create and manage tournament drafts from the structured organiser workflow.';
   Future<List<Map<String, dynamic>>>? _eventsFuture;
 
   @override
@@ -40,7 +38,7 @@ class _OrganizerScreenState extends State<OrganizerScreen> {
       ...List<Map<String, dynamic>>.from(scopes).map((row) => row['event_id'].toString()),
     };
     if (eventIds.isEmpty) return <Map<String, dynamic>>[];
-    final rows = await client.from('events').select('*, games(name,code)')
+    final rows = await client.from('events').select('*, games(name,code), communities(id,name)')
         .inFilter('id', eventIds.toList())
         .order('created_at', ascending: false).limit(30);
     return List<Map<String, dynamic>>.from(rows);
@@ -48,29 +46,41 @@ class _OrganizerScreenState extends State<OrganizerScreen> {
 
   void _reloadEvents() => setState(() => _eventsFuture = _loadEvents());
 
-  Future<void> _publish() async {
-    if (_name.text.trim().isEmpty) { showMessage(context, 'Enter an event name.'); return; }
-    setState(() => _busy = true);
-    try {
-      final event = await KomnivoRepository.instance.createEvent(
-        name: _name.text.trim(),
-        gameId: freeFireGameId,
-        startsAt: DateTime.now().add(const Duration(days: 7)),
-        capacity: int.tryParse(_capacity.text) ?? 48,
-        scoring: {
-          'kill_point': 1,
-          'placement_points': {'1': 12, '2': 9, '3': 8, '4': 7, '5': 6, '6': 5, '7': 4, '8': 3, '9': 2, '10': 1},
-        },
-      );
-      setState(() => _status = 'Published: ${event['name']}');
-      _name.clear();
-      _reloadEvents();
-    } catch (error) { setState(() => _status = error.toString()); }
-    finally { if (mounted) setState(() => _busy = false); }
+  Future<void> _openOrganizerAI() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => const AiAssistantScreen(mode: 'organizer')),
+    );
+    if (mounted) _reloadEvents();
+  }
+
+  Future<void> _editTournament(Map<String, dynamic> event) async {
+    final community = event['communities'] is Map
+        ? Map<String, dynamic>.from(event['communities'] as Map)
+        : <String, dynamic>{};
+    final communityId = event['community_id']?.toString();
+    if (communityId == null || communityId.isEmpty) {
+      showMessage(context, 'This tournament is not linked to a community and cannot be edited here.');
+      return;
+    }
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TournamentFormScreen(
+          communities: [{
+            'id': communityId,
+            'name': community['name']?.toString() ?? 'Community',
+          }],
+          initialCommunityId: communityId,
+          event: event,
+        ),
+      ),
+    );
+    if (mounted && result == true) _reloadEvents();
   }
 
   @override
-  void dispose() { _name.dispose(); _capacity.dispose(); super.dispose(); }
+  void dispose() { super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
@@ -92,19 +102,29 @@ class _OrganizerScreenState extends State<OrganizerScreen> {
       const SizedBox(height: 18),
       Container(
         padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(color: KomnivoTheme.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: KomnivoTheme.line)),
+        decoration: BoxDecoration(
+          color: KomnivoTheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: KomnivoTheme.line),
+        ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Publish an event', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          const Text('Structured tournament setup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
           const SizedBox(height: 7),
-          const Text('Free Fire MAX · Squad · IND region · seven-day default schedule', style: TextStyle(color: KomnivoTheme.muted, fontSize: 12)),
+          const Text(
+            'Use Organizer AI for contextual data assistance, then create a tournament with the dedicated form and explicit draft approval.',
+            style: TextStyle(color: KomnivoTheme.muted, fontSize: 12, height: 1.35),
+          ),
           const SizedBox(height: 14),
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Event name')),
-          const SizedBox(height: 12),
-          TextField(controller: _capacity, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Team capacity')),
-          const SizedBox(height: 14),
-          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: widget.preview || _busy ? null : _publish, icon: const Icon(Icons.publish), label: Text(_busy ? 'Publishing…' : 'Publish event'))),
-          const SizedBox(height: 10),
-          Text(_status, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 12)),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: widget.preview ? null : _openOrganizerAI,
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('Open Organizer AI'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(_status, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
         ]),
       ),
       const SizedBox(height: 22),
@@ -131,6 +151,12 @@ class _OrganizerScreenState extends State<OrganizerScreen> {
                   const SizedBox(height: 4),
                   Text('${event['status']} · ${event['capacity']} slots · ${event['starts_at']}', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
                 ])),
+                if (event['status']?.toString() == 'draft' && event['community_id'] != null)
+                  IconButton(
+                    tooltip: 'Edit tournament configuration',
+                    onPressed: widget.preview ? null : () => _editTournament(event),
+                    icon: const Icon(Icons.edit_outlined, color: KomnivoTheme.cyan),
+                  ),
                 IconButton(
                   tooltip: 'Ask Organizer AI',
                   onPressed: widget.preview ? null : () async {
