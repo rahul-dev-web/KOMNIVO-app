@@ -116,6 +116,7 @@ begin
     or position('community.manage_members' in v_definition)=0
     or position('All four supported onboarding question keys' in v_definition)=0
     or position('onboarding.configuration.updated' in v_definition)=0
+    or position('p_questions is null' in lower(v_definition))=0
   then
     raise exception 'Batch 4: onboarding configuration validation, manager permission or audit record is missing';
   end if;
@@ -127,6 +128,7 @@ begin
     or position('is_community_member' in v_definition)=0
     or position('unsupported choice' in v_definition)=0
     or position('is_required' in v_definition)=0
+    or position('p_answers is null' in lower(v_definition))=0
   then
     raise exception 'Batch 4: onboarding answer validation or membership enforcement is incomplete';
   end if;
