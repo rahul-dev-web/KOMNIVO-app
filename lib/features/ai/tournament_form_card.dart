@@ -885,17 +885,17 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                             ),
                             if (_showRoadmap) ...[
                               Row(children: [
-                                Expanded(child: TextField(controller: _groupSize, keyboardType: TextInputType.number, decoration: _decoration('Teams per group'))),
+                                Expanded(child: TextField(controller: _groupSize, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, decoration: _decoration('Teams per group'))),
                                 const SizedBox(width: 8),
-                                Expanded(child: TextField(controller: _qualifiers, keyboardType: TextInputType.number, decoration: _decoration('Qualify per group'))),
+                                Expanded(child: TextField(controller: _qualifiers, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, decoration: _decoration('Qualify per group'))),
                               ]),
                               const SizedBox(height: 8),
-                              TextField(controller: _nextRound, keyboardType: TextInputType.number, decoration: _decoration('Next-round team count')),
+                              TextField(controller: _nextRound, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, decoration: _decoration('Next-round team count')),
                               const SizedBox(height: 8),
                               Row(children: [
-                                Expanded(child: TextField(controller: _qualified, keyboardType: TextInputType.number, decoration: _decoration('Qualified teams'))),
+                                Expanded(child: TextField(controller: _qualified, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, decoration: _decoration('Qualified teams'))),
                                 const SizedBox(width: 8),
-                                Expanded(child: TextField(controller: _invites, keyboardType: TextInputType.number, decoration: _decoration('Direct invites')),
+                                Expanded(child: TextField(controller: _invites, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, decoration: _decoration('Direct invites')),
                                 ),
                               ]),
                               if ([
