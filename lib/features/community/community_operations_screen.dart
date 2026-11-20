@@ -796,329 +796,669 @@ class _OnboardingTab extends StatefulWidget {
 
 class _OnboardingTabState extends State<_OnboardingTab> {
   late Future<CommunityIdentityData> _identity;
+  late Future<Map<String, dynamic>> _onboarding;
   late Future<List<Map<String, dynamic>>> _channels;
-  final _region = TextEditingController();
-  String? _gameMode;
-  final Set<String> _interests = {};
-  final Set<String> _activities = {};
-  bool _draftReady = false;
-  final Map<String, bool> _enabled = {
-    'Game mode': true, 'Player interests': true, 'Region': true, 'Preferred activities': true,
-  };
-  final Map<String, bool> _required = {
-    'Game mode': true, 'Player interests': false, 'Region': false, 'Preferred activities': false,
-  };
-  static const _interestOptions = ['Rank push', 'Competitive scrims', 'Casual matches', 'Content creation', 'Coaching', 'Team building'];
-  static const _activityOptions = ['Find a team', 'Join tournaments', 'Play scrims', 'Learn strategies', 'Join voice sessions', 'Help organise events'];
+  Future<List<Map<String, dynamic>>>? _recommendations;
+  final Map<String, TextEditingController> _promptControllers = {};
+  final Map<String, TextEditingController> _optionControllers = {};
+  final Map<String, TextEditingController> _textAnswerControllers = {};
+  List<Map<String, dynamic>> _questions = [];
+  Map<String, dynamic> _answers = {};
+  bool _seeded = false;
+  bool _saving = false;
+  bool _showRecommendations = false;
 
   @override
   void initState() {
     super.initState();
-    _identity = widget.source.loadIdentity(widget.communityId);
-    _channels = widget.source.loadChannelPolicies(widget.communityId);
+    _load();
   }
-  @override
-  void dispose() { _region.dispose(); super.dispose(); }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<CommunityIdentityData>(
-    future: _identity,
-    builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-      if (snapshot.hasError) return _LoadFailure(
-        title: 'Account and membership states could not be loaded',
-        details: snapshot.error.toString(),
-        onRetry: () => setState(() {
-          _identity = widget.source.loadIdentity(widget.communityId);
-          _channels = widget.source.loadChannelPolicies(widget.communityId);
-        }),
+  void dispose() {
+    _disposeControllers();
+    super.dispose();
+  }
+
+  void _load() {
+    _identity = widget.source.loadIdentity(widget.communityId);
+    _onboarding = widget.source.loadOnboardingData(widget.communityId);
+    _channels = widget.source.loadChannelPolicies(widget.communityId);
+  }
+
+  void _disposeControllers() {
+    for (final item in _promptControllers.values) {
+      item.dispose();
+    }
+    for (final item in _optionControllers.values) {
+      item.dispose();
+    }
+    for (final item in _textAnswerControllers.values) {
+      item.dispose();
+    }
+    _promptControllers.clear();
+    _optionControllers.clear();
+    _textAnswerControllers.clear();
+  }
+
+  List<String> _strings(dynamic value) => value is List
+      ? value.map((item) => item.toString()).toList()
+      : <String>[];
+
+  void _seed(Map<String, dynamic> data) {
+    if (_seeded) return;
+    _disposeControllers();
+    final sourceQuestions = data['questions'];
+    _questions = sourceQuestions is List
+        ? sourceQuestions.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item)).toList()
+        : <Map<String, dynamic>>[];
+    final sourceAnswers = data['answers'];
+    _answers = sourceAnswers is Map
+        ? Map<String, dynamic>.from(sourceAnswers)
+        : <String, dynamic>{};
+    for (final question in _questions) {
+      final key = question['question_key'].toString();
+      _promptControllers[key] = TextEditingController(
+        text: question['prompt']?.toString() ?? '',
       );
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
-        children: [
-          const _PageHeading(title: 'Member onboarding', subtitle: 'Collect player context without turning answers into roles or permissions.'),
-          const SizedBox(height: 12),
-          _IdentityStateCard(identity: snapshot.data!),
+      _optionControllers[key] = TextEditingController(
+        text: _strings(question['options']).join('\n'),
+      );
+      if (question['question_type'] == 'text') {
+        _textAnswerControllers[key] = TextEditingController(
+          text: _answers[key]?.toString() ?? '',
+        );
+      }
+    }
+    _seeded = true;
+  }
+
+  String _title(String key) => switch (key) {
+    'game_mode' => 'Game mode',
+    'player_interests' => 'Player interests',
+    'region' => 'Region',
+    _ => 'Preferred activities',
+  };
+
+  List<Map<String, dynamic>> _configurationPayload() =>
+      _questions.map((question) {
+        final key = question['question_key'].toString();
+        final type = question['question_type'].toString();
+        final options = type == 'text'
+            ? <String>[]
+            : (_optionControllers[key]?.text ?? '')
+                .split('\n')
+                .map((value) => value.trim())
+                .where((value) => value.isNotEmpty)
+                .toList();
+        return <String, dynamic>{
+          'question_key': key,
+          'prompt': _promptControllers[key]?.text.trim() ?? '',
+          'question_type': type,
+          'options': options,
+          'is_enabled': question['is_enabled'] == true,
+          'is_required': question['is_required'] == true,
+        };
+      }).toList();
+
+  bool get _answersValid {
+    for (final question in _questions) {
+      if (question['is_enabled'] != true || question['is_required'] != true) {
+        continue;
+      }
+      final key = question['question_key'].toString();
+      final value = _answers[key];
+      if (question['question_type'] == 'multi_select') {
+        if (value is! List || value.isEmpty) return false;
+      } else if (value == null || value.toString().trim().isEmpty) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<void> _reloadOnboarding({bool clearRecommendations = false}) async {
+    final next = widget.source.loadOnboardingData(widget.communityId);
+    setState(() {
+      _seeded = false;
+      _onboarding = next;
+      _channels = widget.source.loadChannelPolicies(widget.communityId);
+      if (clearRecommendations) {
+        _showRecommendations = false;
+        _recommendations = null;
+      }
+    });
+    await next;
+  }
+
+  Future<void> _saveConfiguration() async {
+    setState(() => _saving = true);
+    try {
+      await widget.source.saveOnboardingConfiguration(
+        widget.communityId,
+        _configurationPayload(),
+      );
+      if (!mounted) return;
+      showMessage(context, 'Onboarding questions saved for this community.');
+      await _reloadOnboarding(clearRecommendations: true);
+    } catch (error) {
+      if (mounted) {
+        showMessage(context, 'Onboarding settings were not saved: ' + error.toString());
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _submitAnswers() async {
+    if (!_answersValid) {
+      showMessage(context, 'Complete every required onboarding question first.');
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await widget.source.submitOnboardingAnswers(
+        widget.communityId,
+        _answers,
+      );
+      if (!mounted) return;
+      setState(() {
+        _recommendations =
+            widget.source.loadChannelRecommendations(widget.communityId);
+        _showRecommendations = true;
+      });
+      showMessage(context, 'Your onboarding preferences were saved.');
+      await _reloadOnboarding();
+    } catch (error) {
+      if (mounted) {
+        showMessage(context, 'Your onboarding answers were not saved: ' + error.toString());
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  void _toggleMultiAnswer(String key, String option, bool selected) {
+    final choices = _strings(_answers[key]);
+    if (selected && !choices.contains(option)) {
+      choices.add(option);
+    } else if (!selected) {
+      choices.remove(option);
+    }
+    setState(() => _answers[key] = choices);
+  }
+
+  Widget _builder() {
+    final enabled = _questions.where((item) => item['is_enabled'] == true);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _PageHeading(
+          title: 'Onboarding questions',
+          subtitle: 'Configure the four community questions. Answers may guide channels, never roles or permissions.',
+        ),
+        const SizedBox(height: 8),
+        ..._questions.map((question) {
+          final key = question['question_key'].toString();
+          final isEnabled = question['is_enabled'] == true;
+          final type = question['question_type'].toString();
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: Padding(
+              padding: const EdgeInsets.all(11),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Expanded(
+                      child: Text(
+                        _title(key),
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    _StatusTag(label: type.toUpperCase()),
+                  ]),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _promptControllers[key],
+                    enabled: !_saving,
+                    maxLength: 100,
+                    decoration: const InputDecoration(labelText: 'Question shown to members'),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Question enabled'),
+                    value: isEnabled,
+                    onChanged: _saving ? null : (value) => setState(() {
+                      question['is_enabled'] = value;
+                      if (!value) question['is_required'] = false;
+                    }),
+                  ),
+                  if (isEnabled)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilterChip(
+                        label: const Text('Required'),
+                        selected: question['is_required'] == true,
+                        onSelected: _saving ? null : (value) => setState(
+                          () => question['is_required'] = value,
+                        ),
+                      ),
+                    ),
+                  if (type != 'text' && isEnabled) ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _optionControllers[key],
+                      enabled: !_saving,
+                      minLines: 2,
+                      maxLines: 5,
+                      maxLength: 1800,
+                      decoration: const InputDecoration(
+                        labelText: 'Allowed options',
+                        helperText: 'One option per line. Up to 30 unique options, maximum 60 characters each.',
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }),
+        const _SafetyBoundaryCard(
+          title: 'Answers never grant authority',
+          body: 'Game mode, player interests, region and preferred activities are profile preferences only. Community roles and event staff access remain separate explicit assignments.',
+        ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: _saving || enabled.isEmpty ? null : _saveConfiguration,
+          icon: _saving
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.save_outlined),
+          label: Text(_saving ? 'Saving…' : 'Save onboarding configuration'),
+        ),
+      ],
+    );
+  }
+
+  Widget _memberQuestion(Map<String, dynamic> question) {
+    final key = question['question_key'].toString();
+    final prompt = question['prompt']?.toString() ?? _title(key);
+    final type = question['question_type'].toString();
+    final options = _strings(question['options']);
+    final required = question['is_required'] == true;
+    final label = required ? prompt + ' *' : prompt;
+
+    if (type == 'single_select') {
+      final selected = _answers[key]?.toString();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: DropdownButtonFormField<String>(
+          isExpanded: true,
+          value: options.contains(selected) ? selected : null,
+          decoration: InputDecoration(labelText: label),
+          items: options.map((value) => DropdownMenuItem(
+            value: value,
+            child: Text(value),
+          )).toList(),
+          onChanged: _saving ? null : (value) => setState(() {
+            if (value == null) {
+              _answers.remove(key);
+            } else {
+              _answers[key] = value;
+            }
+          }),
+        ),
+      );
+    }
+
+    if (type == 'multi_select') {
+      final selected = _strings(_answers[key]).toSet();
+      return Card(
+        margin: const EdgeInsets.only(bottom: 10),
+        child: Padding(
+          padding: const EdgeInsets.all(11),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 7,
+                runSpacing: 6,
+                children: options.map((option) => FilterChip(
+                  label: Text(option),
+                  selected: selected.contains(option),
+                  onSelected: _saving ? null : (value) => _toggleMultiAnswer(key, option, value),
+                )).toList(),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: _textAnswerControllers[key],
+        enabled: !_saving,
+        maxLength: 80,
+        onChanged: (value) => setState(() => _answers[key] = value),
+        decoration: InputDecoration(labelText: label),
+      ),
+    );
+  }
+
+  Widget _questionnaire() {
+    final enabled = _questions.where((item) => item['is_enabled'] == true).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _PageHeading(
+          title: 'Your player preferences',
+          subtitle: 'Your answers help discover relevant channels. They do not verify your UID or change your community role.',
+        ),
+        const SizedBox(height: 10),
+        if (enabled.isEmpty)
+          const _EmptyState(
+            icon: Icons.fact_check_outlined,
+            title: 'Onboarding is not configured yet',
+            body: 'The community has not enabled any onboarding questions.',
+          )
+        else
+          ...enabled.map(_memberQuestion),
+        const SizedBox(height: 12),
+        const _SafetyBoundaryCard(
+          title: 'Identity and membership are separate',
+          body: 'KOMNIVO sign-in, Free Fire UID ownership verification and community membership acceptance are three independent states.',
+        ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: _saving || !_answersValid ? null : _submitAnswers,
+          icon: _saving
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.save_outlined),
+          label: Text(_saving ? 'Saving…' : 'Save my preferences'),
+        ),
+        if (_showRecommendations && _recommendations != null) ...[
           const SizedBox(height: 14),
-          if (widget.canConfigure) _builder() else _questionnaire(),
+          _OnboardingChannelRecommendations(
+            recommendations: _recommendations!,
+            onOpenChannel: widget.onOpenChannel,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _channelTagging() => FutureBuilder<List<Map<String, dynamic>>>(
+    future: _channels,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Padding(
+          padding: EdgeInsets.all(16),
+          child: Center(child: CircularProgressIndicator()),
+        );
+      }
+      if (snapshot.hasError) {
+        return _LoadFailure(
+          title: 'Community channels could not be loaded',
+          details: snapshot.error.toString(),
+          onRetry: () => setState(() => _channels = widget.source.loadChannelPolicies(widget.communityId)),
+        );
+      }
+      final channels = snapshot.data ?? const <Map<String, dynamic>>[];
+      final topics = <String>{
+        for (final question in _questions)
+          if ((question['question_key'] == 'player_interests' ||
+                  question['question_key'] == 'preferred_activities') &&
+              question['is_enabled'] == true)
+            ..._strings(question['options']),
+      }.toList()..sort();
+      final modes = _questions
+          .where((question) =>
+              question['question_key'] == 'game_mode' &&
+              question['is_enabled'] == true)
+          .expand((question) => _strings(question['options']))
+          .toList();
+      final communityChannels = channels.where((channel) => channel['event_id'] == null).toList();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionHeader(
+            title: 'Channel recommendations',
+            subtitle: 'Tag real community channels so members with matching interests can discover them.',
+          ),
+          if (topics.isEmpty && modes.isEmpty)
+            const _EmptyState(
+              icon: Icons.label_off_outlined,
+              title: 'Enable preference options first',
+              body: 'At least one game mode, interest or activity option is needed before channels can be tagged.',
+            )
+          else if (communityChannels.isEmpty)
+            const _EmptyState(
+              icon: Icons.tag,
+              title: 'No community channels',
+              body: 'Create a community channel before assigning onboarding tags.',
+            )
+          else
+            ...communityChannels.map((channel) => _OnboardingChannelTagEditor(
+              key: ValueKey(channel['id']),
+              channel: channel,
+              topicOptions: topics,
+              gameModeOptions: modes,
+              onSave: (selectedTopics, selectedModes) => widget.source.saveChannelOnboardingTags(
+                widget.communityId,
+                channel['id'].toString(),
+                selectedTopics,
+                selectedModes,
+              ),
+              onSaved: () {
+                if (mounted) setState(() => _channels = widget.source.loadChannelPolicies(widget.communityId));
+              },
+            )),
         ],
       );
     },
   );
 
-  Widget _builder() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const _PageHeading(title: 'Onboarding questions', subtitle: 'Choose what new members answer. Answers can guide channel recommendations only.'),
-    const SizedBox(height: 8),
-    ..._enabled.keys.map((question) => Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(11),
-        child: Column(children: [
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero, title: Text(question, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
-            subtitle: Text(_description(question), style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
-            value: _enabled[question]!,
-            onChanged: (value) => setState(() { _enabled[question] = value; if (!value) _required[question] = false; }),
-          ),
-          if (_enabled[question]!)
-            Align(alignment: Alignment.centerLeft, child: FilterChip(
-              label: const Text('Required question'), selected: _required[question]!,
-              onSelected: (value) => setState(() => _required[question] = value),
-            )),
-        ]),
-      ),
-    )),
-    const _SafetyBoundaryCard(
-      title: 'Answers never grant authority',
-      body: 'Game mode, interests, region and preferred activities may recommend channels. Owner, Admin, Moderator, Organiser and event staff access remain explicit assignments.',
-    ),
-    const SizedBox(height: 10),
-    FilledButton.icon(onPressed: () => setState(() => _draftReady = true),
-      icon: const Icon(Icons.tune_rounded), label: const Text('Review onboarding configuration')),
-    if (_draftReady) ...[
-      _OnboardingConfigurationReviewCard(
-        enabled: _enabled,
-        requiredQuestions: _required,
-        onEdit: () => setState(() => _draftReady = false),
-      ),
-      const _WritePendingNote(text: 'Configuration is ready for review. It has not been saved; onboarding schema and server validation are part of the Batch 4 backend.'),
-    ],
-  ]);
-
-  String _description(String question) => switch (question) {
-    'Game mode' => 'Battle Royale, Clash Squad or another supported mode.',
-    'Player interests' => 'Competitive, casual, coaching and creator interests.',
-    'Region' => 'A broad region for discovery and matchmaking.',
-    _ => 'Activities the member wants to join inside this community.',
-  };
-
-  Widget _questionnaire() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const _PageHeading(title: 'Your player preferences', subtitle: 'Answers help sort channels. They do not verify your UID or change your membership role.'),
-    const SizedBox(height: 10),
-    if (_enabled['Game mode'] == true)
-      DropdownButtonFormField<String>(
-        isExpanded: true,
-        value: _gameMode, decoration: const InputDecoration(labelText: 'Game mode'),
-        items: const ['Battle Royale', 'Clash Squad', 'Both', 'Not decided']
-            .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-        onChanged: (v) => setState(() => _gameMode = v),
-      ),
-    if (_enabled['Region'] == true) ...[
-      const SizedBox(height: 10),
-      TextField(controller: _region, onChanged: (_) => setState(() {}), decoration: const InputDecoration(labelText: 'Region', hintText: 'e.g. Central India')),
-    ],
-    if (_enabled['Player interests'] == true) ...[
-      const SizedBox(height: 14),
-      const Text('Player interests', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
-      const SizedBox(height: 6),
-      Wrap(spacing: 7, runSpacing: 6, children: _interestOptions.map((v) => FilterChip(
-        label: Text(v), selected: _interests.contains(v),
-        onSelected: (yes) => setState(() { if (yes) { _interests.add(v); } else { _interests.remove(v); } }),
-      )).toList()),
-    ],
-    if (_enabled['Preferred activities'] == true) ...[
-      const SizedBox(height: 14),
-      const Text('Preferred activities', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
-      const SizedBox(height: 6),
-      Wrap(spacing: 7, runSpacing: 6, children: _activityOptions.map((v) => FilterChip(
-        label: Text(v), selected: _activities.contains(v),
-        onSelected: (yes) => setState(() { if (yes) { _activities.add(v); } else { _activities.remove(v); } }),
-      )).toList()),
-    ],
-    const SizedBox(height: 14),
-    const _SafetyBoundaryCard(
-      title: 'Identity and membership are separate',
-      body: 'KOMNIVO sign-in, Free Fire UID ownership verification and community membership acceptance are three independent states.',
-    ),
-    const SizedBox(height: 10),
-    FilledButton.icon(
-      onPressed: _canPrepareAnswers ? () => setState(() => _draftReady = true) : null,
-      icon: const Icon(Icons.check_circle_outline), label: const Text('Review my answers'),
-    ),
-    if (_draftReady) ...[
-      _MemberOnboardingReviewCard(
-        gameMode: _gameMode,
-        region: _region.text.trim(),
-        interests: _interests.toList(),
-        activities: _activities.toList(),
-        onEdit: () => setState(() => _draftReady = false),
-      ),
-      const _WritePendingNote(text: 'Your answers are ready for review but have not been submitted. The onboarding answer endpoint will be connected with the Batch 4 backend.'),
-      const SizedBox(height: 12),
-      _OnboardingChannelRecommendations(
-        channels: _channels,
-        gameMode: _gameMode,
-        interests: _interests,
-        activities: _activities,
-        onOpenChannel: widget.onOpenChannel,
-      ),
-    ],
-  ]);
-
-  bool get _canPrepareAnswers {
-    if (_enabled['Game mode'] == true && _required['Game mode'] == true && _gameMode == null) return false;
-    if (_enabled['Region'] == true && _required['Region'] == true && _region.text.trim().isEmpty) return false;
-    if (_enabled['Player interests'] == true && _required['Player interests'] == true && _interests.isEmpty) return false;
-    if (_enabled['Preferred activities'] == true && _required['Preferred activities'] == true && _activities.isEmpty) return false;
-    return true;
-  }
-}
-
-class _OnboardingConfigurationReviewCard extends StatelessWidget {
-  const _OnboardingConfigurationReviewCard({
-    required this.enabled,
-    required this.requiredQuestions,
-    required this.onEdit,
-  });
-  final Map<String, bool> enabled;
-  final Map<String, bool> requiredQuestions;
-  final VoidCallback onEdit;
   @override
-  Widget build(BuildContext context) {
-    final active = enabled.entries.where((entry) => entry.value).toList();
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(11),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Row(children: [
-            Icon(Icons.fact_check_outlined, color: KomnivoTheme.cyan, size: 17),
-            SizedBox(width: 7),
-            Expanded(child: Text('Onboarding configuration review', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900))),
-            _StatusTag(label: 'UNSAVED', tone: _TagTone.warning),
-          ]),
-          const SizedBox(height: 8),
-          ...active.map((entry) => _DetailRow(
-            label: entry.key,
-            value: requiredQuestions[entry.key] == true ? 'Enabled · Required' : 'Enabled · Optional',
-          )),
-          _DetailRow(label: 'Disabled questions', value: enabled.entries.where((entry) => !entry.value).map((entry) => entry.key).join(', ').isEmpty
-              ? 'None'
-              : enabled.entries.where((entry) => !entry.value).map((entry) => entry.key).join(', ')),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: onEdit,
-              icon: const Icon(Icons.edit_outlined, size: 14),
-              label: const Text('Edit questions'),
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => FutureBuilder<CommunityIdentityData>(
+    future: _identity,
+    builder: (context, identitySnapshot) {
+      if (identitySnapshot.connectionState == ConnectionState.waiting) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (identitySnapshot.hasError) {
+        return _LoadFailure(
+          title: 'Account and membership states could not be loaded',
+          details: identitySnapshot.error.toString(),
+          onRetry: () => setState(_load),
+        );
+      }
+      return FutureBuilder<Map<String, dynamic>>(
+        future: _onboarding,
+        builder: (context, onboardingSnapshot) {
+          if (onboardingSnapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (onboardingSnapshot.hasError) {
+            return _LoadFailure(
+              title: 'Community onboarding could not be loaded',
+              details: onboardingSnapshot.error.toString(),
+              onRetry: () => setState(() {
+                _seeded = false;
+                _onboarding = widget.source.loadOnboardingData(widget.communityId);
+              }),
+            );
+          }
+          final data = onboardingSnapshot.data!;
+          _seed(data);
+          final canConfigure = widget.canConfigure && data['can_configure'] == true;
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+            children: [
+              const _PageHeading(
+                title: 'Member onboarding',
+                subtitle: 'Configure player questions, save preferences and recommend channels without changing roles.',
+              ),
+              const SizedBox(height: 12),
+              _IdentityStateCard(identity: identitySnapshot.data!),
+              const SizedBox(height: 14),
+              if (canConfigure) ...[
+                _builder(),
+                const SizedBox(height: 18),
+                _questionnaire(),
+                const SizedBox(height: 18),
+                _channelTagging(),
+              ] else
+                _questionnaire(),
+            ],
+          );
+        },
+      );
+    },
+  );
 }
 
-class _MemberOnboardingReviewCard extends StatelessWidget {
-  const _MemberOnboardingReviewCard({
-    required this.gameMode,
-    required this.region,
-    required this.interests,
-    required this.activities,
-    required this.onEdit,
+class _OnboardingChannelTagEditor extends StatefulWidget {
+  const _OnboardingChannelTagEditor({
+    super.key,
+    required this.channel,
+    required this.topicOptions,
+    required this.gameModeOptions,
+    required this.onSave,
+    required this.onSaved,
   });
-  final String? gameMode;
-  final String region;
-  final List<String> interests;
-  final List<String> activities;
-  final VoidCallback onEdit;
+
+  final Map<String, dynamic> channel;
+  final List<String> topicOptions;
+  final List<String> gameModeOptions;
+  final Future<void> Function(List<String>, List<String>) onSave;
+  final VoidCallback onSaved;
+
+  @override
+  State<_OnboardingChannelTagEditor> createState() => _OnboardingChannelTagEditorState();
+}
+
+class _OnboardingChannelTagEditorState extends State<_OnboardingChannelTagEditor> {
+  late Set<String> _topics;
+  late Set<String> _modes;
+  bool _saving = false;
+
+  List<String> _values(dynamic value) => value is List
+      ? value.map((item) => item.toString()).toList()
+      : <String>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _topics = _values(widget.channel['onboarding_topics']).toSet();
+    _modes = _values(widget.channel['onboarding_game_modes']).toSet();
+  }
+
   @override
   Widget build(BuildContext context) => Card(
+    margin: const EdgeInsets.only(bottom: 8),
     child: Padding(
       padding: const EdgeInsets.all(11),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Icon(Icons.fact_check_outlined, color: KomnivoTheme.cyan, size: 17),
-          SizedBox(width: 7),
-          Expanded(child: Text('Your answer review', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900))),
-          _StatusTag(label: 'NOT SUBMITTED', tone: _TagTone.warning),
-        ]),
-        const SizedBox(height: 8),
-        _DetailRow(label: 'Game mode', value: gameMode ?? 'Not selected'),
-        _DetailRow(label: 'Region', value: region.isEmpty ? 'Not provided' : region),
-        _DetailRow(label: 'Interests', value: interests.isEmpty ? 'None selected' : interests.join(', ')),
-        _DetailRow(label: 'Activities', value: activities.isEmpty ? 'None selected' : activities.join(', ')),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: onEdit,
-            icon: const Icon(Icons.edit_outlined, size: 14),
-            label: const Text('Edit answers'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(widget.channel['kind'] == 'voice' ? Icons.volume_up_outlined : Icons.tag,
+              color: KomnivoTheme.cyan, size: 16),
+            const SizedBox(width: 7),
+            Expanded(child: Text(
+              '#' + widget.channel['name'].toString(),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+            )),
+          ]),
+          if (widget.topicOptions.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            const Text('Interests & activities', style: TextStyle(
+              color: KomnivoTheme.muted, fontSize: 9, fontWeight: FontWeight.w700,
+            )),
+            const SizedBox(height: 5),
+            Wrap(
+              spacing: 6,
+              runSpacing: 5,
+              children: widget.topicOptions.map((option) => FilterChip(
+                label: Text(option),
+                selected: _topics.contains(option),
+                onSelected: _saving ? null : (selected) => setState(() {
+                  if (selected) {
+                    _topics.add(option);
+                  } else {
+                    _topics.remove(option);
+                  }
+                }),
+              )).toList(),
+            ),
+          ],
+          if (widget.gameModeOptions.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            const Text('Game modes', style: TextStyle(
+              color: KomnivoTheme.muted, fontSize: 9, fontWeight: FontWeight.w700,
+            )),
+            const SizedBox(height: 5),
+            Wrap(
+              spacing: 6,
+              runSpacing: 5,
+              children: widget.gameModeOptions.map((option) => FilterChip(
+                label: Text(option),
+                selected: _modes.contains(option),
+                onSelected: _saving ? null : (selected) => setState(() {
+                  if (selected) {
+                    _modes.add(option);
+                  } else {
+                    _modes.remove(option);
+                  }
+                }),
+              )).toList(),
+            ),
+          ],
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.tonalIcon(
+              onPressed: _saving ? null : () async {
+                setState(() => _saving = true);
+                try {
+                  await widget.onSave(_topics.toList(), _modes.toList());
+                  if (!mounted) return;
+                  showMessage(context, 'Channel recommendation tags saved.');
+                  widget.onSaved();
+                } catch (error) {
+                  if (mounted) showMessage(context, 'Channel tags were not saved: ' + error.toString());
+                } finally {
+                  if (mounted) setState(() => _saving = false);
+                }
+              },
+              icon: _saving
+                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.save_outlined, size: 15),
+              label: Text(_saving ? 'Saving…' : 'Save channel tags'),
+            ),
           ),
-        ),
-      ]),
+        ],
+      ),
     ),
   );
 }
 
 class _OnboardingChannelRecommendations extends StatelessWidget {
   const _OnboardingChannelRecommendations({
-    required this.channels,
-    required this.gameMode,
-    required this.interests,
-    required this.activities,
+    required this.recommendations,
     this.onOpenChannel,
   });
 
-  final Future<List<Map<String, dynamic>>> channels;
-  final String? gameMode;
-  final Set<String> interests;
-  final Set<String> activities;
+  final Future<List<Map<String, dynamic>>> recommendations;
   final Future<void> Function(Map<String, dynamic> channel)? onOpenChannel;
-
-  Set<String> _keywords() {
-    final terms = <String>{};
-    for (final interest in interests) {
-      switch (interest) {
-        case 'Rank push':
-          terms.addAll(['rank', 'scrim', 'team', 'match']);
-          break;
-        case 'Competitive scrims':
-          terms.addAll(['scrim', 'tournament', 'match', 'team']);
-          break;
-        case 'Casual matches':
-          terms.addAll(['general', 'casual', 'social']);
-          break;
-        case 'Content creation':
-          terms.addAll(['creator', 'content', 'media']);
-          break;
-        case 'Coaching':
-          terms.addAll(['coach', 'strategy', 'guide', 'support']);
-          break;
-        case 'Team building':
-          terms.addAll(['team', 'lfg', 'looking-for-team', 'recruit']);
-          break;
-      }
-    }
-    for (final activity in activities) {
-      switch (activity) {
-        case 'Find a team':
-          terms.addAll(['team', 'lfg', 'looking-for-team', 'recruit']);
-          break;
-        case 'Join tournaments':
-          terms.addAll(['tournament', 'event', 'compete']);
-          break;
-        case 'Play scrims':
-          terms.addAll(['scrim', 'practice']);
-          break;
-        case 'Learn strategies':
-          terms.addAll(['strategy', 'coach', 'guide']);
-          break;
-        case 'Join voice sessions':
-          terms.add('voice');
-          break;
-        case 'Help organise events':
-          terms.addAll(['event', 'organiser', 'staff']);
-          break;
-      }
-    }
-    if (gameMode == 'Battle Royale') terms.addAll(['battle-royale', 'br']);
-    if (gameMode == 'Clash Squad') terms.addAll(['clash-squad', 'cs']);
-    return terms;
-  }
 
   @override
   Widget build(BuildContext context) => FutureBuilder<List<Map<String, dynamic>>>(
-    future: channels,
+    future: recommendations,
     builder: (context, snapshot) {
       if (snapshot.connectionState == ConnectionState.waiting) {
         return const Card(
@@ -1127,7 +1467,10 @@ class _OnboardingChannelRecommendations extends StatelessWidget {
             child: Row(children: [
               SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
               SizedBox(width: 9),
-              Expanded(child: Text('Checking available community channels…', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))),
+              Expanded(child: Text(
+                'Finding channels that match your saved preferences…',
+                style: TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+              )),
             ]),
           ),
         );
@@ -1137,15 +1480,7 @@ class _OnboardingChannelRecommendations extends StatelessWidget {
           text: 'Channel recommendations could not be loaded: ' + snapshot.error.toString(),
         );
       }
-      final available = snapshot.data ?? const <Map<String, dynamic>>[];
-      final terms = _keywords();
-      final matches = available.where((channel) {
-        if (terms.isEmpty) return false;
-        final name = (channel['name'] ?? '').toString().toLowerCase();
-        final kind = (channel['kind'] ?? '').toString().toLowerCase();
-        return terms.any(name.contains) || (terms.contains('voice') && kind == 'voice');
-      }).toList();
-
+      final channels = snapshot.data ?? const <Map<String, dynamic>>[];
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -1155,21 +1490,25 @@ class _OnboardingChannelRecommendations extends StatelessWidget {
               const Row(children: [
                 Icon(Icons.explore_outlined, color: KomnivoTheme.cyan, size: 17),
                 SizedBox(width: 7),
-                Expanded(child: Text('Suggested community channels', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900))),
+                Expanded(child: Text(
+                  'Suggested community channels',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
+                )),
               ]),
               const SizedBox(height: 4),
               const Text(
-                'Suggestions are matched against channels visible to your account. They never grant membership or access.',
+                'Suggestions use saved preferences and channels you are allowed to view. They never grant membership or access.',
                 style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.4),
               ),
               const SizedBox(height: 8),
-              if (terms.isEmpty)
-                const Text('Select an interest or activity to see relevant channels.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))
-              else if (matches.isEmpty)
-                const Text('No available channel names match these preferences yet.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10))
+              if (channels.isEmpty)
+                const Text(
+                  'No matching channel has been tagged yet. A community manager can add interest and game-mode tags to channels.',
+                  style: TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+                )
               else
-                ...matches.map((channel) => Padding(
-                  padding: const EdgeInsets.only(top: 5),
+                ...channels.map((channel) => Padding(
+                  padding: const EdgeInsets.only(top: 6),
                   child: Row(children: [
                     Icon(
                       channel['kind'] == 'voice' ? Icons.volume_up_outlined : Icons.tag,
@@ -1177,11 +1516,25 @@ class _OnboardingChannelRecommendations extends StatelessWidget {
                       size: 15,
                     ),
                     const SizedBox(width: 7),
-                    Expanded(child: Text(
-                      channel['name'].toString(),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          channel['name'].toString(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+                        ),
+                        Text(
+                          [
+                            ..._values(channel['matched_topics']),
+                            ..._values(channel['matched_game_modes']),
+                          ].join(' · '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: KomnivoTheme.muted, fontSize: 8),
+                        ),
+                      ],
                     )),
                     if (onOpenChannel != null)
                       TextButton(
@@ -1196,6 +1549,10 @@ class _OnboardingChannelRecommendations extends StatelessWidget {
       );
     },
   );
+
+  List<String> _values(dynamic value) => value is List
+      ? value.map((item) => item.toString()).toList()
+      : <String>[];
 }
 
 class _IdentityStateCard extends StatelessWidget {
