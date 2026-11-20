@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../core/komnivo_repository.dart';
 import '../ai/ai_assistant_screen.dart';
 import '../ai/tournament_form_card.dart';
 import '../../core/komnivo_theme.dart';
