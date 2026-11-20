@@ -396,11 +396,29 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Structure managers can tag channels without member question authority',
+      (tester) async {
+    addTearDown(() => _reset(tester));
+    final source = _FakeCommunityOperationsSource(
+      permissions: {'community.manage_structure'},
+    );
+    await _pumpOperations(
+      tester,
+      permissions: {'community.manage_structure'},
+      source: source,
+    );
+    await _openOperationsTab(tester, 'Onboarding');
+
+    expect(find.text('Save onboarding configuration'), findsNothing);
+    expect(find.text('Save channel tags'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Manager can persist channel recommendation tags',
       (tester) async {
     addTearDown(() => _reset(tester));
     final source = _FakeCommunityOperationsSource(
-      permissions: {'community.manage_members'},
+      permissions: {'community.manage_members', 'community.manage_structure'},
     );
     await _pumpOperations(
       tester,
