@@ -78,6 +78,7 @@ class SupabaseCommunityOperationsDataSource
   Future<Set<String>> loadPermissions(String communityId) async {
     const keys = [
       'community.manage_members',
+      'community.manage_structure',
       'community.manage_invites',
       'community.manage_settings',
       'community.audit.read',
@@ -319,6 +320,7 @@ class _CommunityOperationsScreenState extends State<CommunityOperationsScreen> {
         _OperationsSection('Onboarding', Icons.fact_check_outlined, _OnboardingTab(
           communityId: _communityId, source: _source,
           canConfigure: access.contains('community.manage_members'),
+          canTagChannels: access.contains('community.manage_structure'),
           onOpenChannel: widget.onOpenChannel,
         )),
         _OperationsSection('Appeals', Icons.balance_outlined, _AppealsTab(
@@ -784,11 +786,13 @@ class _OnboardingTab extends StatefulWidget {
     required this.communityId,
     required this.source,
     required this.canConfigure,
+    this.canTagChannels = false,
     this.onOpenChannel,
   });
   final String communityId;
   final CommunityOperationsDataSource source;
   final bool canConfigure;
+  final bool canTagChannels;
   final Future<void> Function(Map<String, dynamic> channel)? onOpenChannel;
   @override
   State<_OnboardingTab> createState() => _OnboardingTabState();
@@ -1310,10 +1314,12 @@ class _OnboardingTabState extends State<_OnboardingTab> {
                 _builder(),
                 const SizedBox(height: 18),
                 _questionnaire(),
-                const SizedBox(height: 18),
-                _channelTagging(),
               ] else
                 _questionnaire(),
+              if (widget.canTagChannels) ...[
+                const SizedBox(height: 18),
+                _channelTagging(),
+              ],
             ],
           );
         },
