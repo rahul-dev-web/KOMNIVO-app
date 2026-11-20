@@ -663,9 +663,11 @@ class _MemberDirectoryTabState extends State<_MemberDirectoryTab> {
     final accounts = (member['_game_accounts'] as List? ?? const []).whereType<Map>();
     final verified = accounts.any((a) => a['ownership_status'] == 'verified');
     final mute = DateTime.tryParse(member['muted_until']?.toString() ?? '');
-    final restricted = mute != null && mute.isAfter(DateTime.now());
+    final restricted = member['_is_restricted'] == true ||
+        (mute != null && mute.isAfter(DateTime.now()));
     final joined = DateTime.tryParse(member['joined_at']?.toString() ?? '');
-    final recent = joined != null && joined.isAfter(DateTime.now().subtract(const Duration(days: 7)));
+    final recent = member['_is_recent_join'] == true ||
+        (joined != null && joined.isAfter(DateTime.now().subtract(const Duration(days: 7))));
     switch (_filter) {
       case 'Staff': return staff;
       case 'Verified players': return verified;
@@ -693,6 +695,8 @@ class _MemberDirectoryTabState extends State<_MemberDirectoryTab> {
       builder: (context) => _MemberDetailsSheet(
         member: member,
         name: _name(member),
+        communityId: widget.communityId,
+        source: widget.source,
         canManageMembers: widget.canManageMembers,
         availableChannels: channels,
       ),
@@ -771,7 +775,7 @@ class _MemberDirectoryTabState extends State<_MemberDirectoryTab> {
               )),
             const SizedBox(height: 8),
             const _PrivacyNote(
-              text: 'Member visibility follows community access and profile privacy. Free Fire UIDs and private profile fields are never fetched here. Current game-account RLS exposes ownership status to the owner only; the Verified players directory filter will show only statuses permitted by the current account policy until a safe public classification is added in the Batch 4 backend.',
+              text: 'The server returns only verified / not-verified classification; no Free Fire UID or raw game-account data is exposed. Private profile and restriction details remain need-to-know.',
             ),
           ],
         ),
@@ -795,7 +799,8 @@ class _MemberCard extends StatelessWidget {
     final verified = accounts.any((row) => row['ownership_status'] == 'verified');
     final region = profile['is_public'] == true ? profile['region']?.toString() : null;
     final muted = DateTime.tryParse(member['muted_until']?.toString() ?? '');
-    final restricted = muted != null && muted.isAfter(DateTime.now());
+    final restricted = member['_is_restricted'] == true ||
+        (muted != null && muted.isAfter(DateTime.now()));
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
@@ -844,11 +849,15 @@ class _MemberDetailsSheet extends StatelessWidget {
   const _MemberDetailsSheet({
     required this.member,
     required this.name,
+    required this.communityId,
+    required this.source,
     required this.canManageMembers,
     this.availableChannels = const [],
   });
   final Map<String, dynamic> member;
   final String name;
+  final String communityId;
+  final CommunityOperationsDataSource source;
   final bool canManageMembers;
   final List<Map<String, dynamic>> availableChannels;
   @override
@@ -860,7 +869,8 @@ class _MemberDetailsSheet extends StatelessWidget {
     final verified = accounts.any((r) => r['ownership_status'] == 'verified');
     final joined = DateTime.tryParse(member['joined_at']?.toString() ?? '');
     final muted = DateTime.tryParse(member['muted_until']?.toString() ?? '');
-    final restricted = muted != null && muted.isAfter(DateTime.now());
+    final restricted = member['_is_restricted'] == true ||
+        (muted != null && muted.isAfter(DateTime.now()));
     return Padding(
       padding: EdgeInsets.fromLTRB(18, 12, 18, 18 + MediaQuery.viewInsetsOf(context).bottom),
       child: SingleChildScrollView(child: Column(
@@ -900,7 +910,22 @@ class _MemberDetailsSheet extends StatelessWidget {
                     builder: (_) => _ReportDraftDialog(memberName: name),
                   );
                   if (report != null && context.mounted) {
-                    showMessage(context, 'Report draft prepared. Nothing has been submitted.');
+                    try {
+                      final reportId = await source.submitModerationReport(
+                        communityId,
+                        member['user_id']?.toString(),
+                        null,
+                        report['reason']!,
+                        report['details']!,
+                      );
+                      if (context.mounted) {
+                        showMessage(context, 'Report submitted. Reference: ' + reportId.substring(0, 8));
+                      }
+                    } catch (error) {
+                      if (context.mounted) {
+                        showMessage(context, 'Report was not submitted: ' + error.toString());
+                      }
+                    }
                   }
                 },
                 icon: const Icon(Icons.flag_outlined, size: 16),
@@ -921,7 +946,19 @@ class _MemberDetailsSheet extends StatelessWidget {
                       ),
                     );
                     if (action != null && context.mounted) {
-                      showMessage(context, 'Moderation action drafted for ' + name + '. No member state has changed.');
+                      try {
+                        final actionId = await source.applyModerationAction(
+                          communityId,
+                          _moderationPayload(action),
+                        );
+                        if (context.mounted) {
+                          showMessage(context, 'Moderation action applied. Reference: ' + actionId.substring(0, 8));
+                        }
+                      } catch (error) {
+                        if (context.mounted) {
+                          showMessage(context, 'Moderation action was not applied: ' + error.toString());
+                        }
+                      }
                     }
                   },
                   icon: const Icon(Icons.shield_outlined, size: 16),
@@ -965,13 +1002,13 @@ class _ReportDraftDialogState extends State<_ReportDraftDialog> {
       const SizedBox(height: 10),
       TextField(controller: _details, onChanged: (_) => setState(() {}), minLines: 3, maxLines: 5, maxLength: 1000,
         decoration: const InputDecoration(labelText: 'What happened?', hintText: 'Add relevant context without unrelated personal data.')),
-      const _WritePendingNote(text: 'The report submission endpoint will be connected with the Batch 4 backend. This form does not send a report yet.'),
+      const _PrivacyNote(text: 'Reports go to authorised reviewers only. Submitting a report does not automatically punish the reported member.'),
     ])),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
       FilledButton(
         onPressed: _details.text.trim().length < 8 ? null : () => Navigator.pop(context, {'reason': _reason, 'details': _details.text.trim()}),
-        child: const Text('Prepare report'),
+        child: const Text('Submit report'),
       ),
     ],
   );
@@ -3474,6 +3511,36 @@ class _LoadFailure extends StatelessWidget {
       OutlinedButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
     ]),
   ));
+}
+
+Map<String, dynamic> _moderationPayload(Map<String, dynamic> draft) {
+  final actionType = switch (draft['action']?.toString()) {
+    'Warn' => 'warn',
+    'Delete message' => 'delete_message',
+    'Timeout' => 'timeout',
+    'Mute' => 'mute',
+    'Channel restriction' => 'restrict_channel',
+    'Kick' => 'kick',
+    'Ban' => 'ban',
+    'Unban' => 'unban',
+    _ => throw ArgumentError('Unsupported moderation action'),
+  };
+  final duration = switch (draft['duration']?.toString()) {
+    '1 hour' => 60,
+    '6 hours' => 360,
+    '24 hours' => 1440,
+    '3 days' => 4320,
+    '7 days' => 10080,
+    _ => null,
+  };
+  return {
+    'action_type': actionType,
+    'target_user_id': draft['target_user_id'],
+    'reason': draft['reason'],
+    'duration_minutes': duration,
+    'channel_id': draft['channel_id'],
+    'message_id': draft['message_id'],
+  };
 }
 
 String _dateLabel(DateTime value) {
