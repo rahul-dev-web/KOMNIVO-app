@@ -128,6 +128,8 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
   Uint8List? _bannerBytes;
   String? _bannerPath;
   String? _bannerSignedUrl;
+  String? _idempotencyFingerprint;
+  String? _idempotencyKey;
   bool _loading = true;
   bool _saving = false;
   bool _loadingRulebooks = false;
@@ -588,6 +590,14 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
         },
       };
 
+      if (!widget.isEditing) {
+        final fingerprint = jsonEncode(payload);
+        if (_idempotencyFingerprint != fingerprint || _idempotencyKey == null) {
+          _idempotencyFingerprint = fingerprint;
+          _idempotencyKey = 'tournament_${DateTime.now().microsecondsSinceEpoch}_${math.Random.secure().nextInt(1 << 24)}';
+        }
+      }
+
       final response = await _client.functions.invoke(
         'organizer-tournament-workflow',
         body: widget.isEditing
@@ -604,7 +614,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                         widget.initialCommunityId != _communityId)
                     ? null
                     : widget.conversationId,
-                'idempotency_key': 'tournament_${DateTime.now().microsecondsSinceEpoch}_${math.Random.secure().nextInt(1 << 24)}',
+                'idempotency_key': _idempotencyKey,
                 'payload': payload,
               },
       );
