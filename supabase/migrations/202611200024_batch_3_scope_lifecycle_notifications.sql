@@ -261,15 +261,7 @@ begin
         'event',
         p_event_id
       from recipients r
-      where r.user_id is not null
-        and not exists (
-          select 1 from public.notifications n
-          where n.user_id=r.user_id
-            and n.title='Event communication access updated'
-            and n.entity_type='event'
-            and n.entity_id=p_event_id
-            and n.created_at >= now()-interval '1 second'
-        );
+      where r.user_id is not null;
     end if;
   end loop;
   return v_affected;
