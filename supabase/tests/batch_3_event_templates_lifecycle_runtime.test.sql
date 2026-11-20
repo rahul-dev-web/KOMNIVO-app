@@ -1,7 +1,7 @@
 -- Batch 3 approved event-template creation, idempotency and scoped lifecycle integration.
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(16);
+select extensions.plan(15);
 
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_user_meta_data)
 values
