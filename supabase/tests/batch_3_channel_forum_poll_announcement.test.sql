@@ -158,6 +158,12 @@ begin
   if to_regclass('cron.job') is not null and not exists (
     select 1 from cron.job where jobname='komnivo-batch3-announcements' and active
   ) then raise exception 'Batch 3: scheduled announcement cron job is not active'; end if;
+
+  select pg_get_constraintdef(oid) into v_def
+  from pg_constraint
+  where conrelid='public.channels'::regclass and conname='channels_kind_check';
+  if v_def is null or position('forum' in v_def)=0
+  then raise exception 'Batch 3: forum channel type is not accepted by the database constraint'; end if;
 end;
 $test$;
 select extensions.ok(true,'Batch 3 channel, forum, poll and scheduling database contracts hold');
