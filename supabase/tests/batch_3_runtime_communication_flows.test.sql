@@ -134,10 +134,10 @@ select extensions.is(
  'a member can send a root message in a thread-disabled channel'
 );
 select extensions.throws_ok(
- $insert into public.messages(channel_id,sender_id,body,parent_message_id)
+ $$insert into public.messages(channel_id,sender_id,body,parent_message_id)
    values ('64000000-0000-4000-8000-000000000010',
            '61000000-0000-4000-8000-000000000002','This reply must be rejected',
-           '65000000-0000-4000-8000-000000000005')$,
+           '65000000-0000-4000-8000-000000000005')$$,
  'P0001',
  'Message threads are disabled in this channel',
  'the database blocks child messages when threads are disabled'
@@ -145,9 +145,9 @@ select extensions.throws_ok(
 
 -- Announcement channels can be write-restricted to explicitly authorised publishers.
 select extensions.throws_ok(
- $insert into public.messages(channel_id,sender_id,body)
+ $$insert into public.messages(channel_id,sender_id,body)
    values ('64000000-0000-4000-8000-000000000009',
-           '61000000-0000-4000-8000-000000000002','Member announcement attempt')$,
+           '61000000-0000-4000-8000-000000000002','Member announcement attempt')$$,
  'P0001',
  'Only authorised announcement publishers can post',
  'regular members cannot publish in a publisher-only announcement channel'
