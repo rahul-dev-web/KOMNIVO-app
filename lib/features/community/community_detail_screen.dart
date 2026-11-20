@@ -151,6 +151,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
       MaterialPageRoute(
         builder: (_) => CommunityOperationsScreen(
           community: _community,
+          onOpenChannel: _openChannel,
           onOpenChannelStudio: () async {
             if (!await _verifyPermission('community.manage_structure')) {
               if (mounted) showMessage(context, 'You do not have permission to manage channel safety settings.');
