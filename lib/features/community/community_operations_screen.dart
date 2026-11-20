@@ -288,6 +288,9 @@ class _CommunityOperationsScreenState extends State<CommunityOperationsScreen> {
           canConfigure: access.contains('community.manage_members'),
           onOpenChannel: widget.onOpenChannel,
         )),
+        _OperationsSection('Appeals', Icons.balance_outlined, _AppealsTab(
+          canReviewAppeals: access.contains('community.manage_members'),
+        )),
         if (access.contains('community.manage_invites'))
           _OperationsSection('Invites', Icons.link_outlined, _InvitesTab(
             community: widget.community, source: _source,
@@ -1557,6 +1560,173 @@ class _InviteRevokeDraftCard extends StatelessWidget {
           alignment: Alignment.centerRight,
           child: TextButton(onPressed: onDiscard, child: const Text('Discard review')),
         ),
+      ]),
+    ),
+  );
+}
+
+class _AppealsTab extends StatefulWidget {
+  const _AppealsTab({required this.canReviewAppeals});
+  final bool canReviewAppeals;
+  @override
+  State<_AppealsTab> createState() => _AppealsTabState();
+}
+
+class _AppealsTabState extends State<_AppealsTab> {
+  final _reference = TextEditingController();
+  final _details = TextEditingController();
+  final _evidence = TextEditingController();
+  String _reason = 'Incorrect or disproportionate action';
+  Map<String, String>? _draft;
+
+  @override
+  void dispose() {
+    _reference.dispose();
+    _details.dispose();
+    _evidence.dispose();
+    super.dispose();
+  }
+
+  void _prepareAppeal() {
+    if (_reference.text.trim().isEmpty || _details.text.trim().length < 10) {
+      showMessage(context, 'Add the decision reference and at least 10 characters of context.');
+      return;
+    }
+    setState(() => _draft = {
+      'reference': _reference.text.trim(),
+      'reason': _reason,
+      'details': _details.text.trim(),
+      'evidence': _evidence.text.trim(),
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+    children: [
+      const _PageHeading(
+        title: 'Appeals',
+        subtitle: 'Request a review of a moderation decision with context and evidence.',
+      ),
+      const SizedBox(height: 12),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(13),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Prepare an appeal', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _reference,
+              decoration: const InputDecoration(
+                labelText: 'Moderation decision reference',
+                hintText: 'Enter the decision ID shown in your notice',
+              ),
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _reason,
+              decoration: const InputDecoration(labelText: 'Appeal reason'),
+              items: const [
+                'Incorrect or disproportionate action',
+                'New evidence',
+                'Context was not considered',
+                'Identity or account mix-up',
+                'Other',
+              ].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+              onChanged: (v) => setState(() => _reason = v ?? _reason),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _details,
+              onChanged: (_) => setState(() {}),
+              minLines: 4,
+              maxLines: 6,
+              maxLength: 1500,
+              decoration: const InputDecoration(
+                labelText: 'Explain why the decision should be reviewed',
+                hintText: 'Describe the context and what outcome you are requesting.',
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _evidence,
+              decoration: const InputDecoration(
+                labelText: 'Evidence reference (optional)',
+                hintText: 'Evidence ID or approved evidence link',
+              ),
+            ),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: _reference.text.trim().isNotEmpty && _details.text.trim().length >= 10
+                  ? _prepareAppeal
+                  : null,
+              icon: const Icon(Icons.fact_check_outlined),
+              label: const Text('Review appeal'),
+            ),
+          ]),
+        ),
+      ),
+      if (_draft != null) ...[
+        const SizedBox(height: 10),
+        _AppealDraftCard(
+          draft: _draft!,
+          onDiscard: () => setState(() => _draft = null),
+        ),
+      ],
+      const SizedBox(height: 16),
+      const _SectionHeader(
+        title: 'My appeal history',
+        subtitle: 'Only submitted records will appear here. Drafts are not treated as lodged appeals.',
+      ),
+      const _PendingFeatureCard(
+        title: 'No appeal records available',
+        detail: 'The current database has no appeal submission table. Your review draft stays on this screen until the Batch 4 appeal API and persistence model are connected.',
+        icon: Icons.history_outlined,
+      ),
+      if (widget.canReviewAppeals) ...[
+        const SizedBox(height: 16),
+        const _SectionHeader(
+          title: 'Moderator review queue',
+          subtitle: 'Reviewer decisions must include scope, evidence and a reasoned outcome.',
+        ),
+        const _PendingFeatureCard(
+          title: 'Appeal queue not connected',
+          detail: 'No appeal records are fabricated. Assigned reviewer, uphold / modify / revoke decision, response and audit trail will be connected to the Batch 4 appeal model.',
+          icon: Icons.balance_outlined,
+        ),
+      ],
+    ],
+  );
+}
+
+class _AppealDraftCard extends StatelessWidget {
+  const _AppealDraftCard({required this.draft, required this.onDiscard});
+  final Map<String, String> draft;
+  final VoidCallback onDiscard;
+  @override
+  Widget build(BuildContext context) => Card(
+    color: KomnivoTheme.surfaceRaised,
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.balance_outlined, color: KomnivoTheme.cyan),
+          SizedBox(width: 7),
+          Expanded(child: Text('Appeal review draft', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11))),
+          _StatusTag(label: 'NOT SUBMITTED', tone: _TagTone.warning),
+        ]),
+        const SizedBox(height: 8),
+        _DetailRow(label: 'Decision', value: draft['reference'] ?? ''),
+        _DetailRow(label: 'Reason', value: draft['reason'] ?? ''),
+        _DetailRow(label: 'Evidence', value: (draft['evidence'] ?? '').isEmpty ? 'Not attached' : draft['evidence']!),
+        const SizedBox(height: 5),
+        Text(draft['details'] ?? '', style: const TextStyle(fontSize: 10, height: 1.4)),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(onPressed: onDiscard, child: const Text('Discard draft')),
+        ),
+        const _WritePendingNote(text: 'This appeal is prepared locally only. It has not been submitted or added to moderation history.'),
       ]),
     ),
   );
