@@ -12,6 +12,11 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
   bool configurationSaved = false;
   Map<String, dynamic> savedAnswers = {};
   final Map<String, Map<String, List<String>>> savedChannelTags = {};
+  bool inviteRevoked = false;
+  Map<String, dynamic>? savedAppeal;
+  Map<String, dynamic>? savedModerationAction;
+  bool reportStatusSaved = false;
+  Map<String, dynamic>? savedInviteConfiguration;
 
   List<Map<String, dynamic>> onboardingQuestions = [
     {
@@ -184,14 +189,21 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
       {'visibility': 'private', 'join_approval_required': false};
 
   @override
-  Future<void> saveCommunityAccessPolicy(String communityId, String visibility, bool approvalRequired) async {}
+  Future<void> saveCommunityAccessPolicy(String communityId, String visibility, bool approvalRequired) async {
+    savedInviteConfiguration = {
+      'visibility': visibility,
+      'approval_required': approvalRequired,
+    };
+  }
 
   @override
   Future<Map<String, dynamic>> createInvite(String communityId, int? maxUses, int? expiresInHours, bool requiresApproval) async =>
       {'invite': {'id':'invite-1','requires_approval':requiresApproval}, 'code':'0123456789abcdef0123456789abcdef0123456789abcdef'};
 
   @override
-  Future<void> revokeInvite(String inviteId) async {}
+  Future<void> revokeInvite(String inviteId) async {
+    inviteRevoked = true;
+  }
 
   @override
   Future<List<Map<String, dynamic>>> loadJoinRequests(String communityId) async => const [];
@@ -200,25 +212,60 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
   Future<void> reviewJoinRequest(String requestId, String decision, String reason) async {}
 
   @override
-  Future<void> reviewModerationReport(String reportId, String status, String note) async {}
+  Future<void> reviewModerationReport(String reportId, String status, String note) async {
+    reportStatusSaved = true;
+  }
 
   @override
   Future<String> submitModerationReport(String communityId, String? targetUserId, String? messageId, String reason, String details) async => 'report-1';
 
   @override
-  Future<List<Map<String, dynamic>>> loadModerationActions(String communityId) async => const [];
+  Future<List<Map<String, dynamic>>> loadModerationActions(String communityId) async => const [
+    {
+      'id': '11111111-1111-4111-8111-111111111111',
+      'action_type': 'warn',
+      'target_user_id': 'member-1',
+      'reason': 'Repeated harassment after community warning',
+      'duration_minutes': null,
+      'status': 'applied',
+      'created_at': '2026-11-20T08:00:00Z',
+    },
+  ];
 
   @override
-  Future<String> applyModerationAction(String communityId, Map<String, dynamic> action) async => 'action-1';
+  Future<String> applyModerationAction(String communityId, Map<String, dynamic> action) async {
+    savedModerationAction = Map<String, dynamic>.from(action);
+    return 'action-1';
+  }
 
   @override
-  Future<List<Map<String, dynamic>>> loadAppeals(String communityId) async => const [];
+  Future<List<Map<String, dynamic>>> loadAppeals(String communityId) async => savedAppeal == null
+      ? const []
+      : [Map<String, dynamic>.from(savedAppeal!)];
 
   @override
-  Future<String> submitAppeal(String actionId, String reason, String details, String evidenceReference) async => 'appeal-1';
+  Future<String> submitAppeal(String actionId, String reason, String details, String evidenceReference) async {
+    savedAppeal = {
+      'id': 'appeal-2026-001',
+      'moderation_action_id': actionId,
+      'appellant_id': 'member-1',
+      'reason': reason,
+      'details': details,
+      'evidence_reference': evidenceReference,
+      'status': 'pending',
+      'reviewer_response': '',
+      'created_at': '2026-11-20T09:00:00Z',
+    };
+    return 'appeal-2026-001';
+  }
 
   @override
-  Future<void> reviewAppeal(String appealId, String decision, String response, int? newDurationMinutes) async {}
+  Future<void> reviewAppeal(String appealId, String decision, String response, int? newDurationMinutes) async {
+    if (savedAppeal != null) {
+      savedAppeal!['status'] = decision == 'revoke' ? 'revoked' : decision == 'modify' ? 'modified' : decision == 'uphold' ? 'upheld' : 'dismissed';
+      savedAppeal!['reviewer_response'] = response;
+    }
+  }
 
   @override
   Future<Map<String, dynamic>> loadSafetySettings(String communityId) async => {
@@ -238,17 +285,18 @@ class _FakeCommunityOperationsSource implements CommunityOperationsDataSource {
   Future<void> saveSafetySettings(String communityId, Map<String, dynamic> settings) async {}
 
   @override
-  Future<List<Map<String, dynamic>>> loadInvites(String communityId) async =>
-      const [
-        {
-          'id': 'invite-12345678',
-          'created_by': 'owner-1',
-          'created_at': '2026-11-20T08:00:00Z',
-          'expires_at': '2026-12-01T08:00:00Z',
-          'max_uses': 25,
-          'uses': 4,
-        },
-      ];
+  Future<List<Map<String, dynamic>>> loadInvites(String communityId) async => [
+    {
+      'id': 'invite-12345678',
+      'created_by': 'owner-1',
+      'created_at': '2026-11-20T08:00:00Z',
+      'expires_at': '2026-12-01T08:00:00Z',
+      'max_uses': 25,
+      'uses': 4,
+      'revoked_at': inviteRevoked ? '2026-11-20T09:00:00Z' : null,
+      'requires_approval': false,
+    },
+  ];
 
   @override
   Future<List<Map<String, dynamic>>> loadReports(String communityId) async =>
@@ -489,7 +537,11 @@ void main() {
       source: source,
     );
     await _openOperationsTab(tester, 'Onboarding');
-    await tester.ensureVisible(find.text('Save channel tags').first);
+    await tester.scrollUntilVisible(
+      find.text('Save channel tags').first,
+      280,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save channel tags').first);
     await tester.pumpAndSettle();
@@ -498,107 +550,95 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Members can prepare appeals and reviewers see a separate queue',
+  testWidgets('Members can submit appeals and reviewers see persisted appeal records',
       (tester) async {
     addTearDown(() => _reset(tester));
-    await _pumpOperations(tester, size: const Size(430, 1400));
+    final source = _FakeCommunityOperationsSource();
+    await _pumpOperations(tester, source: source, size: const Size(430, 1800));
     await _openOperationsTab(tester, 'Appeals');
 
-    await tester.ensureVisible(find.text('Moderation decision reference'));
+    await tester.tap(find.text('Appeal this decision'));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.widgetWithText(TextField, 'Moderation decision reference'),
-      'decision-2026-001',
+      find.widgetWithText(TextField, 'Why should this decision be reviewed?'),
+      'The original moderation decision did not consider the available match evidence.',
     );
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Explain why the decision should be reviewed'),
-      'The decision did not include the supplied match evidence and roster context.',
-    );
-    await tester.ensureVisible(find.text('Review appeal'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Review appeal'));
+    await tester.ensureVisible(find.text('Submit appeal'));
+    await tester.tap(find.text('Submit appeal'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Appeal review draft'), findsOneWidget);
-    expect(find.text('NOT SUBMITTED'), findsOneWidget);
-    expect(find.text('My appeal history'), findsOneWidget);
-
-    _reset(tester);
-  });
-
-  testWidgets('Invite revoke requires confirmation and remains a draft',
-      (tester) async {
-    addTearDown(() => _reset(tester));
-    await _pumpOperations(
-      tester,
-      permissions: {'community.manage_invites'},
-    );
-    await _openOperationsTab(tester, 'Invites');
-    await tester.ensureVisible(find.text('Prepare revoke'));
-    expect(find.text('Prepare revoke'), findsOneWidget);
-
-    await tester.tap(find.text('Prepare revoke'));
-    await tester.pumpAndSettle();
-    expect(find.text('Revoke invite?'), findsOneWidget);
-    await tester.tap(find.text('Review revoke'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Invite revoke review'), findsOneWidget);
-    expect(find.text('NOT REVOKED'), findsOneWidget);
-    expect(find.textContaining('remains usable'), findsOneWidget);
+    expect(source.savedAppeal?['moderation_action_id'], '11111111-1111-4111-8111-111111111111');
+    expect(find.text('PENDING'), findsOneWidget);
+    expect(find.text('Appeal review queue'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Invite draft exposes invite-only and approval choices',
+  testWidgets('Invite revoke is confirmed and persisted by the server operation',
       (tester) async {
     addTearDown(() => _reset(tester));
+    final source = _FakeCommunityOperationsSource(
+      permissions: {'community.manage_invites'},
+    );
     await _pumpOperations(
       tester,
       permissions: {'community.manage_invites'},
+      source: source,
     );
     await _openOperationsTab(tester, 'Invites');
-    await tester.ensureVisible(find.text('Create'));
+    await tester.ensureVisible(find.text('Revoke now'));
+    await tester.tap(find.text('Revoke now'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Revoke this invite?'), findsOneWidget);
+    await tester.tap(find.text('Revoke invite'));
+    await tester.pumpAndSettle();
+
+    expect(source.inviteRevoked, isTrue);
+    expect(find.text('REVOKED'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Invite settings create a one-time code and persist invite policy',
+      (tester) async {
+    addTearDown(() => _reset(tester));
+    final source = _FakeCommunityOperationsSource(
+      permissions: {'community.manage_invites'},
+    );
+    await _pumpOperations(
+      tester,
+      permissions: {'community.manage_invites'},
+      source: source,
+    );
+    await _openOperationsTab(tester, 'Invites');
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
 
+    expect(find.text('Invite settings'), findsOneWidget);
     await tester.tap(find.byType(SwitchListTile).last);
-    await tester.pumpAndSettle();
+    await tester.pump();
     await tester.tap(find.text('Review settings'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
 
-    expect(find.text('Invite configuration draft'), findsOneWidget);
-    expect(find.text('Invite-only'), findsOneWidget);
-    expect(find.text('Off'), findsOneWidget);
+    expect(find.text('Invite created'), findsOneWidget);
+    expect(source.savedInviteConfiguration?['invite_only'], isTrue);
     expect(tester.takeException(), isNull);
   });
 
 
-  testWidgets('Invite creation remains an unsaved configuration draft',
+  testWidgets('Moderation centre applies a scoped action and records it',
       (tester) async {
     addTearDown(() => _reset(tester));
-    await _pumpOperations(
-      tester,
-      permissions: {'community.manage_invites'},
+    final source = _FakeCommunityOperationsSource(
+      permissions: {'community.manage_members'},
     );
-    await _openOperationsTab(tester, 'Invites');
-    await tester.ensureVisible(find.text('Create'));
-    await tester.tap(find.text('Create'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Review settings'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Invite configuration draft'), findsOneWidget);
-    expect(find.text('UNSAVED'), findsOneWidget);
-    expect(find.textContaining('No token or shareable URL exists'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('Moderation actions produce review drafts, not fake success',
-      (tester) async {
-    addTearDown(() => _reset(tester));
     await _pumpOperations(
       tester,
       permissions: {'community.manage_members'},
+      source: source,
     );
     await _openOperationsTab(tester, 'Moderation');
     await tester.tap(find.text('New action'));
@@ -616,12 +656,12 @@ void main() {
       'Repeated harassment after community warning',
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Prepare action'));
+    await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Action ready for backend review'), findsOneWidget);
-    expect(find.text('NOT SENT'), findsOneWidget);
-    expect(find.textContaining('No member state has changed'), findsNothing);
+    expect(source.savedModerationAction?['action_type'], 'warn');
+    expect(find.textContaining('Moderation action applied'), findsOneWidget);
+    expect(find.text('NOT SENT'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
