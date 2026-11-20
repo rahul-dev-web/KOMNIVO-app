@@ -975,14 +975,15 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                                 style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35),
                               ),
                               TextButton.icon(
-                                onPressed: () => _openSource(
-                                  selectedRulebook?['download_url']?.toString() ??
-                                      selectedRulebook?['source_url']?.toString(),
-                                ),
+                                onPressed: selectedRulebook?['download_available'] == false
+                                    ? null
+                                    : () => _openSource(
+                                        selectedRulebook?['download_url']?.toString(),
+                                      ),
                                 icon: const Icon(Icons.download_outlined, size: 15),
-                                label: Text(selectedRulebook?['storage_path'] != null
-                                    ? 'Open stored KOMNIVO PDF copy'
-                                    : 'Open source document'),
+                                label: Text(selectedRulebook?['download_available'] == true
+                                    ? 'Open cleaned KOMNIVO PDF copy'
+                                    : 'Clean PDF is not available yet'),
                               ),
                               Text(
                                 "Scoring loaded from this rulebook version: ${const JsonEncoder.withIndent('  ').convert(_asMap(selectedRulebook?['scoring_config']))}",
