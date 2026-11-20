@@ -247,13 +247,10 @@ void main() {
     await pumpStudio(tester);
     await openStudioTab(tester, 'Text');
 
-    final mentionField = find.byWidgetPredicate(
-      (widget) => widget is DropdownButtonFormField<String> &&
-          widget.decoration.labelText == 'Allowed mentions',
-    );
-    expect(mentionField, findsOneWidget);
-    await tester.ensureVisible(mentionField);
-    await tester.tap(mentionField);
+    final mentionLabel = find.text('Allowed mentions');
+    expect(mentionLabel, findsOneWidget);
+    await tester.ensureVisible(mentionLabel);
+    await tester.tap(mentionLabel);
     await tester.pumpAndSettle();
 
     expect(find.text('No broad mentions'), findsOneWidget);
