@@ -624,7 +624,7 @@ void main() {
     }
 
     expect(find.text('Invite created'), findsOneWidget);
-    expect(source.savedInviteConfiguration?['invite_only'], isTrue);
+    expect(source.savedInviteConfiguration?['visibility'], 'private');
     expect(tester.takeException(), isNull);
   });
 
