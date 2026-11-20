@@ -17,6 +17,7 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  static const int _recentHistoryLimit = 50;
   final _controller = TextEditingController();
   final _searchController = TextEditingController();
   bool _sending = false;
@@ -270,7 +271,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Future<void> _createPollPreview() async {
+  Future<void> _createChannelPoll() async {
     final question = TextEditingController();
     final optionOne = TextEditingController();
     final optionTwo = TextEditingController();
@@ -316,7 +317,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _scheduleAnnouncementPreview() async {
+  Future<void> _scheduleChannelAnnouncement() async {
     final title = TextEditingController();
     final body = TextEditingController();
     String when = 'Tomorrow · 5:30 PM';
@@ -330,7 +331,7 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             value: when,
-            decoration: const InputDecoration(labelText: 'Publish time · preview'),
+            decoration: const InputDecoration(labelText: 'Publish time'),
             items: const ['Today · 6:00 PM', 'Tomorrow · 9:00 AM', 'Tomorrow · 5:30 PM'].map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
             onChanged: (value) => setDialogState(() => when = value ?? when),
           ),
@@ -386,8 +387,8 @@ class _ChatScreenState extends State<ChatScreen> {
           const Text('Channel tools', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
           const SizedBox(height: 12),
           if (_allowPins) ListTile(leading: const Icon(Icons.push_pin_outlined), title: const Text('Pinned messages'), subtitle: Text(_pinnedMessageIds.length.toString() + ' pinned'), onTap: () { Navigator.pop(sheetContext); _showPinnedMessages(); }),
-          if (!_composerReadOnly) ListTile(leading: const Icon(Icons.poll_outlined), title: const Text('Create poll'), subtitle: const Text('Collect community feedback'), onTap: () { Navigator.pop(sheetContext); _createPollPreview(); }),
-          if (_canManageMessages) ListTile(leading: const Icon(Icons.schedule_outlined), title: const Text('Schedule announcement'), subtitle: const Text('Choose a publish window'), onTap: () { Navigator.pop(sheetContext); _scheduleAnnouncementPreview(); }),
+          if (!_composerReadOnly) ListTile(leading: const Icon(Icons.poll_outlined), title: const Text('Create poll'), subtitle: const Text('Collect community feedback'), onTap: () { Navigator.pop(sheetContext); _createChannelPoll(); }),
+          if (_canManageMessages) ListTile(leading: const Icon(Icons.schedule_outlined), title: const Text('Schedule announcement'), subtitle: const Text('Choose a publish window'), onTap: () { Navigator.pop(sheetContext); _scheduleChannelAnnouncement(); }),
         ]),
       )),
     );
@@ -628,7 +629,7 @@ class _ChatScreenState extends State<ChatScreen> {
               if (!_allowAttachments) const Text('Attachments off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
               if (!_allowThreads) const Text('Threads off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
               if (!_allowPins) const Text('Pins off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
-              if (!_keepHistory) const Text('History limited to recent messages', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+              if (!_keepHistory && !_canManageMessages) const Text('Only the 50 most recent messages are shown', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
             ]),
           ),
         if (_searching)
@@ -666,10 +667,16 @@ class _ChatScreenState extends State<ChatScreen> {
               }
               final query = _searchController.text.trim().toLowerCase();
               final allMessages = snapshot.data ?? [];
-              _latestMessages = List<Map<String, dynamic>>.from(allMessages);
+              final visibleHistory = !_keepHistory && !_canManageMessages &&
+                      allMessages.length > _recentHistoryLimit
+                  ? allMessages.sublist(allMessages.length - _recentHistoryLimit)
+                  : allMessages;
+              // History is retained in the database for audit/evidence purposes.
+              // This setting changes member presentation only; moderators retain full history.
+              _latestMessages = List<Map<String, dynamic>>.from(visibleHistory);
               final messages = query.isEmpty
-                  ? allMessages
-                  : allMessages.where((message) => (message['body'] ?? '').toString().toLowerCase().contains(query)).toList();
+                  ? visibleHistory
+                  : visibleHistory.where((message) => (message['body'] ?? '').toString().toLowerCase().contains(query)).toList();
 
               if (snapshot.connectionState == ConnectionState.waiting && messages.isEmpty) {
                 return const Center(child: CircularProgressIndicator());
