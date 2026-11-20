@@ -528,6 +528,8 @@ class _CommunityOperationsScreenState extends State<CommunityOperationsScreen> {
           onOpenChannel: widget.onOpenChannel,
         )),
         _OperationsSection('Appeals', Icons.balance_outlined, _AppealsTab(
+          communityId: _communityId,
+          source: _source,
           canReviewAppeals: access.contains('community.manage_members'),
         )),
         if (access.contains('community.manage_invites'))
@@ -2863,12 +2865,21 @@ class _ModerationTab extends StatefulWidget {
 }
 
 class _ModerationTabState extends State<_ModerationTab> {
-  late Future<List<Map<String, dynamic>>> _future;
+  late Future<List<Map<String, dynamic>>> _reports;
+  late Future<List<Map<String, dynamic>>> _actions;
   String _view = 'Open';
-  Map<String, dynamic>? _draft;
+  bool _saving = false;
+
   @override
-  void initState() { super.initState(); _future = widget.source.loadReports(widget.communityId); }
-  void _refresh() => setState(() => _future = widget.source.loadReports(widget.communityId));
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    _reports = widget.source.loadReports(widget.communityId);
+    _actions = widget.source.loadModerationActions(widget.communityId);
+  }
 
   Future<void> _prepareAction({
     String? memberName,
@@ -2891,88 +2902,277 @@ class _ModerationTabState extends State<_ModerationTab> {
         availableChannels: channels,
       ),
     );
-    if (result != null && mounted) setState(() => _draft = result);
+    if (result == null || !mounted) return;
+
+    setState(() => _saving = true);
+    try {
+      final actionId = await widget.source.applyModerationAction(
+        widget.communityId,
+        _moderationPayload(result),
+      );
+      if (!mounted) return;
+      showMessage(context, 'Moderation action applied. Reference: ' + actionId.substring(0, 8));
+      setState(_refresh);
+    } catch (error) {
+      if (mounted) showMessage(context, 'Moderation action was not applied: ' + error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _reviewReport(Map<String, dynamic> report) async {
+    String status = 'reviewing';
+    final note = TextEditingController();
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, updateDialog) => AlertDialog(
+          title: const Text('Update report status'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  value: status,
+                  decoration: const InputDecoration(labelText: 'Report status'),
+                  items: const [
+                    DropdownMenuItem(value: 'reviewing', child: Text('In review')),
+                    DropdownMenuItem(value: 'resolved', child: Text('Resolved')),
+                    DropdownMenuItem(value: 'dismissed', child: Text('Dismissed')),
+                  ],
+                  onChanged: (value) => updateDialog(() => status = value ?? status),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: note,
+                  minLines: 2,
+                  maxLines: 4,
+                  maxLength: 1000,
+                  decoration: const InputDecoration(labelText: 'Review note (optional)'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, {
+                'status': status,
+                'note': note.text.trim(),
+              }),
+              child: const Text('Save status'),
+            ),
+          ],
+        ),
+      ),
+    );
+    note.dispose();
+    if (result == null || !mounted) return;
+
+    setState(() => _saving = true);
+    try {
+      await widget.source.reviewModerationReport(
+        report['id'].toString(),
+        result['status']!,
+        result['note']!,
+      );
+      if (!mounted) return;
+      showMessage(context, 'Report status updated.');
+      setState(_refresh);
+    } catch (error) {
+      if (mounted) showMessage(context, 'Report status was not updated: ' + error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Widget _historyCard(Map<String, dynamic> action) {
+    final created = DateTime.tryParse(action['created_at']?.toString() ?? '');
+    return Card(
+      margin: const EdgeInsets.only(bottom: 7),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+              child: Text(
+                action['action_type'].toString().replaceAll('_', ' ').toUpperCase(),
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
+              ),
+            ),
+            _StatusTag(label: (action['status'] ?? 'applied').toString().toUpperCase()),
+          ]),
+          _DetailRow(label: 'Target', value: action['target_user_id'].toString().substring(0, 8)),
+          _DetailRow(label: 'Reason', value: action['reason'].toString()),
+          if (created != null) _DetailRow(label: 'Applied', value: _dateLabel(created)),
+        ]),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) => FutureBuilder<List<Map<String, dynamic>>>(
-    future: _future,
-    builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) return const Center(child: CircularProgressIndicator());
-      if (snapshot.hasError) return _LoadFailure(title: 'Moderation queue could not be loaded', details: snapshot.error.toString(), onRetry: _refresh);
-      final reports = snapshot.data ?? const <Map<String, dynamic>>[];
-      final open = reports.where((r) => !const {'resolved', 'dismissed'}.contains((r['status'] ?? '').toString().toLowerCase())).toList();
-      final resolved = reports.where((r) => const {'resolved', 'dismissed'}.contains((r['status'] ?? '').toString().toLowerCase())).toList();
+    future: _reports,
+    builder: (context, reportSnapshot) {
+      if (reportSnapshot.connectionState == ConnectionState.waiting) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (reportSnapshot.hasError) {
+        return _LoadFailure(
+          title: 'Moderation queue could not be loaded',
+          details: reportSnapshot.error.toString(),
+          onRetry: () => setState(_refresh),
+        );
+      }
+      final reports = reportSnapshot.data ?? const <Map<String, dynamic>>[];
+      final open = reports.where((item) =>
+          !const {'resolved', 'dismissed'}.contains((item['status'] ?? '').toString().toLowerCase())).toList();
+      final resolved = reports.where((item) =>
+          const {'resolved', 'dismissed'}.contains((item['status'] ?? '').toString().toLowerCase())).toList();
       final shown = _view == 'Open' ? open : resolved;
-      return ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 28), children: [
-        Row(children: [
-          const Expanded(child: _PageHeading(title: 'Moderation centre', subtitle: 'Review reports and prepare scoped, reasoned actions.')),
-          FilledButton.icon(onPressed: _prepareAction, icon: const Icon(Icons.gavel_outlined, size: 16), label: const Text('New action')),
-        ]),
-        const SizedBox(height: 12),
-        Wrap(spacing: 7, children: [
-          ChoiceChip(label: Text('Open (' + open.length.toString() + ')'), selected: _view == 'Open', onSelected: (_) => setState(() => _view = 'Open')),
-          ChoiceChip(label: Text('Resolved (' + resolved.length.toString() + ')'), selected: _view == 'Resolved', onSelected: (_) => setState(() => _view = 'Resolved')),
-
-        ]),
-        const SizedBox(height: 10),
-        if (_draft != null) ...[
-          _ModerationDraftCard(draft: _draft!, onDiscard: () => setState(() => _draft = null)),
-          const SizedBox(height: 10),
-        ],
-        if (shown.isEmpty)
-          _EmptyState(
-            icon: _view == 'Open' ? Icons.inbox_outlined : Icons.task_alt_outlined,
-            title: _view == 'Open' ? 'No open reports' : 'No resolved reports',
-            body: reports.isEmpty ? 'No report records are visible for this community.' : 'There are no reports in this view.',
-          )
-        else
-          ...shown.map((report) => _ModerationReportCard(
-            report: report,
-            onReview: () => _prepareAction(
-              memberName: report['target_user_id'] == null ? null : 'reported member',
-              targetUserId: report['target_user_id']?.toString(),
-              messageId: report['message_id']?.toString(),
-            ),
-          )),
-        const SizedBox(height: 14),
-        const _SafetyBoundaryCard(
-          title: 'Permission and scope checks',
-          body: 'Warn, delete, timeout, mute, channel restriction, kick, ban and unban require server-side authority checks on every operation. This UI does not perform or simulate those writes.',
-        ),
-      ]);
+      return FutureBuilder<List<Map<String, dynamic>>>(
+        future: _actions,
+        builder: (context, actionSnapshot) {
+          if (actionSnapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (actionSnapshot.hasError) {
+            return _LoadFailure(
+              title: 'Moderation history could not be loaded',
+              details: actionSnapshot.error.toString(),
+              onRetry: () => setState(_refresh),
+            );
+          }
+          final actions = actionSnapshot.data ?? const <Map<String, dynamic>>[];
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+            children: [
+              Row(children: [
+                const Expanded(child: _PageHeading(
+                  title: 'Moderation centre',
+                  subtitle: 'Review reports and apply scoped actions with a recorded reason.',
+                )),
+                FilledButton.icon(
+                  onPressed: _saving ? null : _prepareAction,
+                  icon: const Icon(Icons.gavel_outlined, size: 16),
+                  label: const Text('New action'),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              Wrap(spacing: 7, children: [
+                ChoiceChip(
+                  label: Text('Open (' + open.length.toString() + ')'),
+                  selected: _view == 'Open',
+                  onSelected: _saving ? null : (_) => setState(() => _view = 'Open'),
+                ),
+                ChoiceChip(
+                  label: Text('Resolved (' + resolved.length.toString() + ')'),
+                  selected: _view == 'Resolved',
+                  onSelected: _saving ? null : (_) => setState(() => _view = 'Resolved'),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              if (shown.isEmpty)
+                _EmptyState(
+                  icon: _view == 'Open' ? Icons.inbox_outlined : Icons.task_alt_outlined,
+                  title: _view == 'Open' ? 'No open reports' : 'No resolved reports',
+                  body: reports.isEmpty ? 'No report records are visible for this community.' : 'There are no reports in this view.',
+                )
+              else
+                ...shown.map((report) => _ModerationReportCard(
+                  report: report,
+                  busy: _saving,
+                  onReview: () => _prepareAction(
+                    memberName: report['target_user_id'] == null ? null : 'reported member',
+                    targetUserId: report['target_user_id']?.toString(),
+                    messageId: report['message_id']?.toString(),
+                  ),
+                  onStatus: () => _reviewReport(report),
+                )),
+              const SizedBox(height: 16),
+              const _SectionHeader(
+                title: 'Moderation action history',
+                subtitle: 'Actions remain auditable after expiry, reversal or appeal.',
+              ),
+              if (actions.isEmpty)
+                const _EmptyState(
+                  icon: Icons.history_outlined,
+                  title: 'No moderation actions',
+                  body: 'Applied warnings, restrictions and membership actions will be recorded here.',
+                )
+              else
+                ...actions.map(_historyCard),
+            ],
+          );
+        },
+      );
     },
   );
 }
 
 class _ModerationReportCard extends StatelessWidget {
-  const _ModerationReportCard({required this.report, required this.onReview});
+  const _ModerationReportCard({
+    required this.report,
+    required this.busy,
+    required this.onReview,
+    required this.onStatus,
+  });
   final Map<String, dynamic> report;
+  final bool busy;
   final VoidCallback onReview;
+  final VoidCallback onStatus;
+
   @override
   Widget build(BuildContext context) {
     final created = DateTime.tryParse(report['created_at']?.toString() ?? '');
-    return Card(margin: const EdgeInsets.only(bottom: 8), child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(Icons.flag_outlined, color: KomnivoTheme.danger), const SizedBox(width: 8),
-          Expanded(child: Text(report['reason']?.toString() ?? 'Unspecified report',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900))),
-          _StatusTag(label: (report['status'] ?? 'open').toString().toUpperCase()),
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.flag_outlined, color: KomnivoTheme.danger),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                report['reason']?.toString() ?? 'Unspecified report',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
+              ),
+            ),
+            _StatusTag(label: (report['status'] ?? 'open').toString().toUpperCase()),
+          ]),
+          const SizedBox(height: 6),
+          Text(
+            report['details']?.toString() ?? '',
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.4),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            'Report ' + report['id'].toString().substring(0, 8) + ' · ' +
+                (created == null ? 'Time unavailable' : _dateLabel(created)),
+            style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9),
+          ),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 7,
+            children: [
+              OutlinedButton(
+                onPressed: busy ? null : onStatus,
+                child: const Text('Update status'),
+              ),
+              FilledButton.tonal(
+                onPressed: busy ? null : onReview,
+                child: const Text('Take action'),
+              ),
+            ],
+          ),
         ]),
-        const SizedBox(height: 6),
-        Text(report['details']?.toString() ?? '', maxLines: 4, overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.4)),
-        const SizedBox(height: 7),
-        Text('Report ' + report['id'].toString().substring(0, 8) + ' · ' +
-          (created == null ? 'Time unavailable' : _dateLabel(created)),
-          style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
-        Align(alignment: Alignment.centerRight, child: OutlinedButton.icon(
-          onPressed: onReview, icon: const Icon(Icons.fact_check_outlined, size: 15), label: const Text('Prepare review'),
-        )),
-      ]),
-    ));
+      ),
+    );
   }
 }
 
@@ -3081,7 +3281,7 @@ class _ModerationActionDialogState extends State<_ModerationActionDialog> {
       const SizedBox(height: 10),
       TextField(controller: _reason, onChanged: (_) => setState(() {}), minLines: 3, maxLines: 5, maxLength: 600,
         decoration: const InputDecoration(labelText: 'Reason (required)', hintText: 'Record the rule or evidence that supports this action.')),
-      const _WritePendingNote(text: 'This is an action review draft. It does not warn, remove, mute, restrict or ban anyone until the scoped server operation is connected.'),
+      const _PrivacyNote(text: 'Continuing applies the action through a scoped server operation. The server checks authority, target membership and channel/message scope and records the reason.'),
     ]))),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
@@ -3100,7 +3300,7 @@ class _ModerationActionDialogState extends State<_ModerationActionDialog> {
                 'channel_id': _needsChannel ? _channel.trim() : null,
                 'reason': _reason.text.trim(),
               }),
-        child: const Text('Prepare action'),
+        child: const Text('Continue'),
       ),
     ],
   );
