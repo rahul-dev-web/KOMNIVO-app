@@ -62,17 +62,17 @@ insert into public.event_staff_assignments(
 set local role authenticated;
 set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000002';
 select extensions.throws_ok(
- $select public.create_event_communication_channels(
+ $$select public.create_event_communication_channels(
    '74000000-0000-4000-8000-000000000001','results_disputes',null,null,null
- )$,
+ )$$,
  'P0001',
  'You cannot create event communication channels',
  'stage-scoped staff cannot create event-wide communication templates'
 );
 select extensions.throws_ok(
- $select public.save_event_channel_lifecycle_rule(
+ $$select public.save_event_channel_lifecycle_rule(
    '74000000-0000-4000-8000-000000000001','event',null,'completed','archive',true,true,false
- )$,
+ )$$,
  'P0001',
  'You cannot manage this event lifecycle',
  'stage-scoped staff cannot change event-wide channel lifecycle rules'
