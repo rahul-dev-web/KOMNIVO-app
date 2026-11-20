@@ -13,12 +13,15 @@ class CompeteScreen extends StatefulWidget {
 
 class _CompeteScreenState extends State<CompeteScreen> {
   final TextEditingController _searchController = TextEditingController();
-  final List<_PromotionDraft> _drafts = <_PromotionDraft>[];
+  final TextEditingController _promotionTitleController = TextEditingController();
+  final TextEditingController _promotionDescriptionController = TextEditingController();
+  final TextEditingController _promotionLinkController = TextEditingController();
+  static final List<_PromotionDraft> _drafts = <_PromotionDraft>[];
+  static bool _requireReview = true;
+  static bool _allowDirectEnquiries = true;
+  static bool _allowTeamPromotions = true;
   String _activeTab = 'Discover';
   String _searchQuery = '';
-  bool _requireReview = true;
-  bool _allowDirectEnquiries = true;
-  bool _allowTeamPromotions = true;
 
   static const List<_PromotionType> _promotionTypes = <_PromotionType>[
     _PromotionType(
@@ -50,6 +53,9 @@ class _CompeteScreenState extends State<CompeteScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _promotionTitleController.dispose();
+    _promotionDescriptionController.dispose();
+    _promotionLinkController.dispose();
     super.dispose();
   }
 
@@ -73,9 +79,9 @@ class _CompeteScreenState extends State<CompeteScreen> {
   }
 
   Future<void> _createPromotion({String? initialType}) async {
-    final titleController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final linkController = TextEditingController();
+    _promotionTitleController.clear();
+    _promotionDescriptionController.clear();
+    _promotionLinkController.clear();
     var selectedType = initialType ?? _promotionTypes.first.name;
 
     final draft = await showModalBottomSheet<_PromotionDraft>(
@@ -134,7 +140,7 @@ class _CompeteScreenState extends State<CompeteScreen> {
                     const SizedBox(height: 12),
                     TextField(
                       key: const Key('promotion-title-field'),
-                      controller: titleController,
+                      controller: _promotionTitleController,
                       maxLength: 80,
                       textCapitalization: TextCapitalization.sentences,
                       decoration: const InputDecoration(
@@ -144,7 +150,7 @@ class _CompeteScreenState extends State<CompeteScreen> {
                     ),
                     const SizedBox(height: 8),
                     TextField(
-                      controller: descriptionController,
+                      controller: _promotionDescriptionController,
                       maxLength: 400,
                       minLines: 3,
                       maxLines: 4,
@@ -157,7 +163,7 @@ class _CompeteScreenState extends State<CompeteScreen> {
                     ),
                     const SizedBox(height: 8),
                     TextField(
-                      controller: linkController,
+                      controller: _promotionLinkController,
                       keyboardType: TextInputType.url,
                       decoration: const InputDecoration(
                         labelText: 'Contact or info link (optional)',
@@ -192,7 +198,7 @@ class _CompeteScreenState extends State<CompeteScreen> {
                       width: double.infinity,
                       child: FilledButton.icon(
                         onPressed: () {
-                          final title = titleController.text.trim();
+                          final title = _promotionTitleController.text.trim();
                           if (title.length < 3) {
                             showMessage(sheetContext, 'Add a title with at least 3 characters.');
                             return;
@@ -202,8 +208,8 @@ class _CompeteScreenState extends State<CompeteScreen> {
                             _PromotionDraft(
                               title: title,
                               type: selectedType,
-                              description: descriptionController.text.trim(),
-                              link: linkController.text.trim(),
+                              description: _promotionDescriptionController.text.trim(),
+                              link: _promotionLinkController.text.trim(),
                               createdAt: DateTime.now(),
                             ),
                           );
@@ -221,10 +227,6 @@ class _CompeteScreenState extends State<CompeteScreen> {
       ),
     );
 
-    titleController.dispose();
-    descriptionController.dispose();
-    linkController.dispose();
-
     if (!mounted || draft == null) return;
     setState(() {
       _drafts.insert(0, draft);
@@ -232,7 +234,7 @@ class _CompeteScreenState extends State<CompeteScreen> {
       _searchQuery = '';
       _searchController.clear();
     });
-    showMessage(context, 'Draft saved on this device. Publishing is not connected yet.');
+    showMessage(context, 'Draft saved for this app session. Publishing is not connected yet.');
   }
 
   Future<void> _openPromotionSettings() async {
@@ -616,7 +618,7 @@ class _CompeteScreenState extends State<CompeteScreen> {
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Promotion drafts are stored only in this screen for now. Public discovery, publishing, payments and performance analytics will be added later.',
+                      'Promotion drafts are kept locally for this app session only. Public discovery, publishing, payments and performance analytics will be added later.',
                       style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4),
                     ),
                   ),
