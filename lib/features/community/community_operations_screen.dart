@@ -13,11 +13,13 @@ class CommunityOperationsScreen extends StatefulWidget {
     required this.community,
     this.dataSource,
     this.onOpenChannelStudio,
+    this.onOpenChannel,
   });
 
   final Map<String, dynamic> community;
   final CommunityOperationsDataSource? dataSource;
   final Future<void> Function()? onOpenChannelStudio;
+  final Future<void> Function(Map<String, dynamic> channel)? onOpenChannel;
 
   @override
   State<CommunityOperationsScreen> createState() =>
@@ -284,6 +286,7 @@ class _CommunityOperationsScreenState extends State<CommunityOperationsScreen> {
         _OperationsSection('Onboarding', Icons.fact_check_outlined, _OnboardingTab(
           communityId: _communityId, source: _source,
           canConfigure: access.contains('community.manage_members'),
+          onOpenChannel: widget.onOpenChannel,
         )),
         if (access.contains('community.manage_invites'))
           _OperationsSection('Invites', Icons.link_outlined, _InvitesTab(
@@ -687,16 +690,23 @@ class _ReportDraftDialogState extends State<_ReportDraftDialog> {
 }
 
 class _OnboardingTab extends StatefulWidget {
-  const _OnboardingTab({required this.communityId, required this.source, required this.canConfigure});
+  const _OnboardingTab({
+    required this.communityId,
+    required this.source,
+    required this.canConfigure,
+    this.onOpenChannel,
+  });
   final String communityId;
   final CommunityOperationsDataSource source;
   final bool canConfigure;
+  final Future<void> Function(Map<String, dynamic> channel)? onOpenChannel;
   @override
   State<_OnboardingTab> createState() => _OnboardingTabState();
 }
 
 class _OnboardingTabState extends State<_OnboardingTab> {
   late Future<CommunityIdentityData> _identity;
+  late Future<List<Map<String, dynamic>>> _channels;
   final _region = TextEditingController();
   String? _gameMode;
   final Set<String> _interests = {};
@@ -712,7 +722,11 @@ class _OnboardingTabState extends State<_OnboardingTab> {
   static const _activityOptions = ['Find a team', 'Join tournaments', 'Play scrims', 'Learn strategies', 'Join voice sessions', 'Help organise events'];
 
   @override
-  void initState() { super.initState(); _identity = widget.source.loadIdentity(widget.communityId); }
+  void initState() {
+    super.initState();
+    _identity = widget.source.loadIdentity(widget.communityId);
+    _channels = widget.source.loadChannelPolicies(widget.communityId);
+  }
   @override
   void dispose() { _region.dispose(); super.dispose(); }
 
@@ -724,7 +738,10 @@ class _OnboardingTabState extends State<_OnboardingTab> {
       if (snapshot.hasError) return _LoadFailure(
         title: 'Account and membership states could not be loaded',
         details: snapshot.error.toString(),
-        onRetry: () => setState(() => _identity = widget.source.loadIdentity(widget.communityId)),
+        onRetry: () => setState(() {
+          _identity = widget.source.loadIdentity(widget.communityId);
+          _channels = widget.source.loadChannelPolicies(widget.communityId);
+        }),
       );
       return ListView(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
@@ -821,7 +838,17 @@ class _OnboardingTabState extends State<_OnboardingTab> {
       onPressed: _canPrepareAnswers ? () => setState(() => _draftReady = true) : null,
       icon: const Icon(Icons.check_circle_outline), label: const Text('Review my answers'),
     ),
-    if (_draftReady) const _WritePendingNote(text: 'Your answers are ready for review but have not been submitted. The onboarding answer endpoint will be connected with the Batch 4 backend.'),
+    if (_draftReady) ...[
+      const _WritePendingNote(text: 'Your answers are ready for review but have not been submitted. The onboarding answer endpoint will be connected with the Batch 4 backend.'),
+      const SizedBox(height: 12),
+      _OnboardingChannelRecommendations(
+        channels: _channels,
+        gameMode: _gameMode,
+        interests: _interests,
+        activities: _activities,
+        onOpenChannel: widget.onOpenChannel,
+      ),
+    ],
   ]);
 
   bool get _canPrepareAnswers {
