@@ -1672,85 +1672,230 @@ class _SafetyTabState extends State<_SafetyTab> {
   late Future<List<Map<String, dynamic>>> _future;
   final _messageRate = TextEditingController();
   final _mentionRate = TextEditingController();
+  String _messageWindow = '10 seconds';
+  String _mentionWindow = '1 minute';
   String _duration = '30 minutes';
   String _scope = 'All text channels';
+  String _raidTrigger = 'Message flood';
   bool _pauseInvites = true;
   bool _restrictLinks = true;
   bool _lockdown = false;
-  bool _draftReady = false;
+  Map<String, dynamic>? _safetyDraft;
+
   @override
-  void initState() { super.initState(); _future = widget.source.loadChannelPolicies(widget.communityId); }
+  void initState() {
+    super.initState();
+    _future = widget.source.loadChannelPolicies(widget.communityId);
+  }
+
   @override
-  void dispose() { _messageRate.dispose(); _mentionRate.dispose(); super.dispose(); }
-  void _refresh() => setState(() => _future = widget.source.loadChannelPolicies(widget.communityId));
+  void dispose() {
+    _messageRate.dispose();
+    _mentionRate.dispose();
+    super.dispose();
+  }
+
+  void _refresh() => setState(
+    () => _future = widget.source.loadChannelPolicies(widget.communityId),
+  );
+
+  void _invalidateDraft() {
+    if (_safetyDraft != null) setState(() => _safetyDraft = null);
+  }
 
   @override
   Widget build(BuildContext context) => FutureBuilder<List<Map<String, dynamic>>>(
     future: _future,
     builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) return const Center(child: CircularProgressIndicator());
-      if (snapshot.hasError) return _LoadFailure(title: 'Channel safety settings could not be loaded', details: snapshot.error.toString(), onRetry: _refresh);
+      if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (snapshot.hasError) {
+        return _LoadFailure(
+          title: 'Channel safety settings could not be loaded',
+          details: snapshot.error.toString(),
+          onRetry: _refresh,
+        );
+      }
       final channels = snapshot.data ?? const <Map<String, dynamic>>[];
-      return ListView(padding: const EdgeInsets.fromLTRB(14, 12, 14, 28), children: [
-        const _PageHeading(title: 'Community safety', subtitle: 'Deterministic anti-spam controls and temporary raid response.'),
-        const SizedBox(height: 12),
-        Card(child: Padding(
-          padding: const EdgeInsets.all(13),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Message and mention limits', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 9),
-            TextField(controller: _messageRate, keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Message burst limit', hintText: 'Messages per time window', helperText: 'Maximum messages allowed before server rate limiting.')),
-            const SizedBox(height: 10),
-            TextField(controller: _mentionRate, keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Mention burst limit', hintText: 'Mentions per time window')),
-            SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Restrict links for new members'),
-              value: _restrictLinks, onChanged: (v) => setState(() => _restrictLinks = v)),
-            SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Pause new invite creation during lockdown'),
-              value: _pauseInvites, onChanged: (v) => setState(() => _pauseInvites = v)),
-          ]),
-        )),
-        const SizedBox(height: 10),
-        Card(child: Padding(
-          padding: const EdgeInsets.all(13),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              const Expanded(child: Text('Temporary raid lockdown', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900))),
-              _StatusTag(label: _lockdown ? 'DRAFT ON' : 'INACTIVE', tone: _lockdown ? _TagTone.warning : _TagTone.neutral),
-            ]),
-            SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('Prepare lockdown'),
-              subtitle: const Text('Time-bound response to unusual join or message activity.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
-              value: _lockdown, onChanged: (v) => setState(() => _lockdown = v)),
-            if (_lockdown) ...[
-              DropdownButtonFormField<String>(
-        isExpanded: true,
-                value: _scope, decoration: const InputDecoration(labelText: 'Scope'),
-                items: const ['All text channels', 'Selected channels', 'New members only'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-                onChanged: (v) => setState(() => _scope = v ?? _scope),
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
+        children: [
+          const _PageHeading(
+            title: 'Community safety',
+            subtitle: 'Deterministic anti-spam controls and temporary raid response.',
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(13),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Message and mention limits', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 9),
+                  TextField(
+                    controller: _messageRate,
+                    onChanged: (_) => _invalidateDraft(),
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Message burst limit',
+                      hintText: 'Messages per time window',
+                      helperText: 'Maximum messages allowed before server rate limiting.',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: _messageWindow,
+                    decoration: const InputDecoration(labelText: 'Message rate window'),
+                    items: const ['5 seconds', '10 seconds', '30 seconds', '1 minute', '5 minutes']
+                        .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                    onChanged: (v) => setState(() {
+                      _messageWindow = v ?? _messageWindow;
+                      _safetyDraft = null;
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _mentionRate,
+                    onChanged: (_) => _invalidateDraft(),
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Mention burst limit',
+                      hintText: 'Mentions per time window',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: _mentionWindow,
+                    decoration: const InputDecoration(labelText: 'Mention rate window'),
+                    items: const ['10 seconds', '30 seconds', '1 minute', '5 minutes', '15 minutes']
+                        .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                    onChanged: (v) => setState(() {
+                      _mentionWindow = v ?? _mentionWindow;
+                      _safetyDraft = null;
+                    }),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Restrict links for new members'),
+                    value: _restrictLinks,
+                    onChanged: (v) => setState(() {
+                      _restrictLinks = v;
+                      _safetyDraft = null;
+                    }),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Pause new invite creation during lockdown'),
+                    value: _pauseInvites,
+                    onChanged: (v) => setState(() {
+                      _pauseInvites = v;
+                      _safetyDraft = null;
+                    }),
+                  ),
+                ],
               ),
-              const SizedBox(height: 9),
-              DropdownButtonFormField<String>(
-        isExpanded: true,
-                value: _duration, decoration: const InputDecoration(labelText: 'Duration'),
-                items: const ['15 minutes', '30 minutes', '1 hour', '6 hours'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-                onChanged: (v) => setState(() => _duration = v ?? _duration),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(13),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    const Expanded(child: Text('Temporary raid lockdown', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900))),
+                    _StatusTag(
+                      label: _lockdown ? 'DRAFT ON' : 'INACTIVE',
+                      tone: _lockdown ? _TagTone.warning : _TagTone.neutral,
+                    ),
+                  ]),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Prepare lockdown'),
+                    subtitle: const Text(
+                      'Time-bound response to unusual join or message activity.',
+                      style: TextStyle(color: KomnivoTheme.muted, fontSize: 9),
+                    ),
+                    value: _lockdown,
+                    onChanged: (v) => setState(() {
+                      _lockdown = v;
+                      _safetyDraft = null;
+                    }),
+                  ),
+                  if (_lockdown) ...[
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      value: _raidTrigger,
+                      decoration: const InputDecoration(labelText: 'Lockdown trigger'),
+                      items: const ['Join spike', 'Message flood', 'Mention flood', 'Manual response']
+                          .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                      onChanged: (v) => setState(() {
+                        _raidTrigger = v ?? _raidTrigger;
+                        _safetyDraft = null;
+                      }),
+                    ),
+                    const SizedBox(height: 9),
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      value: _scope,
+                      decoration: const InputDecoration(labelText: 'Scope'),
+                      items: const ['All text channels', 'Selected channels', 'New members only']
+                          .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                      onChanged: (v) => setState(() {
+                        _scope = v ?? _scope;
+                        _safetyDraft = null;
+                      }),
+                    ),
+                    const SizedBox(height: 9),
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      value: _duration,
+                      decoration: const InputDecoration(labelText: 'Duration'),
+                      items: const ['15 minutes', '30 minutes', '1 hour', '6 hours']
+                          .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                      onChanged: (v) => setState(() {
+                        _duration = v ?? _duration;
+                        _safetyDraft = null;
+                      }),
+                    ),
+                  ],
+                  const SizedBox(height: 9),
+                  FilledButton.icon(
+                    onPressed: _prepareSafetyDraft,
+                    icon: const Icon(Icons.security_outlined),
+                    label: const Text('Review safety policy'),
+                  ),
+                  if (_safetyDraft != null) ...[
+                    const SizedBox(height: 10),
+                    _SafetyPolicyDraftCard(draft: _safetyDraft!),
+                  ],
+                ],
               ),
-            ],
-            const SizedBox(height: 9),
-            FilledButton.icon(onPressed: _prepareSafetyDraft, icon: const Icon(Icons.security_outlined), label: const Text('Review safety policy')),
-            if (_draftReady) const _WritePendingNote(text: 'Safety policy is ready for review. No rate limit or lockdown has been activated on the server.'),
-          ]),
-        )),
-        const SizedBox(height: 16),
-        const _SectionHeader(title: 'Current channel safeguards', subtitle: 'Read-only status from saved channel settings. Edit them in Channel Studio.'),
-        if (channels.isEmpty) const _EmptyState(
-          icon: Icons.tune_outlined, title: 'No channel settings found',
-          body: 'Saved channel safety rules will appear here.',
-        ) else ...channels.map((channel) => _ChannelPolicyCard(
-          channel: channel,
-          onOpen: widget.onOpenChannelStudio,
-        )),
-      ]);
+            ),
+          ),
+          const SizedBox(height: 16),
+          const _SectionHeader(
+            title: 'Current channel safeguards',
+            subtitle: 'Read-only status from saved channel settings. Edit them in Channel Studio.',
+          ),
+          if (channels.isEmpty)
+            const _EmptyState(
+              icon: Icons.tune_outlined,
+              title: 'No channel settings found',
+              body: 'Saved channel safety rules will appear here.',
+            )
+          else
+            ...channels.map((channel) => _ChannelPolicyCard(
+              channel: channel,
+              onOpen: widget.onOpenChannelStudio,
+            )),
+        ],
+      );
     },
   );
 
@@ -1762,8 +1907,55 @@ class _SafetyTabState extends State<_SafetyTab> {
       showMessage(context, 'Rate limits must be positive whole numbers.');
       return;
     }
-    setState(() => _draftReady = true);
+    setState(() => _safetyDraft = {
+      'message_limit': _messageRate.text.trim().isEmpty ? 'Disabled' : _messageRate.text.trim(),
+      'message_window': _messageWindow,
+      'mention_limit': _mentionRate.text.trim().isEmpty ? 'Disabled' : _mentionRate.text.trim(),
+      'mention_window': _mentionWindow,
+      'restrict_links': _restrictLinks,
+      'pause_invites': _pauseInvites,
+      'lockdown': _lockdown,
+      'raid_trigger': _lockdown ? _raidTrigger : 'Not set',
+      'scope': _lockdown ? _scope : 'Not set',
+      'duration': _lockdown ? _duration : 'Not set',
+    });
   }
+}
+
+class _SafetyPolicyDraftCard extends StatelessWidget {
+  const _SafetyPolicyDraftCard({required this.draft});
+  final Map<String, dynamic> draft;
+  @override
+  Widget build(BuildContext context) => Card(
+    color: KomnivoTheme.surfaceRaised,
+    child: Padding(
+      padding: const EdgeInsets.all(11),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(children: [
+            Icon(Icons.fact_check_outlined, color: KomnivoTheme.cyan, size: 17),
+            SizedBox(width: 7),
+            Expanded(child: Text('Safety policy review', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900))),
+            _StatusTag(label: 'NOT APPLIED', tone: _TagTone.warning),
+          ]),
+          const SizedBox(height: 8),
+          _DetailRow(label: 'Message rate', value: draft['message_limit'].toString() + ' / ' + draft['message_window'].toString()),
+          _DetailRow(label: 'Mention rate', value: draft['mention_limit'].toString() + ' / ' + draft['mention_window'].toString()),
+          _DetailRow(label: 'New-member links', value: draft['restrict_links'] == true ? 'Restricted' : 'Allowed'),
+          _DetailRow(label: 'Pause invites', value: draft['pause_invites'] == true ? 'During lockdown' : 'No'),
+          _DetailRow(label: 'Raid response', value: draft['lockdown'] == true ? draft['raid_trigger'].toString() : 'Off'),
+          if (draft['lockdown'] == true) ...[
+            _DetailRow(label: 'Scope', value: draft['scope'].toString()),
+            _DetailRow(label: 'Duration', value: draft['duration'].toString()),
+          ],
+          const _WritePendingNote(
+            text: 'This policy is ready for backend review. No rate limit, link restriction or lockdown has been activated.',
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _ChannelPolicyCard extends StatelessWidget {
