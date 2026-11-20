@@ -1,7 +1,7 @@
 -- Batch 3 approved event-template creation, idempotency and scoped lifecycle integration.
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(18);
+select extensions.plan(20);
 
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_user_meta_data)
 values
@@ -87,6 +87,48 @@ insert into public.matches(
  1,'Batch Three Group',1,'scheduled',
  '75000000-0000-4000-8000-000000000001',
  '76000000-0000-4000-8000-000000000001',1,'B3-M1'
+);
+
+-- Attach a real team, participant, official result and evidence to the match.
+insert into public.teams(id,name,tag,game_id,owner_user_id,is_public)
+values (
+ '78000000-0000-4000-8000-000000000001',
+ 'Batch Three Fixture Team','B3F',
+ '72000000-0000-4000-8000-000000000001',
+ '71000000-0000-4000-8000-000000000001',false
+);
+insert into public.team_members(team_id,user_id,role)
+values (
+ '78000000-0000-4000-8000-000000000001',
+ '71000000-0000-4000-8000-000000000001','captain'
+);
+insert into public.event_group_teams(group_id,team_id,seeded_by)
+values (
+ '76000000-0000-4000-8000-000000000001',
+ '78000000-0000-4000-8000-000000000001',
+ '71000000-0000-4000-8000-000000000001'
+);
+insert into public.match_participants(match_id,team_id,check_in_status,slot_number)
+values (
+ '77000000-0000-4000-8000-000000000001',
+ '78000000-0000-4000-8000-000000000001','ready',1
+);
+insert into public.match_results(
+ id,match_id,team_id,submitted_by,placement,kills,points,status,result_json
+) values (
+ '79000000-0000-4000-8000-000000000001',
+ '77000000-0000-4000-8000-000000000001',
+ '78000000-0000-4000-8000-000000000001',
+ '71000000-0000-4000-8000-000000000001',
+ 1,4,14,'submitted','{"fixture":true}'
+);
+insert into public.result_evidence(
+ id,result_id,uploaded_by,storage_path,content_type,file_size
+) values (
+ '7a000000-0000-4000-8000-000000000001',
+ '79000000-0000-4000-8000-000000000001',
+ '71000000-0000-4000-8000-000000000001',
+ 'batch3-runtime/evidence/match-1.png','image/png',256
 );
 
 -- Group-room automation creates one shared private channel; templates must reuse it.
@@ -283,6 +325,20 @@ select extensions.is(
   where id='77000000-0000-4000-8000-000000000001'),
  1::bigint,
  'channel lifecycle actions preserve the structured official match record'
+);
+select extensions.is(
+ (select count(*) from public.match_results
+  where id='79000000-0000-4000-8000-000000000001'
+    and match_id='77000000-0000-4000-8000-000000000001'),
+ 1::bigint,
+ 'channel archive/lock transitions preserve the official submitted result'
+);
+select extensions.is(
+ (select count(*) from public.result_evidence
+  where id='7a000000-0000-4000-8000-000000000001'
+    and result_id='79000000-0000-4000-8000-000000000001'),
+ 1::bigint,
+ 'channel archive/lock transitions preserve match evidence records'
 );
 
 reset role;
