@@ -1969,7 +1969,7 @@ class _InvitesTabState extends State<_InvitesTab> {
     setState(() => _saving = true);
     try {
       final visibility = draft['invite_only'] == true ? 'private' : 'public';
-      final globalApproval = draft['join_approval'] == true;
+      final globalApproval = _approvalRequired;
       await widget.source.saveCommunityAccessPolicy(
         _communityId,
         visibility,
@@ -3307,6 +3307,7 @@ class _SafetyTabState extends State<_SafetyTab> {
   bool _restrictLinks = false;
   bool _lockdown = false;
   bool _loadingSettings = true;
+  bool _saving = false;
   Map<String, dynamic>? _safetyDraft;
 
   @override
