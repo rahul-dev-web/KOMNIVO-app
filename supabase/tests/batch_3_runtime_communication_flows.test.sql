@@ -130,9 +130,9 @@ select extensions.is(
  'the first message in a slow-mode channel is accepted'
 );
 select extensions.throws_ok(
- $$$insert into public.messages(channel_id,sender_id,body)
+ $insert into public.messages(channel_id,sender_id,body)
    values ('64000000-0000-4000-8000-000000000002',
-           '61000000-0000-4000-8000-000000000002','Second slow-mode message')$$$,
+           '61000000-0000-4000-8000-000000000002','Second slow-mode message')$,
  'P0001',
  'Slow mode is active. Please wait before sending again',
  'slow mode is enforced by the database for authenticated members'
@@ -140,9 +140,9 @@ select extensions.throws_ok(
 
 -- Read-only is enforced in the database, not only by disabling the composer.
 select extensions.throws_ok(
- $$$insert into public.messages(channel_id,sender_id,body)
+ $insert into public.messages(channel_id,sender_id,body)
    values ('64000000-0000-4000-8000-000000000003',
-           '61000000-0000-4000-8000-000000000002','This must be rejected')$$$,
+           '61000000-0000-4000-8000-000000000002','This must be rejected')$,
  'P0001',
  'This channel is read-only',
  'read-only channels reject member message writes'
