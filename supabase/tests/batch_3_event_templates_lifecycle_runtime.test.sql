@@ -227,6 +227,8 @@ set local role authenticated;
 set local request.jwt.claim.sub = '71000000-0000-4000-8000-000000000001';
 update public.event_rounds set status='completed'
 where id='75000000-0000-4000-8000-000000000001';
+-- Inspect another user's inbox outside notifications_read_self RLS.
+reset role;
 select extensions.is(
  (select count(*) from public.channels c
   join public.event_communication_instances i on c.id=any(i.channel_ids)
@@ -243,7 +245,6 @@ select extensions.is(
  1::bigint,
  'stage-scoped staff receive the lifecycle access notification'
 );
-reset role;
 
 -- Match rooms are separately scoped; completing a match archives only the
 -- match template channels, retaining the shared group room and official match.
