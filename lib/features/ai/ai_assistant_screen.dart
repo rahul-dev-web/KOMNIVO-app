@@ -44,7 +44,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     _items.add(_ChatItem(
       false,
       _organizer
-          ? 'Main KOMNIVO Organizer AI hoon. Tournament roadmap, rules, registrations, scrims aur points table planning mein help kar sakta hoon. Abhi chat read-only hai; main koi event ya setting change nahi kar sakta.'
+          ? 'Main KOMNIVO Organizer AI hoon. Selected community ke authorised tournament, registration, team, schedule aur result data ko samajhne aur organise karne mein help karta hoon. Tournament creation ke liye structured form aur explicit approval use hoga.'
           : 'Namaste! Main KOMNIVO Player AI hoon. App, teams, tournament rules aur registration process samajhne mein help karunga.',
     ));
     _restoreConversation();
@@ -135,10 +135,15 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
             .select('id,action_type,proposal,source_refs,status,expires_at')
             .eq('conversation_id', conversationId)
             .order('created_at'),
+        client.from('tournament_proposals')
+            .select('id,payload,source_refs,status,expires_at,event_id')
+            .eq('conversation_id', conversationId)
+            .order('created_at'),
       ]);
       if (!mounted) return;
       final messages = List<Map<String, dynamic>>.from(results[0] as List);
       final proposals = List<Map<String, dynamic>>.from(results[1] as List);
+      final structuredRows = List<Map<String, dynamic>>.from(results[2] as List);
       final proposalCards = proposals.map((row) {
         final payload = row['proposal'] is Map
             ? Map<String, dynamic>.from(row['proposal'] as Map)
@@ -157,6 +162,24 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           },
         );
       }).toList();
+      final structuredCards = structuredRows.map((row) {
+        final payload = row['payload'] is Map
+            ? Map<String, dynamic>.from(row['payload'] as Map)
+            : <String, dynamic>{};
+        return _ChatItem(
+          false,
+          'Tournament draft proposal',
+          proposal: {
+            ...payload,
+            'id': row['id'],
+            'workflow_type': 'tournament',
+            'status': row['status'],
+            'expires_at': row['expires_at'],
+            'event_id': row['event_id'],
+            'source_refs': row['source_refs'] ?? [],
+          },
+        );
+      }).toList();
 
       setState(() {
         _conversationId = conversationId;
@@ -168,7 +191,8 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
               row['content']?.toString() ?? '',
             );
           }))
-          ..addAll(proposalCards);
+          ..addAll(proposalCards)
+          ..addAll(structuredCards);
       });
       _scrollToBottom();
     } catch (_) {
@@ -345,30 +369,46 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   Future<void> _send() async => _sendMessage(_input.text.trim());
 
-  void _openTournamentForm() {
-    if (_sending || _restoring || _organizer) return;
-    if (_items.any((item) => item.tournamentForm)) return;
+  Future<void> _openTournamentForm() async {
+    if (!_organizer || _sending || _restoring || _loadingManagedCommunities) return;
+    if (_managedCommunities.isEmpty) {
+      _showActionMessage(_communityLoadError ?? 'No community with organiser access was found.');
+      return;
+    }
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => TournamentFormScreen(
+          communities: _managedCommunities,
+          initialCommunityId: _activeCommunityId ?? widget.communityId,
+          conversationId: _conversationId,
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+    final proposal = result['proposal'] is Map
+        ? Map<String, dynamic>.from(result['proposal'] as Map)
+        : <String, dynamic>{};
+    _conversationId = result['conversation_id']?.toString() ?? _conversationId;
+    _activeCommunityId = proposal['community_id']?.toString() ?? _activeCommunityId;
     setState(() => _items.add(_ChatItem(
       false,
-      'Create tournament',
-      tournamentForm: true,
+      'Tournament proposal ready for review. Approve it to create a DRAFT event; it will not be published.',
+      proposal: proposal,
     )));
     _scrollToBottom();
   }
 
-  void _closeTournamentForm() {
-    setState(() => _items.removeWhere((item) => item.tournamentForm));
+  void _showPaidScrimComingSoon() {
+    if (!_organizer || _sending || _restoring) return;
+    _showActionMessage(
+      'Paid Scrim creation is coming soon. The entry point is ready; its fields, fee rules and approval workflow will be added after the organiser specification is finalised.',
+    );
   }
 
-  Future<void> _submitTournamentForm(String message, String communityId) async {
-    final currentCommunityId = _activeCommunityId ?? widget.communityId;
-    if (currentCommunityId != null && currentCommunityId != communityId) {
-      // Existing conversations are scoped to one community. Start a clean
-      // chat when the form selects a different managed community.
-      _startNewConversation();
-    }
-    _closeTournamentForm();
-    await _sendMessage(message, communityId: communityId);
+  void _showActionMessage(String message) {
+    if (!mounted) return;
+    setState(() => _items.add(_ChatItem(false, message)));
+    _scrollToBottom();
   }
 
   Future<void> _sendMessage(String message, {String? communityId}) async {
@@ -428,11 +468,24 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   Future<void> _resolveProposal(String proposalId, String decision) async {
     if (_resolvingProposalId != null) return;
+    final selectedProposal = _items
+        .where((item) => item.proposal?['id']?.toString() == proposalId)
+        .map((item) => item.proposal)
+        .firstOrNull;
+    if (selectedProposal == null) return;
     setState(() => _resolvingProposalId = proposalId);
     try {
+      final isStructuredTournament = selectedProposal['workflow_type'] == 'tournament';
       final response = await Supabase.instance.client.functions.invoke(
-        'komnivo-ai-proposal-action',
-        body: {'proposal_id': proposalId, 'decision': decision},
+        isStructuredTournament ? 'organizer-tournament-workflow' : 'komnivo-ai-proposal-action',
+        body: isStructuredTournament
+            ? {
+                'action': 'resolve_proposal',
+                'community_id': selectedProposal['community_id'],
+                'proposal_id': proposalId,
+                'decision': decision,
+              }
+            : {'proposal_id': proposalId, 'decision': decision},
       );
       final data = response.data is Map
           ? Map<String, dynamic>.from(response.data as Map)
@@ -447,15 +500,20 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         final current = _items[index];
         final updatedProposal = <String, dynamic>{
           ...?current.proposal,
-          'status': decision == 'reject' ? 'rejected' : 'executed',
+          'status': decision == 'reject'
+              ? 'rejected'
+              : isStructuredTournament ? 'approved' : 'executed',
           'result': data,
+          if (data['event_id'] != null) 'event_id': data['event_id'],
         };
         setState(() => _items[index] = current.copyWith(proposal: updatedProposal));
       }
       if (decision == 'approve') {
         setState(() => _items.add(_ChatItem(
           false,
-          'Approved. Draft event “${data['name'] ?? 'event'}” has been created. Status: DRAFT. It is not published yet. Open the organiser workspace to review and publish it when ready.',
+          isStructuredTournament
+              ? 'Approved. Draft tournament “${data['name'] ?? selectedProposal['name'] ?? 'event'}” has been created. Status: DRAFT. It is not published yet. You can edit its configuration from the organiser workspace.'
+              : 'Approved. Draft event “${data['name'] ?? 'event'}” has been created. Status: DRAFT. It is not published yet. Open the organiser workspace to review and publish it when ready.',
         )));
       } else {
         setState(() => _items.add(const _ChatItem(false, 'Proposal rejected. No event was created.')));
@@ -470,20 +528,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       }
     } finally {
       if (mounted) setState(() => _resolvingProposalId = null);
-      _scrollToBottom();
     }
-  }
-
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
-        _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOut,
-        );
-      }
-    });
   }
 
   @override
@@ -508,7 +553,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
             color: KomnivoTheme.surface,
             child: const Text(
-              'Read-only testing mode · AI suggestions do not change tournament data.',
+              'Authorised organiser data stays in chat. Tournament writes use a structured form and explicit approval.',
               style: TextStyle(color: KomnivoTheme.muted, fontSize: 11),
             ),
           ),
@@ -536,20 +581,6 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                     busy: _resolvingProposalId == item.proposal!['id']?.toString(),
                     onApprove: () => _resolveProposal(item.proposal!['id'].toString(), 'approve'),
                     onReject: () => _resolveProposal(item.proposal!['id'].toString(), 'reject'),
-                  ),
-                );
-              }
-              if (item.tournamentForm) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: TournamentFormCard(
-                    communities: _managedCommunities,
-                    loadingCommunities: _loadingManagedCommunities,
-                    communityLoadError: _communityLoadError,
-                    initialCommunityId: _activeCommunityId ?? widget.communityId,
-                    busy: _sending || _restoring,
-                    onSubmit: _submitTournamentForm,
-                    onClose: _closeTournamentForm,
                   ),
                 );
               }
@@ -582,21 +613,35 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 5, 12, 12),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              if (!_organizer)
+              if (_organizer)
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Padding(
-                    padding: const EdgeInsets.only(left: 3, bottom: 5),
-                    child: TextButton.icon(
-                      onPressed: _sending || _restoring ? null : _openTournamentForm,
-                      icon: const Icon(Icons.emoji_events_outlined, size: 17),
-                      label: const Text('Create tournament'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: KomnivoTheme.cyan,
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                    padding: const EdgeInsets.only(left: 3, bottom: 7),
+                    child: Wrap(spacing: 8, runSpacing: 6, children: [
+                      OutlinedButton.icon(
+                        key: const Key('organizer-create-tournament'),
+                        onPressed: _sending || _restoring || _loadingManagedCommunities ? null : _openTournamentForm,
+                        icon: const Icon(Icons.emoji_events_outlined, size: 17),
+                        label: const Text('Create Tournament'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: KomnivoTheme.cyan,
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                        ),
                       ),
-                    ),
+                      OutlinedButton.icon(
+                        key: const Key('organizer-create-paid-scrim'),
+                        onPressed: _sending || _restoring ? null : _showPaidScrimComingSoon,
+                        icon: const Icon(Icons.payments_outlined, size: 17),
+                        label: const Text('Create Paid Scrim'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: KomnivoTheme.accent,
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+                        ),
+                      ),
+                    ]),
                   ),
                 ),
               Row(children: [
@@ -643,21 +688,18 @@ class _ChatItem {
     this.text, {
     this.isError = false,
     this.proposal,
-    this.tournamentForm = false,
   });
 
   final bool fromUser;
   final String text;
   final bool isError;
   final Map<String, dynamic>? proposal;
-  final bool tournamentForm;
 
   _ChatItem copyWith({Map<String, dynamic>? proposal}) => _ChatItem(
     fromUser,
     text,
     isError: isError,
     proposal: proposal ?? this.proposal,
-    tournamentForm: tournamentForm,
   );
 }
 
