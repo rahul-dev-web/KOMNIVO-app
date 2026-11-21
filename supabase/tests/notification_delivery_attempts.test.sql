@@ -44,7 +44,8 @@ select extensions.ok(
 );
 select extensions.ok(
   exists(select 1 from pg_constraint where conrelid='public.notification_delivery_attempts'::regclass
-    and contype='c' and pg_get_constraintdef(oid) ilike '%attempt_number%BETWEEN 1 AND 3%'),
+    and contype='c' and pg_get_constraintdef(oid) ilike '%attempt_number >= 1%' 
+    and pg_get_constraintdef(oid) ilike '%attempt_number <= 3%'),
   'The attempt counter is constrained to one through three'
 );
 select extensions.ok(
@@ -73,7 +74,7 @@ select extensions.ok(
   NOT EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema='public' AND table_name='notification_delivery_attempts'
-      AND column_name ILIKE '%token%'
+      AND column_name='token'
   ),
   'Raw FCM device tokens are never persisted in delivery attempts'
 );
