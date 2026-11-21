@@ -147,6 +147,19 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       final messages = List<Map<String, dynamic>>.from(results[0] as List);
       final proposals = List<Map<String, dynamic>>.from(results[1] as List);
       final structuredRows = List<Map<String, dynamic>>.from(results[2] as List);
+      final eventIds = structuredRows
+          .map((row) => row['event_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      final eventStatuses = <String, String>{};
+      if (eventIds.isNotEmpty) {
+        final eventRows = await client.from('events')
+            .select('id,status')
+            .inFilter('id', eventIds.toList());
+        for (final eventRow in eventRows) {
+          eventStatuses[eventRow['id'].toString()] = eventRow['status'].toString();
+        }
+      }
       final proposalCards = proposals.map((row) {
         final payload = row['proposal'] is Map
             ? Map<String, dynamic>.from(row['proposal'] as Map)
@@ -176,7 +189,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
             ...payload,
             'id': row['id'],
             'workflow_type': 'tournament',
-            'status': row['status'],
+            'status': row['event_id'] != null
+                ? (eventStatuses[row['event_id'].toString()] == 'published'
+                    ? 'published'
+                    : eventStatuses[row['event_id'].toString()] == 'draft'
+                        ? 'draft'
+                        : row['status'])
+                : row['status'],
             'expires_at': row['expires_at'],
             'event_id': row['event_id'],
             'source_refs': row['source_refs'] ?? [],
@@ -408,7 +427,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     }
     setState(() => _items.add(_ChatItem(
       false,
-      'Tournament proposal ready for review. Approve it to create a DRAFT event; it will not be published.',
+      'Tournament draft saved. Review the details below, then choose whether to keep it as a private draft or publish it.',
       proposal: proposal,
     )));
     _scrollToBottom();
@@ -493,17 +512,19 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     }
     if (selectedProposal == null) return;
     final proposalDetails = selectedProposal;
+    final isStructuredTournament = proposalDetails['workflow_type'] == 'tournament';
+    final keepAsDraft = decision == 'keep_draft';
+    final publish = decision == 'publish';
     setState(() => _resolvingProposalId = proposalId);
     try {
-      final isStructuredTournament = proposalDetails['workflow_type'] == 'tournament';
       final response = await Supabase.instance.client.functions.invoke(
         isStructuredTournament ? 'organizer-tournament-workflow' : 'komnivo-ai-proposal-action',
         body: isStructuredTournament
             ? {
-                'action': 'resolve_proposal',
+                'action': publish ? 'publish_proposal' : 'resolve_proposal',
                 'community_id': proposalDetails['community_id'],
                 'proposal_id': proposalId,
-                'decision': decision,
+                if (!publish) 'decision': keepAsDraft ? 'approve' : decision,
               }
             : {'proposal_id': proposalId, 'decision': decision},
       );
@@ -511,7 +532,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           ? Map<String, dynamic>.from(response.data as Map)
           : <String, dynamic>{};
       if (response.status < 200 || response.status >= 300) {
-        throw Exception(data['error']?.toString() ?? 'Proposal action failed.');
+        throw Exception(data['error']?.toString() ?? 'Tournament action failed.');
       }
       if (!mounted) return;
 
@@ -522,27 +543,42 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           ...?current.proposal,
           'status': decision == 'reject'
               ? 'rejected'
-              : isStructuredTournament ? 'approved' : 'executed',
+              : publish
+                  ? 'published'
+                  : isStructuredTournament
+                      ? 'draft'
+                      : 'executed',
           'result': data,
           if (data['event_id'] != null) 'event_id': data['event_id'],
+          if (data['channels'] is List) 'published_channels': data['channels'],
         };
         setState(() => _items[index] = current.copyWith(proposal: updatedProposal));
       }
-      if (decision == 'approve') {
+
+      if (publish) {
+        final channels = data['channels'] is List ? (data['channels'] as List).length : 0;
         setState(() => _items.add(_ChatItem(
           false,
-          isStructuredTournament
-              ? 'Approved. Draft tournament “${data['name'] ?? proposalDetails['name'] ?? 'event'}” has been created. Status: DRAFT. It is not published yet. You can edit its configuration from the organiser workspace.'
-              : 'Approved. Draft event “${data['name'] ?? 'event'}” has been created. Status: DRAFT. It is not published yet. Open the organiser workspace to review and publish it when ready.',
+          'Tournament “${data['name'] ?? proposalDetails['name'] ?? 'event'}” published. Its tournament category and $channels channels are ready. Registration is still closed; open it separately when the schedule and registration setup are ready.',
         )));
-      } else {
+      } else if (keepAsDraft) {
+        setState(() => _items.add(_ChatItem(
+          false,
+          'Tournament “${data['name'] ?? proposalDetails['name'] ?? 'event'}” is saved as a private DRAFT. No public tournament channels or player notifications were created. You can publish it later from this chat.',
+        )));
+      } else if (decision == 'reject') {
         setState(() => _items.add(const _ChatItem(false, 'Proposal rejected. No event was created.')));
+      } else {
+        setState(() => _items.add(_ChatItem(
+          false,
+          'Draft event “${data['name'] ?? 'event'}” has been created. It is not published yet.',
+        )));
       }
     } catch (error) {
       if (mounted) {
         setState(() => _items.add(_ChatItem(
           false,
-          'Proposal could not be resolved. ${error.toString().replaceFirst('Exception: ', '')}',
+          'Tournament action could not be completed. ${error.toString().replaceFirst("Exception: ", "")}',
           isError: true,
         )));
       }
@@ -611,6 +647,8 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                     busy: _resolvingProposalId == item.proposal!['id']?.toString(),
                     onApprove: () => _resolveProposal(item.proposal!['id'].toString(), 'approve'),
                     onReject: () => _resolveProposal(item.proposal!['id'].toString(), 'reject'),
+                    onKeepDraft: () => _resolveProposal(item.proposal!['id'].toString(), 'keep_draft'),
+                    onPublish: () => _resolveProposal(item.proposal!['id'].toString(), 'publish'),
                   ),
                 );
               }
@@ -780,16 +818,21 @@ class _EventProposalCard extends StatelessWidget {
     required this.busy,
     required this.onApprove,
     required this.onReject,
+    required this.onKeepDraft,
+    required this.onPublish,
   });
 
   final Map<String, dynamic> proposal;
   final bool busy;
   final VoidCallback onApprove;
   final VoidCallback onReject;
+  final VoidCallback onKeepDraft;
+  final VoidCallback onPublish;
 
   @override
   Widget build(BuildContext context) {
     final status = proposal['status']?.toString() ?? 'pending_approval';
+    final isTournament = proposal['workflow_type'] == 'tournament';
     final name = proposal['name']?.toString() ?? 'Tournament';
     final format = proposal['format']?.toString() ?? 'squad';
     final capacity = proposal['capacity']?.toString() ?? '—';
@@ -810,6 +853,7 @@ class _EventProposalCard extends StatelessWidget {
           }).where((value) => value.isNotEmpty).toList()
         : <String>[];
     final pending = status == 'pending_approval';
+    final draft = status == 'draft' || status == 'approved';
 
     return Container(
       width: double.infinity,
@@ -823,11 +867,14 @@ class _EventProposalCard extends StatelessWidget {
         Row(children: [
           const Icon(Icons.auto_awesome, color: KomnivoTheme.cyan),
           const SizedBox(width: 8),
-          const Expanded(child: Text('EVENT DRAFT PROPOSAL', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.8, fontSize: 11))),
+          Expanded(child: Text(
+            isTournament ? 'TOURNAMENT PREVIEW' : 'EVENT DRAFT PROPOSAL',
+            style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.8, fontSize: 11),
+          )),
           Text(
             status.replaceAll('_', ' ').toUpperCase(),
             style: TextStyle(
-              color: pending ? KomnivoTheme.cyan : KomnivoTheme.muted,
+              color: status == 'published' ? KomnivoTheme.cyan : KomnivoTheme.muted,
               fontSize: 10,
               fontWeight: FontWeight.w800,
             ),
@@ -858,11 +905,40 @@ class _EventProposalCard extends StatelessWidget {
           ...sources.take(4).map((source) => _ProposalInfo(icon: Icons.description_outlined, label: source)),
         ],
         const SizedBox(height: 10),
-        const Text(
-          'Approving creates a DRAFT event only. It will not open registration or publish automatically.',
-          style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35),
+        Text(
+          isTournament
+              ? 'Keep as Draft creates a private, editable event. Publish creates the tournament category and channels. Registration remains closed until you open it separately.'
+              : 'Approving creates a DRAFT event only. It will not open registration or publish automatically.',
+          style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35),
         ),
-        if (pending) ...[
+        if (isTournament && (pending || draft)) ...[
+          const SizedBox(height: 14),
+          if (pending)
+            Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: busy ? null : onKeepDraft,
+                  child: Text(busy ? 'Saving…' : 'Keep as Draft'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton(
+                  onPressed: busy ? null : onPublish,
+                  child: Text(busy ? 'Publishing…' : 'Publish Tournament'),
+                ),
+              ),
+            ])
+          else
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: busy ? null : onPublish,
+                icon: const Icon(Icons.campaign_outlined),
+                label: Text(busy ? 'Publishing…' : 'Publish Tournament'),
+              ),
+            ),
+        ] else if (!isTournament && pending) ...[
           const SizedBox(height: 14),
           Row(children: [
             Expanded(
@@ -879,39 +955,11 @@ class _EventProposalCard extends StatelessWidget {
               ),
             ),
           ]),
+        ] else if (isTournament && status == 'published') ...[
+          const SizedBox(height: 8),
+          const Text('Published successfully. Registration has not been opened.', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 11, fontWeight: FontWeight.w700)),
         ],
       ]),
     );
   }
-}
-
-class _ProposalChip extends StatelessWidget {
-  const _ProposalChip({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-    decoration: BoxDecoration(color: const Color(0xFF20263A), borderRadius: BorderRadius.circular(12)),
-    child: Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(icon, size: 13, color: KomnivoTheme.cyan),
-      const SizedBox(width: 5),
-      Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-    ]),
-  );
-}
-
-class _ProposalInfo extends StatelessWidget {
-  const _ProposalInfo({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 5),
-    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(icon, size: 14, color: KomnivoTheme.muted),
-      const SizedBox(width: 7),
-      Expanded(child: Text(label, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11))),
-    ]),
-  );
 }
