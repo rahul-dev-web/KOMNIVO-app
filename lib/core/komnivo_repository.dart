@@ -162,6 +162,22 @@ class KomnivoRepository {
     return Map<String, dynamic>.from(result);
   }
 
+  /// Converts a complete set of human-accepted LiveOps candidates into
+  /// official match_results rows. Final scoring still requires reviewer approval.
+  Future<Map<String, dynamic>> submitReviewedLiveOpsMatchResults({
+    required String sessionId,
+    required String matchId,
+  }) async {
+    final result = await client.rpc('submit_reviewed_liveops_match_results', params: {
+      'p_session_id': sessionId,
+      'p_match_id': matchId,
+    });
+    if (result is! Map) {
+      throw Exception('Reviewed LiveOps results could not be submitted.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
   /// Reads this user's own membership rows, including the owner row created
   /// by the database trigger when a community is created.
   Future<Map<String, Map<String, dynamic>>> myCommunityMemberships() async {
