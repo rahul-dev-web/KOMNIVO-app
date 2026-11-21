@@ -39,6 +39,24 @@ s = re.sub(r'applicationId\s*=\s*".*?"', 'applicationId = "in.komnivo.app"', s)
 if "com.google.mlkit:text-recognition" not in s:
     s += '\n\ndependencies {\n    implementation("com.google.mlkit:text-recognition:16.0.1")\n}\n'
 p.write_text(s)
+
+# Use the Asia-Pacific Google-hosted Maven Central mirror before Maven Central.
+# Keep Maven Central and Gradle Plugin Portal as fallbacks; do not pin older Kotlin.
+mirror = 'https://maven-central-asia.storage-download.googleapis.com/maven2/'
+for gradle_file in (Path("android/settings.gradle.kts"), Path("android/build.gradle.kts")):
+    if not gradle_file.exists():
+        continue
+    source = gradle_file.read_text()
+    if mirror not in source:
+        source, count = re.subn(
+            r'repositories\\s*\\{',
+            lambda match: match.group(0) + '\\n        maven { url = uri("' + mirror + '") }',
+            source,
+            count=1,
+        )
+        if count != 1:
+            raise SystemExit(f"Could not add Maven mirror to {gradle_file}")
+        gradle_file.write_text(source)
 PY
 cp "$ROOT/native/web/index.html" "$ROOT/web/index.html"
 cp "$ROOT/native/web/manifest.json" "$ROOT/web/manifest.json"
