@@ -54,7 +54,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
         .eq('event_id', eventId)
         .order('lobby_number'),
       _client.from('result_candidates')
-        .select('id,match_id,team_id,candidate_placement,candidate_kills,review_status,review_note,created_at,teams(name,tag),matches!inner(id,event_id,match_number),result_candidate_evidence(id,reported_placement,reported_kills)')
+        .select('id,match_id,team_id,candidate_placement,candidate_kills,reviewed_placement,reviewed_kills,review_status,review_note,created_at,teams(name,tag),matches!inner(id,event_id,match_number),result_candidate_evidence(id,reported_placement,reported_kills)')
         .eq('matches.event_id', eventId)
         .order('created_at', ascending: false),
     ]);
@@ -384,7 +384,12 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     }
   }
 
-  Future<void> _reviewLiveOpsCandidate(String candidateId, String decision) async {
+  Future<void> _reviewLiveOpsCandidate(
+    String candidateId,
+    String decision, {
+    int? reviewedPlacement,
+    int? reviewedKills,
+  }) async {
     if (_busy) return;
     setState(() => _busy = true);
     try {
@@ -392,15 +397,17 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
         candidateId: candidateId,
         decision: decision,
         note: decision == 'accepted'
-            ? 'Accepted after manual verification of linked screenshot evidence.'
-            : 'Rejected after manual verification of linked screenshot evidence.',
+            ? 'Reviewer confirmed final placement and kills against linked screenshot evidence.'
+            : 'Reviewer rejected the provisional OCR candidate after evidence inspection.',
+        reviewedPlacement: reviewedPlacement,
+        reviewedKills: reviewedKills,
       );
       _reload();
       if (mounted) {
         showMessage(
           context,
           decision == 'accepted'
-              ? 'OCR candidate accepted. Official match result and standings are unchanged.'
+              ? 'OCR candidate accepted with reviewer-confirmed values. Official match result and standings are unchanged.'
               : 'OCR candidate rejected. Official match result and standings are unchanged.',
         );
       }
@@ -408,6 +415,80 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
       if (mounted) showMessage(context, error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _acceptOcrCandidate(Map<String, dynamic> row) async {
+    final placement = TextEditingController(
+      text: (row['candidate_placement'] ?? '').toString(),
+    );
+    final kills = TextEditingController(
+      text: (row['candidate_kills'] ?? '').toString(),
+    );
+    try {
+      final values = await showDialog<Map<String, int>>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Confirm final match values'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Compare each linked screenshot. These reviewer-confirmed values are stored separately from the original OCR/operator readings.',
+                style: TextStyle(fontSize: 12, height: 1.4),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: placement,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(labelText: 'Final placement'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: kills,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(labelText: 'Final kills'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final finalPlacement = int.tryParse(placement.text.trim());
+                final finalKills = int.tryParse(kills.text.trim());
+                if (finalPlacement == null || finalPlacement < 1 ||
+                    finalKills == null || finalKills < 0 || finalKills > 999) {
+                  showMessage(context, 'Enter a valid placement and kill count.');
+                  return;
+                }
+                Navigator.of(dialogContext).pop({
+                  'placement': finalPlacement,
+                  'kills': finalKills,
+                });
+              },
+              child: const Text('Confirm values'),
+            ),
+          ],
+        ),
+      );
+      if (values == null || !mounted) return;
+      await _reviewLiveOpsCandidate(
+        row['id'].toString(),
+        'accepted',
+        reviewedPlacement: values['placement'],
+        reviewedKills: values['kills'],
+      );
+    } finally {
+      placement.dispose();
+      kills.dispose();
     }
   }
 
@@ -703,12 +784,23 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
               final team = row['teams'] is Map ? Map<String, dynamic>.from(row['teams'] as Map) : <String, dynamic>{};
               final match = row['matches'] is Map ? Map<String, dynamic>.from(row['matches'] as Map) : <String, dynamic>{};
               final matchId = match['id']?.toString();
-              final evidence = row['result_candidate_evidence'] as List? ?? [];
+              final evidence = (row['result_candidate_evidence'] as List? ?? [])
+                  .whereType<Map>()
+                  .map((item) => Map<String, dynamic>.from(item))
+                  .toList();
+              final sourceValues = evidence
+                  .map((item) => 'P${item['reported_placement'] ?? '—'}/K${item['reported_kills'] ?? '—'}')
+                  .toSet()
+                  .toList()
+                ..sort();
+              final evidenceConflict = evidence.any((item) =>
+                  item['reported_placement'] != row['candidate_placement'] ||
+                  item['reported_kills'] != row['candidate_kills']);
               final canReview = _canMatch(data, matchId, 'match.results.review');
               return _OperationCard(
                 title: team['name']?.toString() ?? 'OCR team candidate',
-                subtitle: 'Match ${match['match_number'] ?? '—'} · Placement ${row['candidate_placement'] ?? '—'} · ${row['candidate_kills'] ?? '—'} kills · ${evidence.length} screenshot source(s)',
-                badge: (row['review_status'] ?? 'NEEDS REVIEW').toString().replaceAll('_', ' ').toUpperCase(),
+                subtitle: 'Match ${match['match_number'] ?? '—'} · Provisional P${row['candidate_placement'] ?? '—'} / K${row['candidate_kills'] ?? '—'} · ${evidence.length} screenshot source(s)${evidenceConflict ? ' · conflicting readings' : ''}',
+                badge: evidenceConflict ? 'CONFLICT' : (row['review_status'] ?? 'NEEDS REVIEW').toString().replaceAll('_', ' ').toUpperCase(),
                 trailing: canReview
                     ? Wrap(spacing: 0, children: [
                         IconButton(
@@ -717,13 +809,13 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                           icon: const Icon(Icons.close, color: Color(0xFFFF8193)),
                         ),
                         IconButton(
-                          tooltip: 'Accept OCR candidate',
-                          onPressed: _busy ? null : () => _reviewLiveOpsCandidate(row['id'].toString(), 'accepted'),
+                          tooltip: 'Confirm final values and accept',
+                          onPressed: _busy ? null : () => _acceptOcrCandidate(row),
                           icon: const Icon(Icons.verified_outlined, color: KomnivoTheme.cyan),
                         ),
                       ])
                     : const Text('Reviewer only', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
-                footer: 'Candidate acceptance is not official result publication. Review remains tied to this Match ID.',
+                footer: 'Screenshot readings: ${sourceValues.join(', ')}. Acceptance stores separate reviewer-confirmed values; official result publication is a later action.',
               );
             }),
             const SizedBox(height: 22),
