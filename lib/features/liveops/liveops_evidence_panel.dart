@@ -84,21 +84,19 @@ class _LiveOpsEvidencePanelState extends State<LiveOpsEvidencePanel> {
   Future<void> _chooseScreenshots() async {
     if (widget.preview || widget.capturing || _preparing || _uploading) return;
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: true,
-        withData: true,
-      );
-      if (result == null || result.files.isEmpty) return;
-      if (result.files.length > 8) {
+      // file_picker 12+ exposes pickFiles as a static method returning a
+      // List<PlatformFile>; selected bytes are read explicitly from each file.
+      final files = await FilePicker.pickFiles(type: FileType.image);
+      if (files.isEmpty) return;
+      if (files.length > 8) {
         showMessage(context, 'A batch supports 1 to 8 screenshots. Select at most eight.');
         return;
       }
       setState(() { _preparing = true; _selected = <Map<String, dynamic>>[]; });
       final prepared = <Map<String, dynamic>>[];
       final seenHashes = <String>{};
-      for (final file in result.files) {
-        final Uint8List? bytes = file.bytes;
+      for (final file in files) {
+        final Uint8List bytes = await file.readAsBytes();
         final extension = (file.extension ?? file.name.split('.').last).toLowerCase();
         final String contentType = switch (extension) {
           'jpg' || 'jpeg' => 'image/jpeg',
