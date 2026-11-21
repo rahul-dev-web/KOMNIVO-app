@@ -50,8 +50,8 @@ for gradle_file in (Path("android/settings.gradle.kts"), Path("android/build.gra
     if mirror not in source:
         original = source
         source = source.replace(
+            "repositories {",
             "repositories {\n        maven { url = uri(\"" + mirror + "\") }",
-            "repositories {\\n        maven { url = uri(\"" + mirror + "\") }",
             1,
         )
         if source == original or mirror not in source:
