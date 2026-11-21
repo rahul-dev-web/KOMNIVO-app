@@ -6,15 +6,15 @@ select extensions.plan(25);
 
 select extensions.has_table('public','liveops_evidence_batches',
   'Evidence is grouped in a persisted batch');
-select extensions.has_column('public.liveops_captures','evidence_batch_id',
+select extensions.has_column('public','liveops_captures','evidence_batch_id',
   'Every uploaded screenshot can reference its batch');
-select extensions.has_column('public.liveops_captures','sequence_no',
+select extensions.has_column('public','liveops_captures','sequence_no',
   'Screenshot order is preserved');
-select extensions.has_column('public.liveops_captures','content_sha256',
+select extensions.has_column('public','liveops_captures','content_sha256',
   'Exact screenshot duplicates can be detected');
-select extensions.has_column('public.screen_observations','liveops_capture_id',
+select extensions.has_column('public','screen_observations','liveops_capture_id',
   'OCR observation points to its source screenshot');
-select extensions.has_column('public.screen_observations','evidence_batch_id',
+select extensions.has_column('public','screen_observations','evidence_batch_id',
   'OCR observation remains attached to its evidence batch');
 
 select extensions.ok(
@@ -39,7 +39,7 @@ select extensions.ok(
 );
 select extensions.ok(
   exists(select 1 from pg_constraint where conrelid='public.liveops_evidence_batches'::regclass
-    and conname='liveops_evidence_batches_session_id_match_id_idempotency_key_key'),
+    and pg_get_constraintdef(oid)='UNIQUE (session_id, match_id, idempotency_key)'),
   'Batch retries are idempotent per session and Match ID'
 );
 select extensions.ok(
