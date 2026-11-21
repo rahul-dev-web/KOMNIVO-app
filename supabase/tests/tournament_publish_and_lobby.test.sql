@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(18);
+select extensions.plan(19);
 
 select extensions.has_table('public','event_publications',
   'An audit-safe record is maintained for each published tournament');
@@ -65,6 +65,10 @@ select extensions.ok(
     and tablename='channel_categories' and policyname='channel_categories_read_member'
     and qual ilike '%event.view%'),
   'Published tournament categories are visible through the event view permission'
+);
+select extensions.ok(
+  position('event.manage' in pg_get_functiondef('app_private.guard_batch3_channel_message()'::regprocedure)) > 0,
+  'Root tournament notice-board publishing is enforced by the server event.manage permission'
 );
 select extensions.ok(
   exists(select 1 from pg_indexes where schemaname='public'
