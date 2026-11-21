@@ -82,6 +82,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       case 'tournament':
         return Icons.emoji_events_outlined;
       case 'mention':
+      case 'mention_correction':
         return Icons.alternate_email;
       default:
         return Icons.notifications_none;
