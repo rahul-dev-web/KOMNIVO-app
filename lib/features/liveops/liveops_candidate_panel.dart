@@ -65,7 +65,7 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
             .eq('session_id', widget.sessionId)
             .order('observed_at'),
         client.from('result_candidates')
-            .select('id,team_id,candidate_placement,candidate_kills,review_status,review_note,result_candidate_evidence(id,source_observation_id,reported_placement,reported_kills)')
+            .select('id,team_id,candidate_placement,candidate_kills,reviewed_placement,reviewed_kills,review_status,review_note,result_candidate_evidence(id,source_observation_id,reported_placement,reported_kills)')
             .eq('match_id', widget.matchId)
             .order('candidate_placement'),
       ]);
@@ -234,7 +234,18 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
               Expanded(child: Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
                 Text(participant == null ? 'Team' : _teamName(participant),style:const TextStyle(fontWeight:FontWeight.w800,fontSize:11)),
                 const SizedBox(height:3),
-                Text('Placement ' + (candidate['candidate_placement'] ?? '—').toString() + ' · ' + (candidate['candidate_kills'] ?? '—').toString() + ' kills · ' + evidence.length.toString() + ' source screenshots',style:const TextStyle(color:KomnivoTheme.muted,fontSize:10)),
+                Text(
+                  status == 'accepted'
+                      ? 'Provisional P' + (candidate['candidate_placement'] ?? '—').toString() +
+                        '/K' + (candidate['candidate_kills'] ?? '—').toString() +
+                        ' · Reviewed P' + (candidate['reviewed_placement'] ?? '—').toString() +
+                        '/K' + (candidate['reviewed_kills'] ?? '—').toString() +
+                        ' · ' + evidence.length.toString() + ' source screenshots'
+                      : 'Placement ' + (candidate['candidate_placement'] ?? '—').toString() +
+                        ' · ' + (candidate['candidate_kills'] ?? '—').toString() +
+                        ' kills · ' + evidence.length.toString() + ' source screenshots',
+                  style:const TextStyle(color:KomnivoTheme.muted,fontSize:10),
+                ),
               ])),
               Text(status.replaceAll('_',' ').toUpperCase(),style:TextStyle(color:status=='accepted'?KomnivoTheme.cyan:KomnivoTheme.muted,fontSize:9,fontWeight:FontWeight.w900)),
             ]),
