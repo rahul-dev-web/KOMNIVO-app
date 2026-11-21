@@ -33,6 +33,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
   String? _activeLobbyCode;
   int? _activeMatchSequence;
   bool _capturing = false;
+  bool _matchResultsSubmitted = false;
   bool _voice = true;
   String _lastObservation = '';
 
@@ -62,6 +63,10 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
   }
 
   Future<void> _start() async {
+    if (_matchResultsSubmitted) {
+      showMessage(context, 'This Match already has official result rows. Use Next Match after submission; do not capture or edit it again.');
+      return;
+    }
     if (widget.preview) {
       showMessage(context, 'Connect the Android backend to run LiveOps.');
       return;
@@ -96,8 +101,26 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       _activeLobbyCode = session['lobby_code']?.toString();
       _activeMatchSequence = int.tryParse(session['match_sequence']?.toString() ?? '');
 
-      // The lobby selects the LiveOps session; the server binds the first ordered
-      // Match ID. Each screenshot/result batch must remain bound to that Match ID.
+      // A session may be resumed after an app restart. Never restart capture when
+      // official rows already exist for this Match ID.
+      final submittedRows = await Supabase.instance.client
+          .from('match_results')
+          .select('id')
+          .eq('match_id', _activeMatchId!)
+          .limit(1);
+      if (submittedRows.isNotEmpty) {
+        if (mounted) setState(() {
+          _matchResultsSubmitted = true;
+          _capturing = false;
+          _state = 'Official result submitted · awaiting reviewer';
+        });
+        showMessage(context, 'Official result rows already exist for this Match. Use the Next Match action below when ready.');
+        return;
+      }
+      _matchResultsSubmitted = false;
+
+      // The Lobby selects or resumes its current ordered Match ID. Each evidence
+      // batch and candidate remains bound to that exact Match ID.
       final captureGranted = await _methods.invokeMethod<bool>('startCapture');
       if (captureGranted != true) {
         throw Exception('Screen capture permission was not granted.');
@@ -136,6 +159,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       if (!mounted) return;
       setState(() {
         _capturing = true;
+        _matchResultsSubmitted = false;
         _state = 'Capturing · Lobby bound';
       });
       if (_voice) {
@@ -202,6 +226,54 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
     _lastObservation = text;
 
     if (_voice) await _speak('Screen text detected. Please review the visible information.');
+  }
+
+  Future<void> _startNextMatch() async {
+    if (widget.preview || _capturing) {
+      showMessage(context, 'Pause LiveOps before moving to the next Match.');
+      return;
+    }
+    final previousSessionId = _sessionId;
+    if (previousSessionId == null) {
+      showMessage(context, 'No active Lobby session is available to advance.');
+      return;
+    }
+    try {
+      if (mounted) setState(() => _state = 'Loading next Lobby Match...');
+      final next = await KomnivoRepository.instance.startNextLiveOpsLobbySession(
+        previousSessionId: previousSessionId,
+      );
+      final nextSessionId = next['session_id']?.toString();
+      final nextMatchId = next['match_id']?.toString();
+      final nextSequence = int.tryParse(next['match_sequence']?.toString() ?? '');
+      if (nextSessionId == null || nextSessionId.isEmpty ||
+          nextMatchId == null || nextMatchId.isEmpty || nextSequence == null) {
+        throw Exception('The server did not return a complete next Match session.');
+      }
+      if (!mounted) return;
+      setState(() {
+        _sessionId = nextSessionId;
+        _activeEventId = next['event_id']?.toString();
+        _activeMatchId = nextMatchId;
+        _activeLobbyCode = next['lobby_code']?.toString();
+        _activeMatchSequence = nextSequence;
+        _matchResultsSubmitted = false;
+        _capturing = false;
+        _state = 'Next Match ready · sequence $nextSequence';
+        _latestText = 'Match $nextSequence is ready. Press Start to begin a new Android screen-observation session.';
+      });
+      if (_voice) {
+        await _speak('The next Match in this Lobby is ready. Press Start when you are ready to capture.');
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _state = 'Current Match submitted · Next Match unavailable');
+        showMessage(
+          context,
+          error.toString().replaceFirst('Exception: ', ''),
+        );
+      }
+    }
   }
 
   Future<void> _stop() async {
@@ -275,9 +347,12 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
             subtitle: const Text('Short spoken prompts; can be muted at any time.'),
           ),
           const SizedBox(height: 8),
-          SizedBox(width: double.infinity, child: _capturing
-              ? FilledButton.icon(onPressed: _stop, icon: const Icon(Icons.pause_circle_outline), label: const Text('Pause observation for evidence upload'))
-              : FilledButton.icon(onPressed: _start, icon: const Icon(Icons.play_circle_outline), label: Text(_sessionId == null ? 'Start LiveOps session' : 'Resume LiveOps observation'))),
+          if (_capturing)
+            SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _stop, icon: const Icon(Icons.pause_circle_outline), label: const Text('Pause observation for evidence upload')))
+          else if (_matchResultsSubmitted)
+            const Text('Official result rows are already submitted. Use the Next Match action in the evidence panel to continue this Lobby.', style: TextStyle(color:KomnivoTheme.cyan,fontSize:11,height:1.4))
+          else
+            SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _start, icon: const Icon(Icons.play_circle_outline), label: Text(_sessionId == null ? 'Start LiveOps session' : 'Start / resume this Match'))),
         ]),
       ),
       if (_sessionId != null && _activeEventId != null && _activeMatchId != null) ...[
@@ -290,6 +365,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
           matchSequence: _activeMatchSequence ?? 1,
           capturing: _capturing,
           onPause: _stop,
+          onNextMatch: _startNextMatch,
           preview: widget.preview,
         ),
       ],
