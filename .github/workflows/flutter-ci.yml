@@ -62,7 +62,7 @@ jobs:
           deno-version: v2.x
 
       - name: Type-check KOMNIVO AI Edge Function
-        run: deno check supabase/functions/komnivo-ai/index.ts supabase/functions/komnivo-ai-process-document/index.ts supabase/functions/komnivo-ai-proposal-action/index.ts supabase/functions/organizer-tournament-workflow/index.ts
+        run: deno check supabase/functions/komnivo-ai/index.ts supabase/functions/komnivo-ai-process-document/index.ts supabase/functions/komnivo-ai-proposal-action/index.ts supabase/functions/organizer-tournament-workflow/index.ts supabase/functions/notification-push/index.ts
 
   windows-bootstrap:
     runs-on: windows-latest
