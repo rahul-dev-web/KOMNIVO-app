@@ -12,11 +12,13 @@ class LiveOpsCandidatePanel extends StatefulWidget {
     required this.sessionId,
     required this.matchId,
     required this.capturing,
+    required this.onNextMatch,
   });
 
   final String sessionId;
   final String matchId;
   final bool capturing;
+  final VoidCallback onNextMatch;
 
   @override
   State<LiveOpsCandidatePanel> createState() => _LiveOpsCandidatePanelState();
@@ -149,6 +151,22 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  bool get _officialSubmittedForCurrentSession {
+    if (_participants.isEmpty || _officialResults.length != _participants.length) {
+      return false;
+    }
+    for (final row in _officialResults) {
+      final resultJson = row['result_json'] is Map
+          ? Map<String, dynamic>.from(row['result_json'] as Map)
+          : <String, dynamic>{};
+      if (resultJson['source'] != 'liveops_reviewed_candidates' ||
+          resultJson['liveops_session_id']?.toString() != widget.sessionId) {
+        return false;
+      }
+    }
+    return true;
   }
 
   bool get _canSubmitReviewedResults {
@@ -335,6 +353,19 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
             ),
             const SizedBox(height: 5),
             const Text('Final points and standings are not calculated yet. An authorised organiser/result reviewer must approve the submitted results in Event Operations.', style: TextStyle(color:KomnivoTheme.cyan,fontSize:10,height:1.4)),
+            if (_officialSubmittedForCurrentSession) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: widget.capturing || _submitting ? null : widget.onNextMatch,
+                  icon: const Icon(Icons.skip_next_rounded),
+                  label: const Text('Load next Match in this Lobby'),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text('The previous session will close. The next Match is prepared, but screen capture starts only after you press Start.', style: TextStyle(color:KomnivoTheme.muted,fontSize:10,height:1.4)),
+            ],
           ]),
         ),
       ] else if (_canSubmitReviewedResults) ...[
