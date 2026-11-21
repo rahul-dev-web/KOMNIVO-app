@@ -93,6 +93,25 @@ class KomnivoRepository {
     return Map<String, dynamic>.from(result);
   }
 
+  /// Advances to the next eligible Match in the same Lobby. A previous session
+  /// can have only one successor, so retries never create duplicate sessions.
+  Future<Map<String, dynamic>> startNextLiveOpsLobbySession({
+    required String previousSessionId,
+    Map<String, dynamic> deviceInfo = const <String, dynamic>{
+      'platform': 'android',
+      'source': 'liveops_assistant',
+    },
+  }) async {
+    final result = await client.rpc('start_next_liveops_lobby_session', params: {
+      'p_previous_session_id': previousSessionId,
+      'p_device_info': deviceInfo,
+    });
+    if (result is! Map) {
+      throw Exception('The next Lobby Match session could not be created.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
   /// Atomically registers already-uploaded screenshots and their local OCR
   /// observations against one exact Lobby/Match/LiveOps session.
   Future<Map<String, dynamic>> registerLiveOpsEvidenceBatch({
