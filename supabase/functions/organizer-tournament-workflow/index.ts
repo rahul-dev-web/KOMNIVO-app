@@ -65,6 +65,34 @@ async function requireManager(
   return { id: String(community.id), name: String(community.name ?? "Community") };
 }
 
+async function ensureTournamentDraft(
+  admin: SupabaseClient,
+  userId: string,
+  proposalId: string,
+): Promise<{ eventId: string; eventStatus: string }> {
+  const { data: current, error: currentError } = await admin.from("tournament_proposals")
+    .select("id,status,event_id").eq("id", proposalId).eq("owner_user_id", userId).maybeSingle();
+  if (currentError || !current) throw new Error("Saved tournament proposal could not be recovered.");
+
+  if (current.status === "pending_approval") {
+    const { error } = await admin.rpc("resolve_tournament_proposal", {
+      p_proposal_id: proposalId,
+      p_user_id: userId,
+      p_decision: "approve",
+    });
+    if (error) throw new Error(String(error.message ?? "Could not create the tournament DRAFT event."));
+  }
+
+  const { data: resolved, error: resolvedError } = await admin.from("tournament_proposals")
+    .select("id,status,event_id").eq("id", proposalId).eq("owner_user_id", userId).maybeSingle();
+  if (resolvedError || !resolved || !resolved.event_id || resolved.status !== "approved") {
+    throw new Error("Tournament details were saved, but the DRAFT event could not be confirmed. Retry the save.");
+  }
+  const { data: event, error: eventError } = await admin.from("events")
+    .select("id,status").eq("id", resolved.event_id).maybeSingle();
+  if (eventError || !event) throw new Error("The saved tournament event could not be loaded.");
+  return { eventId: String(event.id), eventStatus: String(event.status) };
+}
 async function validatePayload(
   admin: SupabaseClient,
   userId: string,
@@ -624,13 +652,16 @@ Deno.serve(async (req: Request) => {
           await admin.from("ai_conversations").update({ updated_at: new Date().toISOString() })
             .eq("id", prior.conversation_id).eq("owner_user_id", user.id);
         }
+        const draft = await ensureTournamentDraft(admin, user.id, String(prior.id));
         return json({
           conversation_id: prior.conversation_id,
           proposal: {
             id: prior.id,
-            status: prior.status,
+            status: draft.eventStatus,
+            event_status: draft.eventStatus,
             expires_at: prior.expires_at,
-            event_id: prior.event_id,
+            event_id: draft.eventId,
+            community_id: prior.community_id,
             ...objectValue(prior.payload),
           },
           already_received: true,
@@ -695,6 +726,7 @@ Deno.serve(async (req: Request) => {
         throw new Error("Could not save the tournament proposal.");
       }
 
+      const draft = await ensureTournamentDraft(admin, user.id, String(proposal.id));
       await admin.from("ai_conversations").update({ updated_at: new Date().toISOString() })
         .eq("id", conversationId).eq("owner_user_id", user.id);
 
@@ -703,7 +735,10 @@ Deno.serve(async (req: Request) => {
         proposal: {
           id: proposal.id,
           workflow_type: "tournament",
-          status: proposal.status,
+          status: draft.eventStatus,
+          event_status: draft.eventStatus,
+          event_id: draft.eventId,
+          community_id: communityId,
           expires_at: proposal.expires_at,
           source_refs: sourceRefs,
           ...payload,
