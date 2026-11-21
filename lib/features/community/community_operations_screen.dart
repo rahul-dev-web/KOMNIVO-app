@@ -1550,6 +1550,7 @@ class _OnboardingTabState extends State<_OnboardingTab> {
           _seed(data);
           final canConfigure = widget.canConfigure && data['can_configure'] == true;
           return ListView(
+            key: const ValueKey('community-onboarding-scroll'),
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
             children: [
               const _PageHeading(
