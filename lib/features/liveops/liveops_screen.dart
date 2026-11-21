@@ -189,7 +189,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         try {
           await Supabase.instance.client.from('liveops_sessions').update({
             'state': nextState,
-            'ended_at': DateTime.now().toUtc().toIso8601String(),
+            if (nextState == 'failed') 'ended_at': DateTime.now().toUtc().toIso8601String(),
           }).eq('id', sessionId);
         } catch (_) {
           // State transitions remain database-enforced.
@@ -216,8 +216,6 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       await _methods.invokeMethod<void>('stopCapture');
       await _subscription?.cancel();
       if (_sessionId != null) {
-        // Keep the session paused rather than ended so the operator can upload
-        // selected screenshots and resume the same Lobby/Match binding.
         await Supabase.instance.client.from('liveops_sessions').update({
           'state': 'paused',
         }).eq('id', _sessionId!).eq('operator_id', Supabase.instance.client.auth.currentUser!.id);
@@ -242,11 +240,9 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
           .order('created_at', ascending: false)
           .limit(12);
       if (!mounted) return;
-      setState(() {
-        _uploadedBatches = List<Map<String, dynamic>>.from(rows);
-      });
+      setState(() => _uploadedBatches = List<Map<String, dynamic>>.from(rows));
     } catch (_) {
-      // The current session remains usable even if evidence history is unavailable.
+      // Keep the LiveOps session usable when evidence history cannot be loaded.
     }
   }
 
@@ -256,27 +252,20 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       return;
     }
     if (_capturing) {
-      showMessage(context, 'Pause screen observation before opening the gallery. This prevents private apps or notifications from being captured.');
+      showMessage(context, 'Pause screen observation before opening the gallery.');
       return;
     }
     if (_preparingEvidence || _uploadingEvidence) return;
-
     try {
       final picked = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: true,
-        withData: true,
+        type: FileType.image, allowMultiple: true, withData: true,
       );
       if (picked == null || picked.files.isEmpty) return;
       if (picked.files.length > 8) {
-        showMessage(context, 'A single evidence batch supports 1 to 8 screenshots. Select at most eight.');
+        showMessage(context, 'A batch supports 1 to 8 screenshots. Select at most eight.');
         return;
       }
-
-      setState(() {
-        _preparingEvidence = true;
-        _selectedEvidence = <Map<String, dynamic>>[];
-      });
+      setState(() { _preparingEvidence = true; _selectedEvidence = <Map<String, dynamic>>[]; });
       final prepared = <Map<String, dynamic>>[];
       final seenHashes = <String>{};
       for (final file in picked.files) {
@@ -288,22 +277,15 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
           'webp' => 'image/webp',
           _ => '',
         };
-        if (bytes == null || bytes.isEmpty) {
-          throw Exception('Could not read ${file.name}. Re-select this screenshot.');
-        }
-        if (contentType.isEmpty) {
-          throw Exception('${file.name} is not a supported JPG, PNG or WebP screenshot.');
-        }
-        if (bytes.length > 10 * 1024 * 1024) {
-          throw Exception('${file.name} exceeds the 10 MiB per-image limit.');
-        }
-
+        if (bytes == null || bytes.isEmpty) throw Exception('Could not read ' + file.name + '.');
+        if (contentType.isEmpty) throw Exception(file.name + ' is not a supported JPG, PNG or WebP screenshot.');
+        if (bytes.length > 10 * 1024 * 1024) throw Exception(file.name + ' exceeds 10 MiB.');
         final scan = await _methods.invokeMapMethod<String, dynamic>(
           'recognizeEvidenceImage',
           <String, dynamic>{'bytes': bytes, 'extension': extension},
         );
         final sha256 = scan?['sha256']?.toString() ?? '';
-        if (!RegExp(r'^[0-9a-f]{64}
+        final validHash = sha256.length == 64 && RegExp(r'^[0-9a-f]+
     _subscription?.cancel();
     unawaited(_stopVoice());
     _lobbyId.dispose();
@@ -383,7 +365,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
           const SizedBox(height: 9),
           Text(_latestText, style: const TextStyle(color: KomnivoTheme.muted, height: 1.5)),
           const SizedBox(height: 12),
-          const Text('Continuous screen text remains on this device. Only screenshots you explicitly select and confirm are uploaded. Their OCR text is saved as provisional evidence and still needs team/placement review; it is not an official result.', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 11, height: 1.4)),
+          const Text('Continuous screen text stays on-device. Only screenshots you explicitly select and confirm are uploaded. Their OCR is provisional source material, not an official result.', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 11, height: 1.4)),
         ]),
       ),
       const SizedBox(height: 14),
@@ -401,16 +383,13 @@ class _PrivacyCard extends StatelessWidget {
     child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [Icon(Icons.privacy_tip_outlined, color: KomnivoTheme.cyan), SizedBox(width: 9), Text('Privacy and control', style: TextStyle(fontWeight: FontWeight.w900))]),
       SizedBox(height: 9),
-      Text('Screen observation starts only after your action and Android permission. Continuous OCR remains on-device. To upload evidence, pause observation, select 1–8 standing screenshots, inspect the local OCR preview and confirm the upload. Hide notifications and unrelated private content before selecting screenshots.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 12, height: 1.5)),
+      Text('Screen observation starts only after your action and Android permission. Pause before opening the gallery. Select 1–8 standing screenshots, inspect the local OCR preview and confirm the upload. Hide notifications and unrelated private content before selecting screenshots.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 12, height: 1.5)),
     ]),
   );
 }
-).hasMatch(sha256)) {
-          throw Exception('On-device screenshot verification failed for ${file.name}.');
-        }
-        if (!seenHashes.add(sha256)) {
-          throw Exception('${file.name} is an exact duplicate of another selected screenshot.');
-        }
+).hasMatch(sha256);
+        if (!validHash) throw Exception('On-device screenshot verification failed for ' + file.name + '.');
+        if (!seenHashes.add(sha256)) throw Exception(file.name + ' duplicates another selected screenshot.');
         prepared.add(<String, dynamic>{
           'name': file.name,
           'extension': extension,
@@ -438,27 +417,25 @@ class _PrivacyCard extends StatelessWidget {
     final eventId = _activeEventId;
     final user = Supabase.instance.client.auth.currentUser;
     if (sessionId == null || lobbyId.isEmpty || matchId == null || eventId == null || user == null) {
-      showMessage(context, 'The active LiveOps session could not be verified. Start the Lobby session again.');
+      showMessage(context, 'The active LiveOps session could not be verified.');
       return;
     }
-
     final client = Supabase.instance.client;
     final uploadedPaths = <String>[];
     final items = <Map<String, dynamic>>[];
-    final requestId = 'evidence_${DateTime.now().microsecondsSinceEpoch}_${math.Random.secure().nextInt(1 << 24)}';
+    final requestId = 'evidence_' + DateTime.now().microsecondsSinceEpoch.toString() + '_' +
+        math.Random.secure().nextInt(1 << 24).toString();
     setState(() => _uploadingEvidence = true);
     try {
       for (var index = 0; index < _selectedEvidence.length; index++) {
         final item = _selectedEvidence[index];
         final suffix = math.Random.secure().nextInt(1 << 32).toRadixString(16).padLeft(8, '0');
-        final path = '${user.id}/${eventId}/${matchId}/${sessionId}/${requestId}_${index + 1}_${suffix}.${item['extension']}';
+        final pathParts = <String>[user.id, eventId, matchId, sessionId, requestId + '_' +
+            (index + 1).toString() + '_' + suffix + '.' + item['extension'].toString()];
+        final path = pathParts.join('/');
         await client.storage.from('match-evidence').uploadBinary(
-          path,
-          item['bytes'] as Uint8List,
-          fileOptions: FileOptions(
-            contentType: item['content_type']?.toString(),
-            upsert: false,
-          ),
+          path, item['bytes'] as Uint8List,
+          fileOptions: FileOptions(contentType: item['content_type'].toString(), upsert: false),
         );
         uploadedPaths.add(path);
         items.add(<String, dynamic>{
@@ -470,33 +447,30 @@ class _PrivacyCard extends StatelessWidget {
           'observed_at': DateTime.now().toUtc().toIso8601String(),
         });
       }
-
       final batch = await KomnivoRepository.instance.registerLiveOpsEvidenceBatch(
-        sessionId: sessionId,
-        lobbyId: lobbyId,
-        matchId: matchId,
-        idempotencyKey: requestId,
-        items: items,
+        sessionId: sessionId, lobbyId: lobbyId, matchId: matchId,
+        idempotencyKey: requestId, items: items,
       );
       await _loadEvidenceBatches(sessionId);
       if (!mounted) return;
       setState(() => _selectedEvidence = <Map<String, dynamic>>[]);
       final count = batch['screenshot_count']?.toString() ?? items.length.toString();
-      showMessage(context, '$count screenshots registered for Match ${_activeMatchSequence ?? 1}. OCR is provisional; team rows still need review.');
+      showMessage(context, count + ' screenshots registered for Match ' +
+          (_activeMatchSequence ?? 1).toString() + '. OCR is provisional; review required.');
     } catch (error) {
       if (uploadedPaths.isNotEmpty) {
         try {
           await client.storage.from('match-evidence').remove(uploadedPaths);
         } catch (_) {
-          // The server blocks deletion of any object already registered to a capture.
+          // Registered evidence is protected from client-side deletion.
         }
       }
-      if (mounted) showMessage(context, 'Screenshot upload failed: ${error.toString().replaceFirst('Exception: ', '')}');
+      if (mounted) showMessage(context, 'Screenshot upload failed: ' +
+          error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _uploadingEvidence = false);
     }
   }
-
   @override
   void dispose() {
     _subscription?.cancel();
@@ -590,106 +564,48 @@ class _PrivacyCard extends StatelessWidget {
 
 class _EvidenceUploadCard extends StatelessWidget {
   const _EvidenceUploadCard({
-    required this.selected,
-    required this.batches,
-    required this.preparing,
-    required this.uploading,
-    required this.capturing,
-    required this.onPause,
-    required this.onChoose,
-    required this.onUpload,
+    required this.selected, required this.batches, required this.preparing,
+    required this.uploading, required this.capturing, required this.onPause,
+    required this.onChoose, required this.onUpload,
   });
-
   final List<Map<String, dynamic>> selected;
   final List<Map<String, dynamic>> batches;
-  final bool preparing;
-  final bool uploading;
-  final bool capturing;
-  final VoidCallback onPause;
-  final VoidCallback onChoose;
-  final VoidCallback onUpload;
+  final bool preparing, uploading, capturing;
+  final VoidCallback onPause, onChoose, onUpload;
 
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: KomnivoTheme.surface,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: KomnivoTheme.line),
-    ),
+    decoration: BoxDecoration(color: KomnivoTheme.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: KomnivoTheme.line)),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Row(children: [
-        Icon(Icons.photo_library_outlined, color: KomnivoTheme.cyan),
-        SizedBox(width: 9),
-        Expanded(child: Text('Standing screenshot evidence', style: TextStyle(fontWeight: FontWeight.w900))),
-      ]),
+      const Row(children: [Icon(Icons.photo_library_outlined, color: KomnivoTheme.cyan), SizedBox(width: 9), Expanded(child: Text('Standing screenshot evidence', style: TextStyle(fontWeight: FontWeight.w900)))]),
       const SizedBox(height: 7),
-      const Text(
-        'Select 1–8 screenshots for the active Match ID. JPG, PNG and WebP are supported, up to 10 MiB each. OCR runs on-device before upload.',
-        style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.45),
-      ),
+      const Text('Select 1–8 screenshots for the active Match ID. JPG, PNG and WebP are supported, up to 10 MiB each. OCR runs on-device before upload.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.45)),
       const SizedBox(height: 11),
       if (capturing)
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: uploading ? null : onPause,
-            icon: const Icon(Icons.pause_circle_outline),
-            label: const Text('Pause observation before opening gallery'),
-          ),
-        )
+        SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: uploading ? null : onPause, icon: const Icon(Icons.pause_circle_outline), label: const Text('Pause observation before opening gallery')))
       else
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: preparing || uploading ? null : onChoose,
-            icon: preparing
-                ? const SizedBox(width: 16,height: 16,child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.add_photo_alternate_outlined),
-            label: Text(preparing ? 'Reading screenshots on-device…' : 'Choose screenshots'),
-          ),
-        ),
+        SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: preparing || uploading ? null : onChoose, icon: preparing ? const SizedBox(width: 16,height: 16,child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.add_photo_alternate_outlined), label: Text(preparing ? 'Reading screenshots on-device…' : 'Choose screenshots'))),
       if (selected.isNotEmpty) ...[
         const SizedBox(height: 12),
-        Text('${selected.length} selected · OCR preview', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+        Text(selected.length.toString() + ' selected · OCR preview', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
         const SizedBox(height: 5),
         ...selected.asMap().entries.map((entry) {
           final item = entry.value;
           final ocr = item['ocr_text']?.toString() ?? '';
           return Container(
-            margin: const EdgeInsets.only(bottom: 7),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF191E2C),
-              borderRadius: BorderRadius.circular(12),
-            ),
+            margin: const EdgeInsets.only(bottom: 7), padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: const Color(0xFF191E2C), borderRadius: BorderRadius.circular(12)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${entry.key + 1}. ${item['name']}', style: const TextStyle(fontWeight: FontWeight.w800,fontSize: 11)),
+              Text((entry.key + 1).toString() + '. ' + item['name'].toString(), style: const TextStyle(fontWeight: FontWeight.w800,fontSize: 11)),
               const SizedBox(height: 3),
-              Text(
-                '${((item['file_size'] as int? ?? 0) / 1024).toStringAsFixed(0)} KB · SHA-256 checked',
-                style: const TextStyle(color: KomnivoTheme.muted,fontSize: 10),
-              ),
+              Text(((item['file_size'] as int? ?? 0) / 1024).toStringAsFixed(0) + ' KB · SHA-256 checked', style: const TextStyle(color: KomnivoTheme.muted,fontSize: 10)),
               const SizedBox(height: 5),
-              Text(
-                ocr.isEmpty ? 'No text detected. The screenshot will still be attached as evidence.' : ocr,
-                maxLines: 5,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: KomnivoTheme.muted,fontSize: 10,height: 1.4),
-              ),
+              Text(ocr.isEmpty ? 'No text detected. The screenshot will still be attached as evidence.' : ocr, maxLines: 5, overflow: TextOverflow.ellipsis, style: const TextStyle(color: KomnivoTheme.muted,fontSize: 10,height: 1.4)),
             ]),
           );
         }),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: uploading || capturing ? null : onUpload,
-            icon: uploading
-                ? const SizedBox(width: 16,height: 16,child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.cloud_upload_outlined),
-            label: Text(uploading ? 'Uploading evidence…' : 'Confirm and upload ${selected.length} screenshots'),
-          ),
-        ),
+        SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: uploading || capturing ? null : onUpload, icon: uploading ? const SizedBox(width: 16,height: 16,child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.cloud_upload_outlined), label: Text(uploading ? 'Uploading evidence…' : 'Confirm and upload ' + selected.length.toString() + ' screenshots'))),
       ],
       if (batches.isNotEmpty) ...[
         const SizedBox(height: 13),
@@ -698,20 +614,12 @@ class _EvidenceUploadCard extends StatelessWidget {
         ...batches.take(5).map((batch) => Padding(
           padding: const EdgeInsets.only(top: 5),
           child: Row(children: [
-            const Icon(Icons.verified_outlined,size:14,color:KomnivoTheme.cyan),
-            const SizedBox(width:7),
-            Expanded(child: Text(
-              '${batch['screenshot_count'] ?? 0} screenshots · ${batch['status'] ?? 'uploaded'}',
-              style: const TextStyle(color:KomnivoTheme.muted,fontSize:10),
-            )),
-            Text(
-              DateTime.tryParse(batch['created_at']?.toString() ?? '')?.toLocal().toString().split('.').first ?? '',
-              style: const TextStyle(color:KomnivoTheme.muted,fontSize:9),
-            ),
+            const Icon(Icons.verified_outlined,size:14,color:KomnivoTheme.cyan), const SizedBox(width:7),
+            Expanded(child: Text((batch['screenshot_count'] ?? 0).toString() + ' screenshots · ' + (batch['status'] ?? 'uploaded').toString(), style: const TextStyle(color:KomnivoTheme.muted,fontSize:10))),
+            Text(DateTime.tryParse(batch['created_at']?.toString() ?? '')?.toLocal().toString().split('.').first ?? '', style: const TextStyle(color:KomnivoTheme.muted,fontSize:9)),
           ]),
         )),
       ],
     ]),
   );
 }
-
