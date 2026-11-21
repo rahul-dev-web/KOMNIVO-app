@@ -80,7 +80,15 @@ async function ensureTournamentDraft(
       p_user_id: userId,
       p_decision: "approve",
     });
-    if (error) throw new Error(String(error.message ?? "Could not create the tournament DRAFT event."));
+    if (error) {
+      // A concurrent retry may have completed the same proposal while this
+      // request waited for the proposal row lock. Accept that committed draft.
+      const { data: raced, error: racedError } = await admin.from("tournament_proposals")
+        .select("status,event_id").eq("id", proposalId).eq("owner_user_id", userId).maybeSingle();
+      if (racedError || raced?.status !== "approved" || !raced.event_id) {
+        throw new Error(String(error.message ?? "Could not create the tournament DRAFT event."));
+      }
+    }
   }
 
   const { data: resolved, error: resolvedError } = await admin.from("tournament_proposals")
@@ -711,13 +719,17 @@ Deno.serve(async (req: Request) => {
           .select("id,status,payload,expires_at,event_id,conversation_id")
           .eq("owner_user_id", user.id).eq("idempotency_key", idempotencyKey).maybeSingle();
         if (recovered) {
+          const draft = await ensureTournamentDraft(admin, user.id, String(recovered.id));
           return json({
             conversation_id: recovered.conversation_id ?? conversationId,
             proposal: {
               id: recovered.id,
-              status: recovered.status,
+              workflow_type: "tournament",
+              status: draft.eventStatus,
+              event_status: draft.eventStatus,
               expires_at: recovered.expires_at,
-              event_id: recovered.event_id,
+              event_id: draft.eventId,
+              community_id: communityId,
               ...objectValue(recovered.payload),
             },
             already_received: true,
