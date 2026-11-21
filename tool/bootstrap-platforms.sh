@@ -48,13 +48,13 @@ for gradle_file in (Path("android/settings.gradle.kts"), Path("android/build.gra
         continue
     source = gradle_file.read_text()
     if mirror not in source:
-        source, count = re.subn(
-            r'repositories\\s*\\{',
-            lambda match: match.group(0) + '\\n        maven { url = uri("' + mirror + '") }',
-            source,
-            count=1,
+        original = source
+        source = source.replace(
+            "repositories {",
+            "repositories {\\n        maven { url = uri(\"" + mirror + "\") }",
+            1,
         )
-        if count != 1:
+        if source == original or mirror not in source:
             raise SystemExit(f"Could not add Maven mirror to {gradle_file}")
         gradle_file.write_text(source)
 PY
