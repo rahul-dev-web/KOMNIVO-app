@@ -38,7 +38,6 @@ class LiveOpsEvidencePanel extends StatefulWidget {
 
 class _LiveOpsEvidencePanelState extends State<LiveOpsEvidencePanel> {
   static const _methods = MethodChannel('in.komnivo.app/liveops');
-  bool _loading = false;
   bool _preparing = false;
   bool _uploading = false;
   List<Map<String, dynamic>> _selected = <Map<String, dynamic>>[];
@@ -61,7 +60,6 @@ class _LiveOpsEvidencePanelState extends State<LiveOpsEvidencePanel> {
 
   Future<void> _loadBatches() async {
     if (widget.preview) return;
-    setState(() => _loading = true);
     try {
       final rows = await Supabase.instance.client
           .from('liveops_evidence_batches')
@@ -74,8 +72,6 @@ class _LiveOpsEvidencePanelState extends State<LiveOpsEvidencePanel> {
       setState(() => _batches = List<Map<String, dynamic>>.from(rows));
     } catch (error) {
       if (mounted) showMessage(context, 'Could not load screenshot history: ' + error.toString());
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
