@@ -568,18 +568,20 @@ void main() {
       source: source,
     );
     await _openOperationsTab(tester, 'Onboarding');
-    final onboardingList = find.descendant(
-      of: find.byType(TabBarView),
-      matching: find.byType(ListView),
-    ).last;
+    final onboardingScroll = find.descendant(
+      of: find.byKey(const ValueKey('community-onboarding-scroll')),
+      matching: find.byType(Scrollable),
+    );
     // Managers see the full questionnaire editor above channel tagging.
-    // Scroll the tab so the lazy list builds the lower channel-tag cards.
-    await tester.drag(onboardingList, const Offset(0, -2400));
+    // Scroll the Onboarding tab, not a neighbouring TabBarView page.
+    await tester.scrollUntilVisible(
+      find.text('Save channel tags'),
+      420,
+      scrollable: onboardingScroll,
+    );
     await tester.pumpAndSettle();
     final saveChannelTags = find.text('Save channel tags');
     expect(saveChannelTags, findsWidgets);
-    await tester.ensureVisible(saveChannelTags.first);
-    await tester.pumpAndSettle();
     await tester.tap(saveChannelTags.first);
     await tester.pumpAndSettle();
 
@@ -736,10 +738,9 @@ void main() {
 
     expect(source.reports, hasLength(1));
     expect(source.reports.single['status'], 'open');
-    // The member name is shown in both the directory row and the open
-    // detail sheet. Pop the top sheet route instead of resolving an ambiguous
-    // text finder.
-    await tester.pageBack();
+    // The member name is rendered in both the directory row and the
+    // detail sheet. Select the top-most (sheet) instance to close that route.
+    Navigator.of(tester.element(find.text('Nova Ace').last)).pop();
     await tester.pumpAndSettle();
     await _openOperationsTab(tester, 'Moderation');
 
