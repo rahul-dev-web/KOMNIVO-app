@@ -571,7 +571,7 @@ void main() {
     final onboardingScroll = find.descendant(
       of: find.byKey(const ValueKey('community-onboarding-scroll')),
       matching: find.byType(Scrollable),
-    );
+    ).first;
     // Managers see the full questionnaire editor above channel tagging.
     // Scroll the Onboarding tab, not a neighbouring TabBarView page.
     await tester.scrollUntilVisible(
