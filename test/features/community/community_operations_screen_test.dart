@@ -568,9 +568,19 @@ void main() {
       source: source,
     );
     await _openOperationsTab(tester, 'Onboarding');
-    await tester.ensureVisible(find.text('Save channel tags').first);
+    final onboardingList = find.descendant(
+      of: find.byType(TabBarView),
+      matching: find.byType(ListView),
+    ).last;
+    // Managers see the full questionnaire editor above channel tagging.
+    // Scroll the tab so the lazy list builds the lower channel-tag cards.
+    await tester.drag(onboardingList, const Offset(0, -2400));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Save channel tags').first);
+    final saveChannelTags = find.text('Save channel tags');
+    expect(saveChannelTags, findsWidgets);
+    await tester.ensureVisible(saveChannelTags.first);
+    await tester.pumpAndSettle();
+    await tester.tap(saveChannelTags.first);
     await tester.pumpAndSettle();
 
     expect(source.savedChannelTags.containsKey('channel-1'), isTrue);
@@ -726,7 +736,10 @@ void main() {
 
     expect(source.reports, hasLength(1));
     expect(source.reports.single['status'], 'open');
-    Navigator.of(tester.element(find.text('Nova Ace'))).pop();
+    // The member name is shown in both the directory row and the open
+    // detail sheet. Pop the top sheet route instead of resolving an ambiguous
+    // text finder.
+    await tester.pageBack();
     await tester.pumpAndSettle();
     await _openOperationsTab(tester, 'Moderation');
 
