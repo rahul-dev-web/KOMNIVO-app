@@ -49,3 +49,7 @@ The live Supabase schema and RPC contracts have been checked. The live project c
 The Organizer Event Operations candidate-review queue fetches the exact source captures linked to a candidate. Before opening Accept or Reject, it requests a 15-minute signed URL for every source image from the private `match-evidence` bucket and shows each screenshot alongside that screenshot's own OCR placement/kills.
 
 The storage read policy authorises either the original uploader or a user with `match.results.review` permission for the exact Match ID. The bucket remains private; no public object URL is created. If any screenshot cannot be signed, the UI blocks both Accept and Reject and asks the reviewer to restore evidence access before making a decision.
+
+## Match-scoped reviewer read access
+
+The Event Operations OCR review queue is available to an authorised reviewer scoped only to the Match being reviewed. Candidate-row RLS and team name/tag RLS both accept `match.results.review` at that exact Match ID; the broader event-staff and operator paths remain intact. The reviewer can read the participant roster/candidate evidence and issue signed screenshot previews for the same Match without gaining access to unrelated team records.
