@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(20);
+select extensions.plan(21);
 
 select extensions.has_table('public','message_mentions',
   'Targeted mention recipient snapshots have a dedicated table');
@@ -52,6 +52,11 @@ select extensions.ok(
   position('event_group_teams' in pg_get_functiondef('app_private.can_user_receive_channel_mention(uuid,uuid)'::regprocedure))>0,
   'Group mentions are limited to group teams or authorised staff'
 );
+select extensions.ok(
+  position('IF v_channel.is_private THEN' in pg_get_functiondef('app_private.can_user_receive_channel_mention(uuid,uuid)'::regprocedure))>0,
+  'Private group channels never expose recipients from other groups in the same published event'
+);
+
 select extensions.ok(
   position('event_staff_assignments' in pg_get_functiondef('app_private.can_user_receive_channel_mention(uuid,uuid)'::regprocedure))>0,
   'Event/stage/group/match staff are resolved from explicit staff assignments'
