@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:komnivo/core/komnivo_theme.dart';
 import 'package:komnivo/features/shell/app_shell.dart';
 import 'package:komnivo/features/ai/tournament_form_card.dart';
+import 'package:komnivo/features/ai/ai_assistant_screen.dart';
 
 Future<void> _pumpKOMNIVO(WidgetTester tester) async {
   tester.view.physicalSize = const Size(430, 900);
@@ -97,6 +98,37 @@ void main() {
       ),
       throwsFormatException,
     );
+  });
+
+  testWidgets('Organizer AI quick actions are visible and open their actions',
+      (tester) async {
+    var tournamentTapped = false;
+    var paidScrimTapped = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: KomnivoTheme.dark,
+        home: Scaffold(
+          body: OrganizerChatActions(
+            tournamentEnabled: true,
+            paidScrimEnabled: true,
+            onCreateTournament: () => tournamentTapped = true,
+            onCreatePaidScrim: () => paidScrimTapped = true,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('organizer-chat-actions-panel')), findsOneWidget);
+    expect(find.text('Create Tournament'), findsOneWidget);
+    expect(find.text('Create Paid Scrim'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('organizer-create-tournament')));
+    await tester.tap(find.byKey(const Key('organizer-create-paid-scrim')));
+
+    expect(tournamentTapped, isTrue);
+    expect(paidScrimTapped, isTrue);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Five core destinations use the approved order and Community home',
