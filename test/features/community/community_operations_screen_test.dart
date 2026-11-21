@@ -558,30 +558,18 @@ void main() {
   testWidgets('Manager can persist channel recommendation tags',
       (tester) async {
     addTearDown(() => _reset(tester));
+    // Channel recommendation tagging is authorised by structure scope;
+    // member-question editing is a separate permission and not needed here.
     final source = _FakeCommunityOperationsSource(
-      permissions: {'community.manage_members', 'community.manage_structure'},
+      permissions: {'community.manage_structure'},
     );
     await _pumpOperations(
       tester,
-      permissions: {'community.manage_members', 'community.manage_structure'},
+      permissions: {'community.manage_structure'},
       size: const Size(430, 2800),
       source: source,
     );
     await _openOperationsTab(tester, 'Onboarding');
-    final onboardingList = find.byKey(
-      const ValueKey('community-onboarding-scroll'),
-    );
-    // Drag the explicitly keyed Onboarding ListView. The test viewport is
-    // intentionally tall, so move in large steps and ensure the lazy card
-    // has been built before tapping it.
-    await tester.drag(onboardingList, const Offset(0, -1800));
-    await tester.pumpAndSettle();
-    if (find.text('Save channel tags').evaluate().isEmpty) {
-      await tester.drag(onboardingList, const Offset(0, -1800));
-      await tester.pumpAndSettle();
-    }
-    await tester.ensureVisible(find.text('Save channel tags').first);
-    await tester.pumpAndSettle();
     final saveChannelTags = find.text('Save channel tags');
     expect(saveChannelTags, findsWidgets);
     await tester.tap(saveChannelTags.first);
