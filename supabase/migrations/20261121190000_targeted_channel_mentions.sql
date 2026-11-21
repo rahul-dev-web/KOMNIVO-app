@@ -431,8 +431,10 @@ AS $function$
 DECLARE
   v_channel public.channels%ROWTYPE;
   v_sender_name text;
-  v_recipient record;
   v_existing record;
+  v_recipient_id uuid;
+  v_recipient_username text;
+  v_recipient_display_name text;
   v_username text;
   v_mention_id uuid;
   v_notification_id uuid;
@@ -531,13 +533,13 @@ BEGIN
     END IF;
 
     IF FOUND THEN
-      v_recipient.user_id := v_existing.mentioned_user_id;
-      SELECT p.username,p.display_name INTO v_recipient.username,v_recipient.display_name
-      FROM public.profiles p WHERE p.id=v_recipient.user_id;
+      v_recipient_id := v_existing.mentioned_user_id;
+      SELECT p.username,p.display_name INTO v_recipient_username,v_recipient_display_name
+      FROM public.profiles p WHERE p.id=v_recipient_id;
       v_was_removed := true;
     ELSE
       SELECT p.id,p.username,p.display_name
-      INTO v_recipient.user_id,v_recipient.username,v_recipient.display_name
+      INTO v_recipient_id,v_recipient_username,v_recipient_display_name
       FROM public.profiles p
       WHERE lower(p.username)=v_username;
 
@@ -547,20 +549,20 @@ BEGIN
       v_was_removed := false;
     END IF;
 
-    IF v_recipient.user_id=p_sender_id THEN
+    IF v_recipient_id=p_sender_id THEN
       CONTINUE;
     END IF;
 
     IF NOT app_private.can_user_receive_channel_mention(
-      v_recipient.user_id,p_channel_id
+      v_recipient_id,p_channel_id
     ) THEN
       RAISE EXCEPTION 'The mentioned user cannot access this channel';
     END IF;
 
     IF v_was_removed THEN
       UPDATE public.message_mentions
-      SET username_snapshot=coalesce(v_recipient.username,v_username),
-          display_name_snapshot=coalesce(v_recipient.display_name,''),
+      SET username_snapshot=coalesce(v_recipient_username,v_username),
+          display_name_snapshot=coalesce(v_recipient_display_name,''),
           status='active',removed_at=NULL
       WHERE id=v_existing.id
       RETURNING id INTO v_mention_id;
@@ -569,9 +571,9 @@ BEGIN
         message_id,channel_id,sender_id,mentioned_user_id,
         username_snapshot,display_name_snapshot
       ) VALUES (
-        p_message_id,p_channel_id,p_sender_id,v_recipient.user_id,
-        coalesce(v_recipient.username,v_username),
-        coalesce(v_recipient.display_name,'')
+        p_message_id,p_channel_id,p_sender_id,v_recipient_id,
+        coalesce(v_recipient_username,v_username),
+        coalesce(v_recipient_display_name,'')
       )
       RETURNING id INTO v_mention_id;
     END IF;
@@ -579,7 +581,7 @@ BEGIN
     INSERT INTO public.notifications(
       user_id,title,body,kind,entity_type,entity_id
     ) VALUES (
-      v_recipient.user_id,
+      v_recipient_id,
       'You were mentioned in #'||v_channel.name,
       v_sender_name||' mentioned you in #'||v_channel.name||'.',
       'mention','message',p_message_id
