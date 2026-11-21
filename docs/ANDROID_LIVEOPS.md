@@ -19,3 +19,15 @@ Each registered batch is bound server-side to the authenticated operator, the cu
 Files are stored in the private `match-evidence` bucket. Database registration is atomic and idempotent. An upload that fails before registration is eligible for uploader-only cleanup; once a file is linked to a capture row, the Storage delete policy blocks removal.
 
 OCR text is provisional source material, not an official result. Team identity/placement/kill reconciliation, overlap merging by canonical team ID, reviewer corrections and the evidence-gated Next Match action remain separate steps. Operators should hide notifications and unrelated private content before selecting screenshots.
+
+## Reviewer-confirmed candidates and official result submission
+
+Each Match ID can hold one canonical result candidate per Team ID. The operator maps on-device OCR text to the exact Match roster and links one or more source screenshot observations. Overlapping images add evidence provenance to the same candidate rather than creating another team row.
+
+A candidate remains provisional/needs-review until an authorised referee or result reviewer accepts or rejects it. Review-confirmed placement and kills are stored separately from the original operator/OCR readings. When linked screenshots disagree, the reviewer must explicitly enter final values. Reopening a candidate clears stale reviewer-confirmed values; after official result rows exist, candidate edits are blocked and require the existing audited correction/dispute path.
+
+The LiveOps operator can submit a Match only after every participant has one accepted candidate, reviewed placement and kills, unique placements, and at least one valid screenshot source. The submission RPC verifies the paused session, exact Lobby/Match binding, roster, reviewer decisions and still-present private Storage objects. It creates one `match_results` row per team and attaches only that team's candidate screenshot evidence to its `result_evidence` rows.
+
+Submission is idempotent for the same LiveOps session and Match ID. It marks the Match as `review` and evidence batches as `submitted`. It does **not** approve results, calculate points or update the published leaderboard. The existing authorised `approve_match_result` / result-review workflow remains the only scoring and standings path.
+
+The current slice has database migrations and contract tests for candidate provenance, reviewer confirmation, result-row materialisation, idempotent retry and candidate locking after official submission. Full signed-in Android/device acceptance, real Match data, result approval, scoring, public result publication and multi-Match LiveOps advancement remain separate release gates.
