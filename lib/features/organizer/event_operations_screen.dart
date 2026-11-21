@@ -55,7 +55,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
         .eq('event_id', eventId)
         .order('lobby_number'),
       _client.from('result_candidates')
-        .select('id,match_id,team_id,candidate_placement,candidate_kills,reviewed_placement,reviewed_kills,review_status,review_note,created_at,teams(name,tag),matches!inner(id,event_id,match_number),result_candidate_evidence(id,reported_placement,reported_kills)')
+        .select('id,match_id,team_id,candidate_placement,candidate_kills,reviewed_placement,reviewed_kills,review_status,review_note,created_at,teams(name,tag),matches!inner(id,event_id,match_number),result_candidate_evidence(id,reported_placement,reported_kills,liveops_captures(sequence_no,evidence_path,content_type))')
         .eq('matches.event_id', eventId)
         .order('created_at', ascending: false),
     ]);
@@ -419,6 +419,192 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     }
   }
 
+  Future<List<Map<String, dynamic>>> _loadOcrEvidencePreviews(
+    Map<String, dynamic> row,
+  ) async {
+    final evidence = (row['result_candidate_evidence'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    final previews = <Map<String, dynamic>>[];
+    for (final item in evidence) {
+      final capture = item['liveops_captures'] is Map
+          ? Map<String, dynamic>.from(item['liveops_captures'] as Map)
+          : <String, dynamic>{};
+      final path = capture['evidence_path']?.toString();
+      String? signedUrl;
+      String? previewError;
+      if (path == null || path.isEmpty) {
+        previewError = 'Screenshot storage reference is missing.';
+      } else {
+        try {
+          // The bucket remains private. RLS grants access only to the uploader
+          // or a result reviewer authorised for this exact Match ID.
+          signedUrl = await _client.storage
+              .from('match-evidence')
+              .createSignedUrl(path, 900);
+        } catch (error) {
+          previewError = 'Preview unavailable: ${error.toString()}';
+        }
+      }
+      previews.add(<String, dynamic>{
+        'sequence_no': capture['sequence_no'],
+        'content_type': capture['content_type'],
+        'reported_placement': item['reported_placement'],
+        'reported_kills': item['reported_kills'],
+        'signed_url': signedUrl,
+        'preview_error': previewError,
+      });
+    }
+    return previews;
+  }
+
+  Widget _ocrEvidenceGallery(List<Map<String, dynamic>> previews) {
+    if (previews.isEmpty) {
+      return const Text(
+        'No linked screenshot evidence was returned for this candidate.',
+        style: TextStyle(color: KomnivoTheme.muted, fontSize: 11),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Source screenshots',
+          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+        ),
+        const SizedBox(height: 8),
+        ...previews.map((item) {
+          final url = item['signed_url']?.toString();
+          final contentType = item['content_type']?.toString() ?? '';
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: KomnivoTheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: KomnivoTheme.line),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Screenshot ${item['sequence_no'] ?? '—'}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      'OCR P${item['reported_placement'] ?? '—'} / K${item['reported_kills'] ?? '—'}',
+                      style: const TextStyle(
+                        color: KomnivoTheme.cyan,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                if (url != null && url.isNotEmpty && contentType.startsWith('image/'))
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      url,
+                      width: double.infinity,
+                      height: 190,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        height: 100,
+                        width: double.infinity,
+                        alignment: Alignment.center,
+                        color: const Color(0xFF191E2C),
+                        child: const Text(
+                          'Screenshot preview failed to load. Reopen the review to request a fresh secure link.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    height: 90,
+                    width: double.infinity,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF191E2C),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      item['preview_error']?.toString() ??
+                          'No image preview is available for this evidence.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: KomnivoTheme.muted,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        }),
+        const SizedBox(height: 4),
+      ],
+    );
+  }
+
+  Future<void> _rejectOcrCandidate(Map<String, dynamic> row) async {
+    try {
+      final previews = await _loadOcrEvidencePreviews(row);
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Review screenshot evidence before rejection'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Inspect the original source images and the values transcribed from each one before rejecting this candidate.',
+                    style: TextStyle(fontSize: 12, height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  _ocrEvidenceGallery(previews),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Reject candidate'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true && mounted) {
+        await _reviewLiveOpsCandidate(row['id'].toString(), 'rejected');
+      }
+    } catch (error) {
+      if (mounted) {
+        showMessage(context, 'Could not load candidate screenshots: $error');
+      }
+    }
+  }
+
   Future<void> _acceptOcrCandidate(Map<String, dynamic> row) async {
     final placement = TextEditingController(
       text: (row['candidate_placement'] ?? '').toString(),
@@ -427,20 +613,27 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
       text: (row['candidate_kills'] ?? '').toString(),
     );
     try {
+      final previews = await _loadOcrEvidencePreviews(row);
+      if (!mounted) return;
       final values = await showDialog<Map<String, int>>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('Confirm final match values'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Compare each linked screenshot. These reviewer-confirmed values are stored separately from the original OCR/operator readings.',
-                style: TextStyle(fontSize: 12, height: 1.4),
-              ),
-              const SizedBox(height: 14),
-              TextField(
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Compare the original screenshots and the transcribed values. Reviewer-confirmed placement/kills are saved separately from the original OCR/operator readings.',
+                    style: TextStyle(fontSize: 12, height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  _ocrEvidenceGallery(previews),
+                  const Divider(height: 22),
+                  TextField(
                 controller: placement,
                 autofocus: true,
                 keyboardType: TextInputType.number,
@@ -453,8 +646,10 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(labelText: 'Final kills'),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
           actions: [
             TextButton(
@@ -806,7 +1001,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                     ? Wrap(spacing: 0, children: [
                         IconButton(
                           tooltip: 'Reject OCR candidate',
-                          onPressed: _busy ? null : () => _reviewLiveOpsCandidate(row['id'].toString(), 'rejected'),
+                          onPressed: _busy ? null : () => _rejectOcrCandidate(row),
                           icon: const Icon(Icons.close, color: Color(0xFFFF8193)),
                         ),
                         IconButton(
