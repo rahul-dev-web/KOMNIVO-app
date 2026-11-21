@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(32);
+select extensions.plan(34);
 
 select extensions.has_table('public','result_candidate_evidence',
   'A candidate can retain multiple screenshot evidence sources');
@@ -98,6 +98,19 @@ select extensions.ok(
     and qual ilike '%lc.match_id%'),
   'A match-scoped result reviewer can read only the private evidence belonging to that Match'
 );
+select extensions.ok(
+  exists(select 1 from pg_policies where schemaname='public'
+    and tablename='result_candidates' and policyname='result_candidates_read_team_or_staff'
+    and qual ilike '%match.results.review%'),
+  'A match-scoped referee/result reviewer can read OCR candidates for the exact Match'
+);
+select extensions.ok(
+  exists(select 1 from pg_policies where schemaname='public'
+    and tablename='teams' and policyname='teams_read_visible'
+    and qual ilike '%match.results.review%'),
+  'A match-scoped reviewer can read team labels for the candidate review queue'
+);
+
 
 select extensions.ok(
   exists(select 1 from pg_constraint where conrelid='public.result_candidates'::regclass
