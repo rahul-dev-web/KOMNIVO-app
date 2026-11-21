@@ -37,6 +37,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   String? _resolvingProposalId;
 
   bool get _organizer => widget.mode == 'organizer';
+  bool get _showOrganizerActions => _organizer || _managedCommunities.isNotEmpty;
 
   @override
   void initState() {
@@ -62,7 +63,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         client.from('community_members')
             .select('community_id')
             .eq('user_id', user.id)
-            .inFilter('role', ['owner', 'admin', 'moderator', 'organiser']),
+            .inFilter('role', ['owner', 'admin', 'organiser']),
       ]);
       final communityIds = <String>{};
       for (final row in results[0] as List) {
@@ -383,7 +384,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   Future<void> _send() async => _sendMessage(_input.text.trim());
 
   Future<void> _openTournamentForm() async {
-    if (!_organizer || _sending || _restoring || _loadingManagedCommunities) return;
+    if (!_showOrganizerActions || _sending || _restoring || _loadingManagedCommunities) return;
     if (_managedCommunities.isEmpty) {
       _showActionMessage(_communityLoadError ?? 'No community with organiser access was found.');
       return;
@@ -393,7 +394,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         builder: (_) => TournamentFormScreen(
           communities: _managedCommunities,
           initialCommunityId: _activeCommunityId ?? widget.communityId,
-          conversationId: _conversationId,
+          conversationId: _organizer ? _conversationId : null,
         ),
       ),
     );
@@ -401,8 +402,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     final proposal = result['proposal'] is Map
         ? Map<String, dynamic>.from(result['proposal'] as Map)
         : <String, dynamic>{};
-    _conversationId = result['conversation_id']?.toString() ?? _conversationId;
-    _activeCommunityId = proposal['community_id']?.toString() ?? _activeCommunityId;
+    if (_organizer) {
+      _conversationId = result['conversation_id']?.toString() ?? _conversationId;
+      _activeCommunityId = proposal['community_id']?.toString() ?? _activeCommunityId;
+    }
     setState(() => _items.add(_ChatItem(
       false,
       'Tournament proposal ready for review. Approve it to create a DRAFT event; it will not be published.',
@@ -412,7 +415,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   }
 
   void _showPaidScrimComingSoon() {
-    if (!_organizer || _sending || _restoring) return;
+    if (!_showOrganizerActions || _sending || _restoring) return;
     _showActionMessage(
       'Paid Scrim creation is coming soon. The entry point is ready; its fields, fee rules and approval workflow will be added after the organiser specification is finalised.',
     );
@@ -574,6 +577,16 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
               style: TextStyle(color: KomnivoTheme.muted, fontSize: 11),
             ),
           ),
+        if (_showOrganizerActions)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+            child: OrganizerChatActions(
+              tournamentEnabled: !_sending && !_restoring && !_loadingManagedCommunities,
+              paidScrimEnabled: !_sending && !_restoring,
+              onCreateTournament: _openTournamentForm,
+              onCreatePaidScrim: _showPaidScrimComingSoon,
+            ),
+          ),
         Expanded(
           child: ListView.builder(
             controller: _scroll,
@@ -630,37 +643,6 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 5, 12, 12),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              if (_organizer)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 3, bottom: 7),
-                    child: Wrap(spacing: 8, runSpacing: 6, children: [
-                      OutlinedButton.icon(
-                        key: const Key('organizer-create-tournament'),
-                        onPressed: _sending || _restoring || _loadingManagedCommunities ? null : _openTournamentForm,
-                        icon: const Icon(Icons.emoji_events_outlined, size: 17),
-                        label: const Text('Create Tournament'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: KomnivoTheme.cyan,
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-                        ),
-                      ),
-                      OutlinedButton.icon(
-                        key: const Key('organizer-create-paid-scrim'),
-                        onPressed: _sending || _restoring ? null : _showPaidScrimComingSoon,
-                        icon: const Icon(Icons.payments_outlined, size: 17),
-                        label: const Text('Create Paid Scrim'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: KomnivoTheme.accent,
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-                        ),
-                      ),
-                    ]),
-                  ),
-                ),
               Row(children: [
               Expanded(
                 child: TextField(
@@ -695,6 +677,78 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           ),
         ),
       ]),
+    );
+  }
+}
+
+class OrganizerChatActions extends StatelessWidget {
+  const OrganizerChatActions({
+    super.key,
+    required this.tournamentEnabled,
+    required this.paidScrimEnabled,
+    required this.onCreateTournament,
+    required this.onCreatePaidScrim,
+  });
+
+  final bool tournamentEnabled;
+  final bool paidScrimEnabled;
+  final VoidCallback onCreateTournament;
+  final VoidCallback onCreatePaidScrim;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('organizer-chat-actions-panel'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(11),
+      decoration: BoxDecoration(
+        color: KomnivoTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: KomnivoTheme.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'ORGANIZER QUICK ACTIONS',
+            style: TextStyle(
+              color: KomnivoTheme.muted,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: .7,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 7,
+            children: [
+              OutlinedButton.icon(
+                key: const Key('organizer-create-tournament'),
+                onPressed: tournamentEnabled ? onCreateTournament : null,
+                icon: const Icon(Icons.emoji_events_outlined, size: 17),
+                label: const Text('Create Tournament'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: KomnivoTheme.cyan,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+                ),
+              ),
+              OutlinedButton.icon(
+                key: const Key('organizer-create-paid-scrim'),
+                onPressed: paidScrimEnabled ? onCreatePaidScrim : null,
+                icon: const Icon(Icons.payments_outlined, size: 17),
+                label: const Text('Create Paid Scrim'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: KomnivoTheme.accent,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
