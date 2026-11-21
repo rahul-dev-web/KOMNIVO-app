@@ -93,6 +93,31 @@ class KomnivoRepository {
     return Map<String, dynamic>.from(result);
   }
 
+  /// Atomically registers already-uploaded screenshots and their local OCR
+  /// observations against one exact Lobby/Match/LiveOps session.
+  Future<Map<String, dynamic>> registerLiveOpsEvidenceBatch({
+    required String sessionId,
+    required String lobbyId,
+    required String matchId,
+    required String idempotencyKey,
+    required List<Map<String, dynamic>> items,
+    String captureKind = 'result',
+  }) async {
+    final result = await client.rpc('register_liveops_evidence_batch', params: {
+      'p_session_id': sessionId,
+      'p_lobby_id': lobbyId,
+      'p_match_id': matchId,
+      'p_idempotency_key': idempotencyKey,
+      'p_capture_kind': captureKind,
+      'p_items': items,
+    });
+    if (result is! Map) {
+      throw Exception('LiveOps screenshot evidence batch could not be registered.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
+
 
   /// Reads this user's own membership rows, including the owner row created
   /// by the database trigger when a community is created.
