@@ -82,7 +82,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final beforeCursor = value.substring(0, cursor);
-    final match = RegExp(r'(^|[\\s(])@([A-Za-z0-9_.-]{1,32})\$')
+    final match = RegExp(r'(^|[\s(])@([A-Za-z0-9_.-]{1,32})$')
         .firstMatch(beforeCursor);
     if (match == null) {
       _clearMentionSuggestions();
