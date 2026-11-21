@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
+import 'liveops_candidate_panel.dart';
 
 class LiveOpsEvidencePanel extends StatefulWidget {
   const LiveOpsEvidencePanel({
@@ -255,6 +256,14 @@ class _LiveOpsEvidencePanelState extends State<LiveOpsEvidencePanel> {
             Text(DateTime.tryParse(batch['created_at']?.toString() ?? '')?.toLocal().toString().split('.').first ?? '', style: const TextStyle(color:KomnivoTheme.muted,fontSize:9)),
           ]),
         )),
+      ],
+      if (_batches.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        LiveOpsCandidatePanel(
+          sessionId: widget.sessionId,
+          matchId: widget.matchId,
+          capturing: widget.capturing,
+        ),
       ],
     ]),
   );
