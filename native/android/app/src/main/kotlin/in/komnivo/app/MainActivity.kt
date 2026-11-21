@@ -168,7 +168,7 @@ class MainActivity : FlutterActivity() {
         }
 
         val safeExtension = extension?.lowercase(Locale.ROOT)
-        if (safeExtension !in setOf("jpg", "jpeg", "png", "webp")) {
+        if (safeExtension == null || safeExtension !in setOf("jpg", "jpeg", "png", "webp")) {
             result.error("EVIDENCE_TYPE", "Choose a JPG, PNG or WebP screenshot.", null)
             return
         }
@@ -179,7 +179,7 @@ class MainActivity : FlutterActivity() {
             file.writeBytes(bytes)
             val digest = MessageDigest.getInstance("SHA-256")
                 .digest(bytes)
-                .joinToString("") { byte -> "%02x".format(byte) }
+                .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
             val image = InputImage.fromFilePath(this, Uri.fromFile(file))
             recognizer.process(image)
                 .addOnSuccessListener { output ->
