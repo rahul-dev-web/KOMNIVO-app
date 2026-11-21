@@ -199,6 +199,35 @@ BEGIN
       RETURN false;
     END IF;
 
+    IF v_channel.is_private THEN
+      RETURN p_user_id=v_event_organizer
+        OR EXISTS (
+          SELECT 1 FROM public.event_group_teams gt
+          JOIN public.team_members tm ON tm.team_id=gt.team_id
+          WHERE gt.group_id=v_channel.group_id AND tm.user_id=p_user_id
+        )
+        OR EXISTS (
+          SELECT 1 FROM public.event_staff_assignments a
+          WHERE a.event_id=v_channel.event_id AND a.user_id=p_user_id
+            AND (
+              (a.scope_type='event' AND a.role_key=ANY(ARRAY[
+                'competition_manager','tournament_director','referee',
+                'result_reviewer','dispute_reviewer'
+              ]::text[]))
+              OR (a.scope_type='stage' AND a.stage_id=v_group_stage
+                AND a.role_key=ANY(ARRAY[
+                  'competition_manager','tournament_director','match_operator',
+                  'referee','result_reviewer','dispute_reviewer','support_staff'
+                ]::text[]))
+              OR (a.scope_type='group' AND a.group_id=v_channel.group_id
+                AND a.role_key=ANY(ARRAY[
+                  'match_operator','referee','result_reviewer',
+                  'dispute_reviewer','support_staff'
+                ]::text[]))
+            )
+        );
+    END IF;
+
     RETURN v_event_status IN ('published','registration_open','registration_closed','live','completed')
       OR p_user_id=v_event_organizer
       OR EXISTS (
