@@ -265,8 +265,12 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     }
   }
 
-  Future<void> _createLobby() async {
-    final matchIds = _selectedMatchIds.toList();
+  Future<void> _createLobby(List<Map<String, dynamic>> matches) async {
+    // Preserve the schedule order returned by the database, not checkbox tap order.
+    final matchIds = matches
+        .where((match) => _selectedMatchIds.contains(match['id']?.toString()))
+        .map((match) => match['id'].toString())
+        .toList();
     if (matchIds.isEmpty) return;
     setState(() => _busy = true);
     try {
@@ -508,7 +512,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
               trailing: _canEvent(data, 'event.matches.manage')
                   ? Wrap(spacing: 8, runSpacing: 6, children: [
                       OutlinedButton.icon(
-                        onPressed: _busy || _selectedMatchIds.isEmpty ? null : _createLobby,
+                        onPressed: _busy || _selectedMatchIds.isEmpty ? null : () => _createLobby(data.matches),
                         icon: const Icon(Icons.view_week_outlined),
                         label: Text('Create Lobby (${_selectedMatchIds.length})'),
                       ),
