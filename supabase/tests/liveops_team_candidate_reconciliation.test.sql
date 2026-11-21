@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(20);
+select extensions.plan(25);
 
 select extensions.has_table('public','result_candidate_evidence',
   'A candidate can retain multiple screenshot evidence sources');
@@ -94,6 +94,28 @@ select extensions.ok(
     and pg_get_constraintdef(oid) ilike '%needs_review%'),
   'Accepted candidates can be explicitly returned to needs_review after a conflict'
 );
+select extensions.ok(
+  to_regprocedure('public.review_liveops_team_candidate(uuid,text,text)') is not null,
+  'An explicit human-review RPC exists for OCR candidates'
+);
+select extensions.ok(
+  to_regprocedure('app_private.review_liveops_team_candidate(uuid,text,text)') is not null,
+  'Candidate review is implemented in the private schema'
+);
+select extensions.ok(
+  has_function_privilege('authenticated','public.review_liveops_team_candidate(uuid,text,text)','EXECUTE'),
+  'Authenticated reviewers can call the review RPC, which checks Match permission'
+);
+select extensions.ok(
+  not has_function_privilege('anon','public.review_liveops_team_candidate(uuid,text,text)','EXECUTE'),
+  'Anonymous users cannot review OCR candidates'
+);
+select extensions.ok(
+  (select prosecdef from pg_proc
+   where oid='app_private.review_liveops_team_candidate(uuid,text,text)'::regprocedure),
+  'Candidate review transaction is SECURITY DEFINER and enforces result-review permissions'
+);
+
 
 select * from extensions.finish();
 rollback;
