@@ -1184,7 +1184,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                             border: Border.all(color: KomnivoTheme.cyan.withValues(alpha: .35)),
                           ),
                           child: const Text(
-                            'Saving creates a review proposal. Approving it creates a DRAFT event only. Registration and public publishing remain closed until the organiser publishes the event separately.',
+                            'Saving creates a recoverable tournament preview in Organizer AI. Keep as Draft creates a private, editable DRAFT event; Publish creates the tournament category and channels. Registration remains closed until the organiser opens it separately.',
                             style: TextStyle(fontSize: 11, height: 1.4, color: Colors.white70),
                           ),
                         ),
@@ -1198,7 +1198,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                                 : Icon(editing ? Icons.save_outlined : Icons.send_rounded),
                             label: Text(_saving
                                 ? 'Saving…'
-                                : editing ? 'Save tournament changes' : 'Create review proposal'),
+                                : editing ? 'Save tournament changes' : 'Save draft & preview in chat'),
                           ),
                         ),
                         const SizedBox(height: 24),
