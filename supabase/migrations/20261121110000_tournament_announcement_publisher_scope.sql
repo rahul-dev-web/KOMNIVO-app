@@ -58,7 +58,7 @@ BEGIN
   END IF;
 
   IF v_announcement_publishers_only AND NOT v_can_publish_event_channel
-  THEN RAISE EXCEPTION 'Only authorised organisers can publish in this channel'; END IF;
+  THEN RAISE EXCEPTION 'Only authorised announcement publishers can post'; END IF;
 
   IF v_settings.channel_id IS NOT NULL THEN
     IF NOT v_settings.allow_links AND NEW.body ~* '(https?://|www[.])'
