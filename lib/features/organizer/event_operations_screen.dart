@@ -563,6 +563,11 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     try {
       final previews = await _loadOcrEvidencePreviews(row);
       if (!mounted) return;
+      if (previews.isEmpty ||
+          previews.any((item) => (item['signed_url']?.toString() ?? '').isEmpty)) {
+        showMessage(context, 'All source screenshots must be available before rejecting this OCR candidate. Check private Match Evidence access and retry.');
+        return;
+      }
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -615,6 +620,11 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     try {
       final previews = await _loadOcrEvidencePreviews(row);
       if (!mounted) return;
+      if (previews.isEmpty ||
+          previews.any((item) => (item['signed_url']?.toString() ?? '').isEmpty)) {
+        showMessage(context, 'All source screenshots must be available before accepting this OCR candidate. Check private Match Evidence access and retry.');
+        return;
+      }
       final values = await showDialog<Map<String, int>>(
         context: context,
         builder: (dialogContext) => AlertDialog(
