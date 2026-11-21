@@ -964,3 +964,39 @@ class _EventProposalCard extends StatelessWidget {
     );
   }
 }
+class _ProposalChip extends StatelessWidget {
+  const _ProposalChip({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+    decoration: BoxDecoration(
+      color: const Color(0xFF29234B),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: KomnivoTheme.line),
+    ),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 13, color: KomnivoTheme.cyan),
+      const SizedBox(width: 5),
+      Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+    ]),
+  );
+}
+
+class _ProposalInfo extends StatelessWidget {
+  const _ProposalInfo({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 4),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(icon, size: 13, color: KomnivoTheme.muted),
+      const SizedBox(width: 7),
+      Expanded(child: Text(label, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.35))),
+    ]),
+  );
+}
