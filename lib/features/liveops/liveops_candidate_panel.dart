@@ -27,9 +27,11 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
   final _killsController = TextEditingController();
   bool _loading = false;
   bool _saving = false;
+  bool _submitting = false;
   List<Map<String, dynamic>> _participants = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _observations = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _candidates = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _officialResults = <Map<String, dynamic>>[];
   String? _selectedTeamId;
   final Set<String> _selectedObservationIds = <String>{};
 
@@ -68,6 +70,10 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
             .select('id,team_id,candidate_placement,candidate_kills,reviewed_placement,reviewed_kills,review_status,review_note,result_candidate_evidence(id,source_observation_id,reported_placement,reported_kills)')
             .eq('match_id', widget.matchId)
             .order('candidate_placement'),
+        client.from('match_results')
+            .select('id,team_id,placement,kills,status,result_json')
+            .eq('match_id', widget.matchId)
+            .order('placement'),
       ]);
       if (!mounted) return;
       final observations = List<Map<String, dynamic>>.from(result[1] as List)
@@ -78,6 +84,7 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
         _participants = List<Map<String, dynamic>>.from(result[0] as List);
         _observations = observations;
         _candidates = candidateRows;
+        _officialResults = List<Map<String, dynamic>>.from(result[3] as List);
         final participantIds = _participants.map((row) => row['team_id'].toString()).toSet();
         if (_selectedTeamId != null && !participantIds.contains(_selectedTeamId)) {
           _selectedTeamId = null;
@@ -141,6 +148,64 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
       if (mounted) showMessage(context, 'Could not save team candidate: ' + error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  bool get _canSubmitReviewedResults {
+    if (widget.capturing || _loading || _saving || _submitting ||
+        _participants.isEmpty || _officialResults.isNotEmpty) {
+      return false;
+    }
+    for (final participant in _participants) {
+      final teamId = participant['team_id']?.toString();
+      if (teamId == null) return false;
+      Map<String, dynamic>? candidate;
+      for (final row in _candidates) {
+        if (row['team_id']?.toString() == teamId) {
+          candidate = row;
+          break;
+        }
+      }
+      if (candidate == null ||
+          candidate['review_status'] != 'accepted' ||
+          candidate['reviewed_placement'] == null ||
+          candidate['reviewed_kills'] == null ||
+          (candidate['result_candidate_evidence'] as List? ?? []).isEmpty) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<void> _submitReviewedResults() async {
+    if (!_canSubmitReviewedResults) return;
+    setState(() => _submitting = true);
+    try {
+      final result = await KomnivoRepository.instance
+          .submitReviewedLiveOpsMatchResults(
+        sessionId: widget.sessionId,
+        matchId: widget.matchId,
+      );
+      await _loadContext();
+      if (!mounted) return;
+      final count = result['submitted_count']?.toString() ??
+          (result['result_ids'] is List
+              ? (result['result_ids'] as List).length.toString()
+              : '0');
+      showMessage(
+        context,
+        '$count official result rows submitted for review. Points and standings remain unchanged until an authorised reviewer approves them.',
+      );
+    } catch (error) {
+      if (mounted) {
+        showMessage(
+          context,
+          'Could not submit reviewed results: ' +
+              error.toString().replaceFirst('Exception: ', ''),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
@@ -251,6 +316,46 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
             ]),
           );
         }),
+      ],
+      if (_officialResults.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF192231),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: KomnivoTheme.line),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Official result rows submitted', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+            const SizedBox(height: 5),
+            Text(
+              '${_officialResults.length} team result(s) · ${_officialResults.map((row) => row['status']?.toString() ?? 'submitted').toSet().join(', ')}',
+              style: const TextStyle(color: KomnivoTheme.muted,fontSize:10),
+            ),
+            const SizedBox(height: 5),
+            const Text('Final points and standings are not calculated yet. An authorised organiser/result reviewer must approve the submitted results in Event Operations.', style: TextStyle(color:KomnivoTheme.cyan,fontSize:10,height:1.4)),
+          ]),
+        ),
+      ] else if (_canSubmitReviewedResults) ...[
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _submitting ? null : _submitReviewedResults,
+            icon: _submitting
+                ? const SizedBox(width:16,height:16,child:CircularProgressIndicator(strokeWidth:2))
+                : const Icon(Icons.send_and_archive_outlined),
+            label: Text(_submitting
+                ? 'Submitting official result rows…'
+                : 'Submit all reviewed teams for official approval'),
+          ),
+        ),
+        const SizedBox(height: 5),
+        const Text('This creates the official Match result submissions with each team’s own screenshots. It does not approve results or calculate standings.', style: TextStyle(color:KomnivoTheme.muted,fontSize:10,height:1.4)),
+      ] else if (_candidates.isNotEmpty && !widget.capturing) ...[
+        const SizedBox(height: 10),
+        const Text('Official submission unlocks after every team in this Match has an accepted reviewer-confirmed row and at least one linked screenshot.', style: TextStyle(color:KomnivoTheme.muted,fontSize:10,height:1.4)),
       ],
       const SizedBox(height: 8),
       const Text('This creates one candidate per Team ID in this Match ID. Overlapping screenshots add provenance links, not extra points. The same team in another Match ID remains a separate candidate. All rows stay provisional/Needs review until an authorised reviewer accepts them.',style:TextStyle(color:KomnivoTheme.cyan,fontSize:10,height:1.4)),
