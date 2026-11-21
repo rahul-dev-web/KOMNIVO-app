@@ -516,6 +516,24 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     final isStructuredTournament = proposalDetails['workflow_type'] == 'tournament';
     final keepAsDraft = decision == 'keep_draft';
     final publish = decision == 'publish';
+    final eventAlreadyDraft = isStructuredTournament &&
+        (proposalDetails['status'] == 'draft' || proposalDetails['status'] == 'approved');
+    if (keepAsDraft && eventAlreadyDraft) {
+      final index = _items.indexWhere((item) => item.proposal?['id']?.toString() == proposalId);
+      if (index >= 0) {
+        final current = _items[index];
+        setState(() => _items[index] = current.copyWith(proposal: {
+          ...?current.proposal,
+          'status': 'draft',
+          'draft_kept': true,
+        }));
+      }
+      setState(() => _items.add(_ChatItem(
+        false,
+        'Tournament “${proposalDetails['name'] ?? 'event'}” is already saved as a private DRAFT. No public channels or player notifications were created. Publish it later when ready.',
+      )));
+      return;
+    }
     setState(() => _resolvingProposalId = proposalId);
     try {
       final response = await Supabase.instance.client.functions.invoke(
@@ -914,31 +932,24 @@ class _EventProposalCard extends StatelessWidget {
         ),
         if (isTournament && (pending || draft)) ...[
           const SizedBox(height: 14),
-          if (pending)
-            Row(children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: busy ? null : onKeepDraft,
-                  child: Text(busy ? 'Saving…' : 'Keep as Draft'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton(
-                  onPressed: busy ? null : onPublish,
-                  child: Text(busy ? 'Publishing…' : 'Publish Tournament'),
-                ),
-              ),
-            ])
-          else
-            SizedBox(
-              width: double.infinity,
+          Row(children: [
+            Expanded(
+              child: proposal['draft_kept'] == true
+                  ? const Text('PRIVATE DRAFT SAVED', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 10, fontWeight: FontWeight.w900))
+                  : OutlinedButton(
+                      onPressed: busy ? null : onKeepDraft,
+                      child: Text(busy ? 'Saving…' : 'Keep as Draft'),
+                    ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
               child: FilledButton.icon(
                 onPressed: busy ? null : onPublish,
                 icon: const Icon(Icons.campaign_outlined),
                 label: Text(busy ? 'Publishing…' : 'Publish Tournament'),
               ),
             ),
+          ]),
         ] else if (!isTournament && pending) ...[
           const SizedBox(height: 14),
           Row(children: [
