@@ -141,6 +141,23 @@ class KomnivoRepository {
     return Map<String, dynamic>.from(result);
   }
 
+  /// Human review of a provisional OCR row. This never publishes an official result.
+  Future<Map<String, dynamic>> reviewLiveOpsTeamCandidate({
+    required String candidateId,
+    required String decision,
+    String note = '',
+  }) async {
+    final result = await client.rpc('review_liveops_team_candidate', params: {
+      'p_candidate_id': candidateId,
+      'p_decision': decision,
+      'p_note': note,
+    });
+    if (result is! Map) {
+      throw Exception('OCR candidate review could not be saved.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
   /// Reads this user's own membership rows, including the owner row created
   /// by the database trigger when a community is created.
   Future<Map<String, Map<String, dynamic>>> myCommunityMemberships() async {
