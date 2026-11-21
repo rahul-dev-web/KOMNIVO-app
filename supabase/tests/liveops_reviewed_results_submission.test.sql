@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(27);
+select extensions.plan(28);
 
 select extensions.ok(
   to_regprocedure('public.submit_reviewed_liveops_match_results(uuid,uuid)') is not null,
@@ -91,6 +91,15 @@ select extensions.ok(
   position('FOR UPDATE' in pg_get_functiondef('app_private.submit_reviewed_liveops_match_results(uuid,uuid)'::regprocedure))>0,
   'Match-row locking serialises candidate edits and result submission'
 );
+select extensions.ok(
+  exists(select 1 from pg_policies where schemaname='public'
+    and tablename='match_results'
+    and policyname='match_results_read_liveops_operator'
+    and qual ilike '%liveops.capture.submit%'
+    and qual ilike '%match_id%'),
+  'A LiveOps operator can verify only result rows scoped to the Match they operate'
+);
+
 select extensions.ok(
   exists(select 1 from pg_indexes where schemaname='public' and tablename='match_results' and indexname='match_results_approved_by_idx'),
   'Approved-by result foreign key has a supporting index'
