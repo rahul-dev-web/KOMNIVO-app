@@ -523,6 +523,24 @@ class KomnivoRepository {
     return List<Map<String, dynamic>>.from(rows);
   }
 
+  Future<List<Map<String, dynamic>>> channelMentionCandidates(
+    String channelId,
+    String query,
+  ) async {
+    final response = await client.rpc(
+      'channel_mention_candidates',
+      params: {
+        'p_channel_id': channelId,
+        'p_query': query.trim(),
+      },
+    );
+    if (response is! List) return <Map<String, dynamic>>[];
+    return response
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList();
+  }
+
   Future<String> sendMessage(
     String channelId,
     String body, {
