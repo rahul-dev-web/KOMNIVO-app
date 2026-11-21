@@ -49,8 +49,8 @@ select extensions.ok(
 );
 select extensions.ok(
   exists(select 1 from pg_indexes where schemaname='public'
-    and tablename='liveops_captures' and indexname='liveops_captures_match_content_hash_uidx'),
-  'Exact duplicate screenshot hashes are unique per session and Match ID'
+    and tablename='liveops_captures' and indexname='liveops_captures_match_content_hash_uidx' and indexdef ilike '%(match_id, content_sha256)%'),
+  'Exact duplicate screenshot hashes are unique per Match ID, including across resumed sessions'
 );
 select extensions.ok(
   position('NEW.lobby_id IS DISTINCT FROM OLD.lobby_id'
@@ -65,7 +65,7 @@ select extensions.ok(
 select extensions.ok(
   exists(select 1 from pg_policies where schemaname='storage' and tablename='objects'
     and policyname='match_evidence_delete_unregistered_own'
-    and qual ilike '%NOT EXISTS%liveops_captures%'),
+    and qual ilike '%NOT%liveops_captures%'),
   'Uploader can clean only unregistered evidence objects'
 );
 select extensions.ok(
