@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(30);
+select extensions.plan(31);
 
 select extensions.has_table('public','result_candidate_evidence',
   'A candidate can retain multiple screenshot evidence sources');
@@ -127,6 +127,13 @@ select extensions.ok(
 select extensions.ok(
   position('official_result_created' in pg_get_functiondef('app_private.review_liveops_team_candidate(uuid,text,text,integer,integer)'::regprocedure)) > 0,
   'OCR candidate review is deliberately separate from official match result publication'
+);
+select extensions.ok(
+  exists(select 1 from pg_trigger t
+    where t.tgrelid='public.result_candidates'::regclass
+      and t.tgname='result_candidates_clear_unaccepted_review_values'
+      and not t.tgisinternal),
+  'Reopened candidates cannot retain stale reviewer-confirmed values'
 );
 
 
