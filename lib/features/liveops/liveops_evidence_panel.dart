@@ -96,6 +96,10 @@ class _LiveOpsEvidencePanelState extends State<LiveOpsEvidencePanel> {
       final prepared = <Map<String, dynamic>>[];
       final seenHashes = <String>{};
       for (final file in files) {
+        final reportedSize = await file.length();
+        if (reportedSize != null && reportedSize > 10 * 1024 * 1024) {
+          throw Exception(file.name + ' exceeds 10 MiB.');
+        }
         final Uint8List bytes = await file.readAsBytes();
         final extension = (file.extension ?? file.name.split('.').last).toLowerCase();
         final String contentType = switch (extension) {
@@ -104,7 +108,7 @@ class _LiveOpsEvidencePanelState extends State<LiveOpsEvidencePanel> {
           'webp' => 'image/webp',
           _ => '',
         };
-        if (bytes == null || bytes.isEmpty) {
+        if (bytes.isEmpty) {
           throw Exception('Could not read ' + file.name + '.');
         }
         if (contentType.isEmpty) {
