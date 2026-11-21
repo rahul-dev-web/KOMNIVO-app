@@ -20,7 +20,7 @@ type NotificationPreferences = {
   marketing_push: boolean;
 };
 
-type Device = { token: string; platform?: string | null };
+type Device = { id: string; token: string; platform?: string | null };
 type SendResult = { ok: boolean; platform: string; error_status?: string };
 
 let cachedGoogleAccessToken = "";
@@ -74,6 +74,47 @@ async function getGoogleAccessToken(): Promise<string> {
   return await refreshPromise;
 }
 
+async function waitBeforeRetry(attemptNumber: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, attemptNumber * 300));
+}
+
+async function recordDeliveryAttempt(
+  supabaseUrl: string,
+  headers: Record<string, string>,
+  values: {
+    notification_id: string;
+    user_id: string;
+    device_token_id: string;
+    attempt_number: number;
+    status: "accepted" | "retryable_failure" | "permanent_failure";
+    http_status?: number;
+    error_code?: string;
+  },
+): Promise<void> {
+  try {
+    const response = await fetch(
+      supabaseUrl + "/rest/v1/notification_delivery_attempts",
+      {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify(values),
+        signal: AbortSignal.timeout(8_000),
+      },
+    );
+    if (!response.ok) {
+      console.warn("Could not persist notification delivery attempt.", {
+        http_status: response.status,
+      });
+    }
+  } catch {
+    console.warn("Notification delivery attempt log write failed.");
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -105,7 +146,7 @@ Deno.serve(async (req: Request) => {
 
     const [tokenResponse, preferenceResponse] = await Promise.all([
       fetch(
-        supabaseUrl + "/rest/v1/device_tokens?select=token,platform&user_id=eq." + encodeURIComponent(userId),
+        supabaseUrl + "/rest/v1/device_tokens?select=id,token,platform&user_id=eq." + encodeURIComponent(userId),
         { headers: supabaseHeaders, signal: AbortSignal.timeout(12_000) },
       ),
       fetch(
@@ -132,6 +173,7 @@ Deno.serve(async (req: Request) => {
     const preferenceByKind: Record<string, keyof NotificationPreferences> = {
       message: "message_push",
       mention: "mention_push",
+      mention_correction: "mention_push",
       event: "event_push",
       community_owner_ai_ready: "event_push",
       tournament: "tournament_push",
@@ -155,53 +197,150 @@ Deno.serve(async (req: Request) => {
     };
     const webAppUrl = Deno.env.get("KOMNIVO_WEB_URL") ?? "https://komnivo-app.pages.dev/";
 
+    const notificationId = String(record.id ?? "");
+    if (!notificationId) return json({ error: "Notification id is missing." }, 400);
+
     const results = await Promise.all(devices.map(async (device): Promise<SendResult> => {
       const platform = String(device.platform ?? "android").toLowerCase();
       const isWeb = platform === "web";
       try {
-        const response = await fetch(
-          "https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(projectId) + "/messages:send",
-          {
-            method: "POST",
-            headers: {
-              Authorization: "Bearer " + accessToken,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              message: {
-                token: device.token,
-                notification: { title, body: notificationBody },
-                data,
-                ...(isWeb
-                  ? {
-                      webpush: {
-                        headers: { Urgency: "high" },
-                        fcm_options: { link: webAppUrl },
-                      },
-                    }
-                  : { android: { priority: "high" } }),
-              },
-            }),
-            signal: AbortSignal.timeout(15_000),
-          },
+        const historyResponse = await fetch(
+          supabaseUrl + "/rest/v1/notification_delivery_attempts?select=attempt_number,status"
+            + "&notification_id=eq." + encodeURIComponent(notificationId)
+            + "&device_token_id=eq." + encodeURIComponent(device.id)
+            + "&order=attempt_number.asc",
+          { headers: supabaseHeaders, signal: AbortSignal.timeout(8_000) },
         );
+        if (!historyResponse.ok) {
+          return { ok: false, platform, error_status: "DELIVERY_HISTORY_LOOKUP_FAILED" };
+        }
 
-        if (response.ok) return { ok: true, platform };
+        const history = await historyResponse.json() as Array<{
+          attempt_number: number;
+          status: string;
+        }>;
+        if (history.some((row) => row.status === "accepted")) {
+          return { ok: true, platform };
+        }
+        if (history.some((row) => row.status === "permanent_failure")) {
+          return { ok: false, platform, error_status: "PREVIOUS_PERMANENT_FAILURE" };
+        }
 
-        // Keep the diagnostic code, but never log response bodies or device tokens.
-        const errorPayload = await response.json().catch(() => null) as
-          | { error?: { status?: string } }
-          | null;
-        const errorStatus = String(errorPayload?.error?.status ?? `HTTP_${response.status}`);
-        console.warn("FCM send rejected for device.", {
-          platform,
-          http_status: response.status,
-          error_status: errorStatus,
-        });
-        return { ok: false, platform, error_status: errorStatus };
+        let attemptNumber = Math.max(0, ...history.map((row) => Number(row.attempt_number) || 0)) + 1;
+        if (attemptNumber > 3) {
+          return { ok: false, platform, error_status: "RETRY_LIMIT_REACHED" };
+        }
+
+        while (attemptNumber <= 3) {
+          try {
+            const response = await fetch(
+              "https://fcm.googleapis.com/v1/projects/" + encodeURIComponent(projectId) + "/messages:send",
+              {
+                method: "POST",
+                headers: {
+                  Authorization: "Bearer " + accessToken,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  message: {
+                    token: device.token,
+                    notification: { title, body: notificationBody },
+                    data,
+                    ...(isWeb
+                      ? {
+                          webpush: {
+                            headers: { Urgency: "high" },
+                            fcm_options: { link: webAppUrl },
+                          },
+                        }
+                      : { android: { priority: "high" } }),
+                  },
+                }),
+                signal: AbortSignal.timeout(15_000),
+              },
+            );
+
+            if (response.ok) {
+              await recordDeliveryAttempt(supabaseUrl, supabaseHeaders, {
+                notification_id: notificationId,
+                user_id: userId,
+                device_token_id: device.id,
+                attempt_number: attemptNumber,
+                status: "accepted",
+                http_status: response.status,
+              });
+              return { ok: true, platform };
+            }
+
+            const errorPayload = await response.json().catch(() => null) as
+              | { error?: { status?: string } }
+              | null;
+            const errorStatus = String(errorPayload?.error?.status ?? `HTTP_${response.status}`);
+            const retryable =
+              response.status === 429 ||
+              response.status === 500 ||
+              response.status === 502 ||
+              response.status === 503 ||
+              response.status === 504 ||
+              ["UNAVAILABLE", "INTERNAL", "RESOURCE_EXHAUSTED"].includes(errorStatus);
+
+            await recordDeliveryAttempt(supabaseUrl, supabaseHeaders, {
+              notification_id: notificationId,
+              user_id: userId,
+              device_token_id: device.id,
+              attempt_number: attemptNumber,
+              status: retryable ? "retryable_failure" : "permanent_failure",
+              http_status: response.status,
+              error_code: errorStatus,
+            });
+
+            console.warn("FCM send rejected for device.", {
+              platform,
+              http_status: response.status,
+              error_status: errorStatus,
+              attempt_number: attemptNumber,
+              retryable,
+            });
+
+            if (!retryable) {
+              if (errorStatus === "UNREGISTERED") {
+                await fetch(
+                  supabaseUrl + "/rest/v1/device_tokens?id=eq." + encodeURIComponent(device.id),
+                  {
+                    method: "DELETE",
+                    headers: supabaseHeaders,
+                    signal: AbortSignal.timeout(8_000),
+                  },
+                ).catch(() => undefined);
+              }
+              return { ok: false, platform, error_status: errorStatus };
+            }
+          } catch {
+            await recordDeliveryAttempt(supabaseUrl, supabaseHeaders, {
+              notification_id: notificationId,
+              user_id: userId,
+              device_token_id: device.id,
+              attempt_number: attemptNumber,
+              status: "retryable_failure",
+              error_code: "NETWORK_ERROR",
+            });
+            console.warn("FCM send failed before receiving a response.", {
+              platform,
+              error_status: "NETWORK_ERROR",
+              attempt_number: attemptNumber,
+            });
+          }
+
+          if (attemptNumber < 3) await waitBeforeRetry(attemptNumber);
+          attemptNumber += 1;
+        }
+        return { ok: false, platform, error_status: "RETRY_LIMIT_REACHED" };
       } catch {
-        console.warn("FCM send failed before receiving a response.", { platform, error_status: "NETWORK_ERROR" });
-        return { ok: false, platform, error_status: "NETWORK_ERROR" };
+        console.warn("Notification delivery setup failed for device.", {
+          platform,
+          error_status: "DELIVERY_SETUP_FAILED",
+        });
+        return { ok: false, platform, error_status: "DELIVERY_SETUP_FAILED" };
       }
     }));
 
