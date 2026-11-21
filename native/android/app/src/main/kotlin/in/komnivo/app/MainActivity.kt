@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.speech.tts.TextToSpeech
@@ -12,7 +13,13 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
+import java.security.MessageDigest
 import java.util.Locale
+import java.util.UUID
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
 class MainActivity : FlutterActivity() {
     companion object {
@@ -40,6 +47,11 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "startCapture" -> requestCapturePermission(result)
+                    "recognizeEvidenceImage" -> recognizeEvidenceImage(
+                        call.argument<ByteArray>("bytes"),
+                        call.argument<String>("extension"),
+                        result,
+                    )
                     "stopCapture" -> {
                         stopService(Intent(this, LiveOpsCaptureService::class.java))
                         result.success(true)
@@ -137,6 +149,68 @@ class MainActivity : FlutterActivity() {
         pendingSpeech.forEach { it.result.success(false) }
         pendingSpeech.clear()
         textToSpeech?.stop()
+    }
+
+    // Only screenshots explicitly selected by the operator are passed here.
+    // Continuous MediaProjection frames are never uploaded by this method.
+    private fun recognizeEvidenceImage(
+        bytes: ByteArray?,
+        extension: String?,
+        result: MethodChannel.Result,
+    ) {
+        if (bytes == null || bytes.isEmpty()) {
+            result.error("EVIDENCE_EMPTY", "The selected screenshot is empty.", null)
+            return
+        }
+        if (bytes.size > 10 * 1024 * 1024) {
+            result.error("EVIDENCE_TOO_LARGE", "Each screenshot must be 10 MiB or smaller.", null)
+            return
+        }
+
+        val safeExtension = extension?.lowercase(Locale.ROOT)
+        if (safeExtension !in setOf("jpg", "jpeg", "png", "webp")) {
+            result.error("EVIDENCE_TYPE", "Choose a JPG, PNG or WebP screenshot.", null)
+            return
+        }
+
+        val file = File(cacheDir, "komnivo-evidence-${UUID.randomUUID()}.${safeExtension}")
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+            file.writeBytes(bytes)
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest(bytes)
+                .joinToString("") { byte -> "%02x".format(byte) }
+            val image = InputImage.fromFilePath(this, Uri.fromFile(file))
+            recognizer.process(image)
+                .addOnSuccessListener { output ->
+                    result.success(
+                        mapOf(
+                            "sha256" to digest,
+                            "ocr_text" to output.text.take(20000),
+                            "ocr_engine" to "google_mlkit_on_device",
+                        ),
+                    )
+                }
+                .addOnFailureListener { error ->
+                    result.error(
+                        "EVIDENCE_OCR_FAILED",
+                        error.message ?: "Could not recognise text in the selected screenshot.",
+                        null,
+                    )
+                }
+                .addOnCompleteListener {
+                    recognizer.close()
+                    file.delete()
+                }
+        } catch (error: Exception) {
+            recognizer.close()
+            file.delete()
+            result.error(
+                "EVIDENCE_OCR_FAILED",
+                error.message ?: "Could not process the selected screenshot.",
+                null,
+            )
+        }
     }
 
     private fun requestCapturePermission(result: MethodChannel.Result) {
