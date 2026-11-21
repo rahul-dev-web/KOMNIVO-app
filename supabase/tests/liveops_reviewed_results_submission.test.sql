@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(19);
+select extensions.plan(27);
 
 select extensions.ok(
   to_regprocedure('public.submit_reviewed_liveops_match_results(uuid,uuid)') is not null,
@@ -91,6 +91,41 @@ select extensions.ok(
   position('FOR UPDATE' in pg_get_functiondef('app_private.submit_reviewed_liveops_match_results(uuid,uuid)'::regprocedure))>0,
   'Match-row locking serialises candidate edits and result submission'
 );
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public' and tablename='match_results' and indexname='match_results_approved_by_idx'),
+  'Approved-by result foreign key has a supporting index'
+);
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public' and tablename='match_results' and indexname='match_results_submitted_by_idx'),
+  'Submitted-by result foreign key has a supporting index'
+);
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public' and tablename='match_results' and indexname='match_results_team_id_idx'),
+  'Match result Team foreign key has a supporting index'
+);
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public' and tablename='result_candidate_evidence' and indexname='result_candidate_evidence_created_by_idx'),
+  'Evidence creator foreign key has a supporting index'
+);
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public' and tablename='result_candidate_evidence' and indexname='result_candidate_evidence_team_id_idx'),
+  'Candidate evidence Team foreign key has a supporting index'
+);
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public' and tablename='result_candidates' and indexname='result_candidates_reviewed_by_idx'),
+  'Candidate reviewer foreign key has a supporting index'
+);
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public' and tablename='result_candidates' and indexname='result_candidates_source_observation_id_idx'),
+  'Candidate source-observation foreign key has a supporting index'
+);
+select extensions.ok(
+  (select with_check ilike '%( SELECT auth.uid() AS uid)%'
+   from pg_policies where schemaname='public' and tablename='result_candidates'
+     and policyname='result_candidates_insert_operator'),
+  'Candidate insert policy evaluates auth.uid() once per statement'
+);
+
 
 select * from extensions.finish();
 rollback;
