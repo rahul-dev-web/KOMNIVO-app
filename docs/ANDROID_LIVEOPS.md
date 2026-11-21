@@ -31,3 +31,15 @@ The LiveOps operator can submit a Match only after every participant has one acc
 Submission is idempotent for the same LiveOps session and Match ID. It marks the Match as `review` and evidence batches as `submitted`. It does **not** approve results, calculate points or update the published leaderboard. The existing authorised `approve_match_result` / result-review workflow remains the only scoring and standings path.
 
 The current slice has database migrations and contract tests for candidate provenance, reviewer confirmation, result-row materialisation, idempotent retry and candidate locking after official submission. Full signed-in Android/device acceptance, real Match data, result approval, scoring, public result publication and multi-Match LiveOps advancement remain separate release gates.
+
+## Sequential multi-Match Lobby progression
+
+The Lobby sequence is authoritative. Starting LiveOps resumes the operator's active session with its actual Match sequence and Match code; it does not accidentally label a resumed Match as sequence one. If the operator has no active session, recovery selects the first ordered Match that has no result submission and is not already active/closed.
+
+After every team in the current Match has an accepted candidate, reviewer-confirmed placement/kills, and valid candidate-specific screenshot evidence, the operator submits the official result rows. Those rows enter the existing result-review queue in `match_results`; scoring and standings remain unchanged until an authorised result reviewer approves them.
+
+Only then does the Next Match action call `start_next_liveops_lobby_session`. The server locks the previous session/Lobby/next Match, checks the exact same Lobby and increasing sequence number, verifies the previous Match has a complete official result submission from that exact LiveOps session, and creates one successor session. A unique predecessor link makes retries idempotent. The previous session is closed; the next one is prepared in `created` state. Android screen capture begins only when the operator presses Start.
+
+A successor session stores its immutable `previous_session_id`; deleting a predecessor is restricted. If the last Match is complete, the server reports that no unsubmitted Match remains. A Match already containing official results is not selected again during Lobby recovery.
+
+The live Supabase schema and RPC contracts have been checked. The live project currently has no Matches or LiveOps sessions, so real multi-Match execution still requires a populated Lobby and signed-in Android device smoke test.
