@@ -60,6 +60,39 @@ class KomnivoRepository {
     return Map<String, dynamic>.from(result);
   }
 
+  /// Creates one generated Lobby ID for an ordered set of Match IDs.
+  /// Match IDs remain the identity used for evidence, scoring and results.
+  Future<Map<String, dynamic>> createEventLobby({
+    required String eventId,
+    required List<String> matchIds,
+    required String idempotencyKey,
+  }) async {
+    final result = await client.rpc('create_event_lobby', params: {
+      'p_event_id': eventId,
+      'p_match_ids': matchIds,
+      'p_idempotency_key': idempotencyKey,
+    });
+    if (result is! Map) {
+      throw Exception('Lobby could not be created.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
+  /// Starts one LiveOps session for a Lobby ID and binds the first ordered Match ID.
+  Future<Map<String, dynamic>> startLiveOpsLobbySession({
+    required String lobbyId,
+    Map<String, dynamic> deviceInfo = const <String, dynamic>{},
+  }) async {
+    final result = await client.rpc('start_liveops_lobby_session', params: {
+      'p_lobby_id': lobbyId,
+      'p_device_info': deviceInfo,
+    });
+    if (result is! Map) {
+      throw Exception('LiveOps lobby session could not be created.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
 
   /// Reads this user's own membership rows, including the owner row created
   /// by the database trigger when a community is created.
