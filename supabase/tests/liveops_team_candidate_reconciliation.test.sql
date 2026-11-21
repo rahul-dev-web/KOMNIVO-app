@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(28);
+select extensions.plan(30);
 
 select extensions.has_table('public','result_candidate_evidence',
   'A candidate can retain multiple screenshot evidence sources');
