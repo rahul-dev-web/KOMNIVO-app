@@ -65,7 +65,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS liveops_captures_batch_sequence_uidx
   ON public.liveops_captures(evidence_batch_id,sequence_no)
   WHERE evidence_batch_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS liveops_captures_match_content_hash_uidx
-  ON public.liveops_captures(session_id,match_id,content_sha256)
+  ON public.liveops_captures(match_id,content_sha256)
   WHERE content_sha256 IS NOT NULL;
 CREATE INDEX IF NOT EXISTS liveops_captures_batch_idx
   ON public.liveops_captures(evidence_batch_id)
