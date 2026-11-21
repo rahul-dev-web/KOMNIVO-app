@@ -138,7 +138,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
             .order('created_at'),
         _organizer
             ? client.from('tournament_proposals')
-                .select('id,payload,source_refs,status,expires_at,event_id')
+                .select('id,payload,source_refs,status,expires_at,event_id,community_id')
                 .eq('conversation_id', conversationId)
                 .order('created_at')
             : Future.value(<Map<String, dynamic>>[]),
@@ -198,6 +198,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                 : row['status'],
             'expires_at': row['expires_at'],
             'event_id': row['event_id'],
+            'community_id': row['community_id'],
             'source_refs': row['source_refs'] ?? [],
           },
         );
