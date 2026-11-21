@@ -358,7 +358,7 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
         const Text('Official submission unlocks after every team in this Match has an accepted reviewer-confirmed row and at least one linked screenshot.', style: TextStyle(color:KomnivoTheme.muted,fontSize:10,height:1.4)),
       ],
       const SizedBox(height: 8),
-      const Text('This creates one candidate per Team ID in this Match ID. Overlapping screenshots add provenance links, not extra points. The same team in another Match ID remains a separate candidate. All rows stay provisional/Needs review until an authorised reviewer accepts them.',style:TextStyle(color:KomnivoTheme.cyan,fontSize:10,height:1.4)),
+      const Text('This creates one candidate per Team ID in this Match ID. Overlapping screenshots add provenance links, not extra points. The same team in another Match ID remains a separate candidate. Provisional OCR rows do not affect official results; a reviewer must accept every team before the operator can submit this Match for official result approval.',style:TextStyle(color:KomnivoTheme.cyan,fontSize:10,height:1.4)),
     ]),
   );
 }
