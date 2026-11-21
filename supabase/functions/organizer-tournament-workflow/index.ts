@@ -711,6 +711,42 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (action === "publish_proposal") {
+      const proposalId = stringValue(body.proposal_id);
+      if (!proposalId) return json({ error: "proposal_id is required." }, 400);
+
+      const { data: proposal, error: proposalError } = await admin.from("tournament_proposals")
+        .select("id,owner_user_id,community_id,conversation_id,status,event_id")
+        .eq("id", proposalId)
+        .eq("owner_user_id", user.id)
+        .maybeSingle();
+      if (proposalError || !proposal) return json({ error: "Tournament proposal not found." }, 404);
+      if (proposal.community_id !== communityId) return json({ error: "Community scope mismatch." }, 403);
+
+      const { data: result, error } = await admin.rpc("publish_tournament_proposal", {
+        p_proposal_id: proposalId,
+        p_user_id: user.id,
+      });
+      if (error) {
+        const message = String(error.message ?? "");
+        const status = message.includes("permission") || message.includes("authorised") ? 403
+          : message.includes("not publishable") || message.includes("only a DRAFT")
+            || message.includes("not published") ? 409
+          : 400;
+        return json({ error: message || "Could not publish the tournament." }, status);
+      }
+
+      if (proposal.conversation_id) {
+        await admin.from("ai_conversations").update({ updated_at: new Date().toISOString() })
+          .eq("id", proposal.conversation_id).eq("owner_user_id", user.id);
+      }
+      return json({
+        ...(result && typeof result === "object" ? result as JsonObject : { result }),
+        published: true,
+        registration_opened: false,
+      });
+    }
+
     if (action === "resolve_proposal") {
       const proposalId = stringValue(body.proposal_id);
       const decision = stringValue(body.decision);
