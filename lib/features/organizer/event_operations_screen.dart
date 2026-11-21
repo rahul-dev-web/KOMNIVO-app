@@ -53,6 +53,10 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
         .select('id,lobby_code,lobby_number,status,event_lobby_matches(sequence_no,match_id,matches(match_number,match_code))')
         .eq('event_id', eventId)
         .order('lobby_number'),
+      _client.from('result_candidates')
+        .select('id,match_id,team_id,candidate_placement,candidate_kills,review_status,review_note,created_at,teams(name,tag),matches!inner(id,event_id,match_number),result_candidate_evidence(id,reported_placement,reported_kills)')
+        .eq('matches.event_id', eventId)
+        .order('created_at', ascending: false),
     ]);
     final matches = List<Map<String, dynamic>>.from(results[1] as List);
     const eventKeys = [
@@ -95,6 +99,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
       rounds: List<Map<String, dynamic>>.from(results[3] as List),
       disputedConfirmations: List<Map<String, dynamic>>.from(results[4] as List),
       lobbies: List<Map<String, dynamic>>.from(results[5] as List),
+      ocrCandidates: List<Map<String, dynamic>>.from(results[6] as List),
       eventPermissions: eventPermissions,
       matchPermissions: Map<String, Map<String, bool>>.fromEntries(matchPermissionEntries),
     );
@@ -374,6 +379,33 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
       if (mounted) showMessage(context, 'Opponent dispute marked as reviewed. Review the evidence before approving the result.');
     } catch (error) {
       if (mounted) showMessage(context, error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _reviewLiveOpsCandidate(String candidateId, String decision) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await KomnivoRepository.instance.reviewLiveOpsTeamCandidate(
+        candidateId: candidateId,
+        decision: decision,
+        note: decision == 'accepted'
+            ? 'Accepted after manual verification of linked screenshot evidence.'
+            : 'Rejected after manual verification of linked screenshot evidence.',
+      );
+      _reload();
+      if (mounted) {
+        showMessage(
+          context,
+          decision == 'accepted'
+              ? 'OCR candidate accepted. Official match result and standings are unchanged.'
+              : 'OCR candidate rejected. Official match result and standings are unchanged.',
+        );
+      }
+    } catch (error) {
+      if (mounted) showMessage(context, error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -661,6 +693,40 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
               );
             }),
             const SizedBox(height: 22),
+            SectionTitle('OCR candidate review', subtitle: 'Accept or reject manually mapped Team ID rows. This does not publish official scores.'),
+            const SizedBox(height: 10),
+            if (data.ocrCandidates.where((row) => row['review_status'] == 'provisional' || row['review_status'] == 'needs_review').isEmpty)
+              const EmptyState(title: 'No provisional OCR candidates', message: 'Once the LiveOps operator maps screenshot text to Match teams, candidates will appear here for review.')
+            else ...data.ocrCandidates
+                .where((row) => row['review_status'] == 'provisional' || row['review_status'] == 'needs_review')
+                .map((row) {
+              final team = row['teams'] is Map ? Map<String, dynamic>.from(row['teams'] as Map) : <String, dynamic>{};
+              final match = row['matches'] is Map ? Map<String, dynamic>.from(row['matches'] as Map) : <String, dynamic>{};
+              final matchId = match['id']?.toString();
+              final evidence = row['result_candidate_evidence'] as List? ?? [];
+              final canReview = _canMatch(data, matchId, 'match.results.review');
+              return _OperationCard(
+                title: team['name']?.toString() ?? 'OCR team candidate',
+                subtitle: 'Match ${match['match_number'] ?? '—'} · Placement ${row['candidate_placement'] ?? '—'} · ${row['candidate_kills'] ?? '—'} kills · ${evidence.length} screenshot source(s)',
+                badge: (row['review_status'] ?? 'NEEDS REVIEW').toString().replaceAll('_', ' ').toUpperCase(),
+                trailing: canReview
+                    ? Wrap(spacing: 0, children: [
+                        IconButton(
+                          tooltip: 'Reject OCR candidate',
+                          onPressed: _busy ? null : () => _reviewLiveOpsCandidate(row['id'].toString(), 'rejected'),
+                          icon: const Icon(Icons.close, color: Color(0xFFFF8193)),
+                        ),
+                        IconButton(
+                          tooltip: 'Accept OCR candidate',
+                          onPressed: _busy ? null : () => _reviewLiveOpsCandidate(row['id'].toString(), 'accepted'),
+                          icon: const Icon(Icons.verified_outlined, color: KomnivoTheme.cyan),
+                        ),
+                      ])
+                    : const Text('Reviewer only', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
+                footer: 'Candidate acceptance is not official result publication. Review remains tied to this Match ID.',
+              );
+            }),
+            const SizedBox(height: 22),
             SectionTitle('Current standings', subtitle: 'Calculated only from approved match results'),
             const SizedBox(height: 10),
             FutureBuilder<List<Map<String, dynamic>>>(
@@ -695,6 +761,7 @@ class _EventData {
     required this.rounds,
     required this.disputedConfirmations,
     required this.lobbies,
+    required this.ocrCandidates,
     required this.eventPermissions,
     required this.matchPermissions,
   });
@@ -704,6 +771,7 @@ class _EventData {
   final List<Map<String, dynamic>> rounds;
   final List<Map<String, dynamic>> disputedConfirmations;
   final List<Map<String, dynamic>> lobbies;
+  final List<Map<String, dynamic>> ocrCandidates;
   final Map<String, bool> eventPermissions;
   final Map<String, Map<String, bool>> matchPermissions;
 }
