@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(17);
+select extensions.plan(20);
 
 select extensions.has_column('public','liveops_sessions','previous_session_id',
   'A successor LiveOps session records its predecessor');
@@ -81,6 +81,19 @@ select extensions.ok(
   AND position('public.match_results' in pg_get_functiondef('app_private.start_liveops_lobby_session(uuid,jsonb)'::regprocedure))>0,
   'Lobby recovery skips Matches that already have official result rows'
 );
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public' and tablename='liveops_sessions' and indexname='liveops_sessions_event_id_idx'),
+  'LiveOps session Event foreign key has a supporting index'
+);
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public' and tablename='liveops_sessions' and indexname='liveops_sessions_match_id_idx'),
+  'LiveOps session Match foreign key has a supporting index'
+);
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public' and tablename='liveops_sessions' and indexname='liveops_sessions_operator_id_idx'),
+  'LiveOps session operator foreign key has a supporting index'
+);
+
 
 select * from extensions.finish();
 rollback;
