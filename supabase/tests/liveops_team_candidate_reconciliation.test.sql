@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(25);
+select extensions.plan(28);
 
 select extensions.has_table('public','result_candidate_evidence',
   'A candidate can retain multiple screenshot evidence sources');
@@ -12,6 +12,10 @@ select extensions.has_column('public','result_candidates','reviewed_by',
   'Reviewer identity is tracked separately from the operator');
 select extensions.has_column('public','result_candidates','review_note',
   'Human review notes are persisted');
+select extensions.has_column('public','result_candidates','reviewed_placement',
+  'Reviewer-confirmed final placement is stored separately from provisional OCR');
+select extensions.has_column('public','result_candidates','reviewed_kills',
+  'Reviewer-confirmed final kills are stored separately from provisional OCR');
 select extensions.has_column('public','result_candidate_evidence','source_observation_id',
   'Every evidence link points to its OCR observation');
 select extensions.has_column('public','result_candidate_evidence','capture_id',
@@ -95,25 +99,34 @@ select extensions.ok(
   'Accepted candidates can be explicitly returned to needs_review after a conflict'
 );
 select extensions.ok(
-  to_regprocedure('public.review_liveops_team_candidate(uuid,text,text)') is not null,
+  to_regprocedure('public.review_liveops_team_candidate(uuid,text,text,integer,integer)') is not null,
   'An explicit human-review RPC exists for OCR candidates'
 );
 select extensions.ok(
-  to_regprocedure('app_private.review_liveops_team_candidate(uuid,text,text)') is not null,
+  to_regprocedure('app_private.review_liveops_team_candidate(uuid,text,text,integer,integer)') is not null,
   'Candidate review is implemented in the private schema'
 );
 select extensions.ok(
-  has_function_privilege('authenticated','public.review_liveops_team_candidate(uuid,text,text)','EXECUTE'),
+  has_function_privilege('authenticated','public.review_liveops_team_candidate(uuid,text,text,integer,integer)','EXECUTE'),
   'Authenticated reviewers can call the review RPC, which checks Match permission'
 );
 select extensions.ok(
-  not has_function_privilege('anon','public.review_liveops_team_candidate(uuid,text,text)','EXECUTE'),
+  not has_function_privilege('anon','public.review_liveops_team_candidate(uuid,text,text,integer,integer)','EXECUTE'),
   'Anonymous users cannot review OCR candidates'
 );
 select extensions.ok(
   (select prosecdef from pg_proc
-   where oid='app_private.review_liveops_team_candidate(uuid,text,text)'::regprocedure),
+   where oid='app_private.review_liveops_team_candidate(uuid,text,text,integer,integer)'::regprocedure),
   'Candidate review transaction is SECURITY DEFINER and enforces result-review permissions'
+);
+select extensions.ok(
+  position('Screenshots disagree. Reviewer must confirm final placement and kills explicitly'
+    in pg_get_functiondef('app_private.review_liveops_team_candidate(uuid,text,text,integer,integer)'::regprocedure)) > 0,
+  'Conflicting screenshot readings cannot be accepted without explicit reviewer-confirmed values'
+);
+select extensions.ok(
+  position('official_result_created' in pg_get_functiondef('app_private.review_liveops_team_candidate(uuid,text,text,integer,integer)'::regprocedure)) > 0,
+  'OCR candidate review is deliberately separate from official match result publication'
 );
 
 
