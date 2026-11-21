@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(21);
+select extensions.plan(25);
 
 select extensions.has_table('public','liveops_evidence_batches',
   'Evidence is grouped in a persisted batch');
@@ -81,6 +81,28 @@ select extensions.ok(
     and tablename='liveops_evidence_batches' and indexname='liveops_evidence_batches_match_idx'),
   'Evidence batch Match ID lookup is indexed'
 );
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public'
+    and tablename='liveops_captures' and indexname='liveops_captures_event_id_idx'),
+  'Capture Event foreign key has a supporting index'
+);
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public'
+    and tablename='liveops_captures' and indexname='liveops_captures_operator_id_idx'),
+  'Capture operator foreign key has a supporting index'
+);
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public'
+    and tablename='screen_observations' and indexname='screen_observations_session_id_idx'),
+  'Observation session foreign key has a supporting index'
+);
+select extensions.ok(
+  (select qual ilike '%( SELECT auth.uid() AS uid)%'
+   from pg_policies where schemaname='public' and tablename='screen_observations'
+     and policyname='observations_read_session_owner_or_staff'),
+  'Observation read policy caches auth.uid() per statement'
+);
+
 select extensions.ok(
   exists(select 1 from pg_policies where schemaname='public'
     and tablename='liveops_evidence_batches'
