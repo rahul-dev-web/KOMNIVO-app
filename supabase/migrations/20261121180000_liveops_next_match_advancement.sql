@@ -2,7 +2,7 @@
 
 ALTER TABLE public.liveops_sessions
   ADD COLUMN IF NOT EXISTS previous_session_id uuid
-    REFERENCES public.liveops_sessions(id) ON DELETE SET NULL;
+    REFERENCES public.liveops_sessions(id) ON DELETE RESTRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS liveops_sessions_one_successor_per_session_uidx
   ON public.liveops_sessions(previous_session_id)
