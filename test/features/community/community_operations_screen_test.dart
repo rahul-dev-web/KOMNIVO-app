@@ -568,17 +568,19 @@ void main() {
       source: source,
     );
     await _openOperationsTab(tester, 'Onboarding');
-    final onboardingScroll = find.descendant(
-      of: find.byKey(const ValueKey('community-onboarding-scroll')),
-      matching: find.byType(Scrollable),
-    ).first;
-    // Managers see the full questionnaire editor above channel tagging.
-    // Scroll the Onboarding tab, not a neighbouring TabBarView page.
-    await tester.scrollUntilVisible(
-      find.text('Save channel tags'),
-      420,
-      scrollable: onboardingScroll,
+    final onboardingList = find.byKey(
+      const ValueKey('community-onboarding-scroll'),
     );
+    // Drag the explicitly keyed Onboarding ListView. The test viewport is
+    // intentionally tall, so move in large steps and ensure the lazy card
+    // has been built before tapping it.
+    await tester.drag(onboardingList, const Offset(0, -1800));
+    await tester.pumpAndSettle();
+    if (find.text('Save channel tags').evaluate().isEmpty) {
+      await tester.drag(onboardingList, const Offset(0, -1800));
+      await tester.pumpAndSettle();
+    }
+    await tester.ensureVisible(find.text('Save channel tags').first);
     await tester.pumpAndSettle();
     final saveChannelTags = find.text('Save channel tags');
     expect(saveChannelTags, findsWidgets);
