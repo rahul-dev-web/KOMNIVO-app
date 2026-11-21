@@ -119,6 +119,28 @@ class KomnivoRepository {
 
 
 
+  /// Saves one manually transcribed candidate and merges all selected screenshot
+  /// observations against the canonical Team ID within the immutable Match ID.
+  Future<Map<String, dynamic>> saveLiveOpsTeamCandidate({
+    required String sessionId,
+    required String teamId,
+    required int placement,
+    required int kills,
+    required List<String> sourceObservationIds,
+  }) async {
+    final result = await client.rpc('save_liveops_team_candidate', params: {
+      'p_session_id': sessionId,
+      'p_team_id': teamId,
+      'p_placement': placement,
+      'p_kills': kills,
+      'p_source_observation_ids': sourceObservationIds,
+    });
+    if (result is! Map) {
+      throw Exception('LiveOps team candidate could not be saved.');
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
   /// Reads this user's own membership rows, including the owner row created
   /// by the database trigger when a community is created.
   Future<Map<String, Map<String, dynamic>>> myCommunityMemberships() async {
