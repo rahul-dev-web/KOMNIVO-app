@@ -43,3 +43,9 @@ Only then does the Next Match action call `start_next_liveops_lobby_session`. Th
 A successor session stores its immutable `previous_session_id`; deleting a predecessor is restricted. If the last Match is complete, the server reports that no unsubmitted Match remains. A Match already containing official results is not selected again during Lobby recovery.
 
 The live Supabase schema and RPC contracts have been checked. The live project currently has no Matches or LiveOps sessions, so real multi-Match execution still requires a populated Lobby and signed-in Android device smoke test.
+
+## Reviewer-side screenshot inspection
+
+The Organizer Event Operations candidate-review queue fetches the exact source captures linked to a candidate. Before opening Accept or Reject, it requests a 15-minute signed URL for every source image from the private `match-evidence` bucket and shows each screenshot alongside that screenshot's own OCR placement/kills.
+
+The storage read policy authorises either the original uploader or a user with `match.results.review` permission for the exact Match ID. The bucket remains private; no public object URL is created. If any screenshot cannot be signed, the UI blocks both Accept and Reject and asks the reviewer to restore evidence access before making a decision.
