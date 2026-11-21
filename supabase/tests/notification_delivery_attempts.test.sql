@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(14);
+select extensions.plan(18);
 
 select extensions.has_table('public','notification_delivery_attempts',
   'FCM delivery attempts are stored in a dedicated table');
@@ -87,6 +87,32 @@ select extensions.ok(
       and column_name='http_status'),
   'Failure diagnostics store status/error categories without response bodies'
 );
+select extensions.ok(
+  exists(select 1 from pg_policies where schemaname='public'
+    and tablename='notification_delivery_attempts'
+    and policyname='notification_delivery_attempts_deny_client'
+    and cmd='ALL' and qual='false' and with_check='false'),
+  'An explicit RLS deny policy blocks all anonymous and authenticated delivery-log access'
+);
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public'
+    and tablename='message_mentions'
+    and indexname='message_mentions_notification_id_idx'),
+  'Mention notification foreign key has a supporting index'
+);
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public'
+    and tablename='message_mentions'
+    and indexname='message_mentions_sender_id_idx'),
+  'Mention sender foreign key has a supporting index'
+);
+select extensions.ok(
+  exists(select 1 from pg_indexes where schemaname='public'
+    and tablename='notification_delivery_attempts'
+    and indexname='notification_delivery_attempts_device_token_id_idx'),
+  'Delivery device-token foreign key has a supporting index'
+);
+
 
 select * from extensions.finish();
 rollback;
