@@ -146,11 +146,15 @@ class KomnivoRepository {
     required String candidateId,
     required String decision,
     String note = '',
+    int? reviewedPlacement,
+    int? reviewedKills,
   }) async {
     final result = await client.rpc('review_liveops_team_candidate', params: {
       'p_candidate_id': candidateId,
       'p_decision': decision,
       'p_note': note,
+      'p_reviewed_placement': reviewedPlacement,
+      'p_reviewed_kills': reviewedKills,
     });
     if (result is! Map) {
       throw Exception('OCR candidate review could not be saved.');
