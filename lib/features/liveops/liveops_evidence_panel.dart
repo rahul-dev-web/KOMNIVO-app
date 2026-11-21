@@ -21,6 +21,7 @@ class LiveOpsEvidencePanel extends StatefulWidget {
     required this.matchSequence,
     required this.capturing,
     required this.onPause,
+    required this.onNextMatch,
     this.preview = false,
   });
 
@@ -31,6 +32,7 @@ class LiveOpsEvidencePanel extends StatefulWidget {
   final int matchSequence;
   final bool capturing;
   final VoidCallback onPause;
+  final VoidCallback onNextMatch;
   final bool preview;
 
   @override
@@ -263,6 +265,7 @@ class _LiveOpsEvidencePanelState extends State<LiveOpsEvidencePanel> {
           sessionId: widget.sessionId,
           matchId: widget.matchId,
           capturing: widget.capturing,
+          onNextMatch: widget.onNextMatch,
         ),
       ],
     ]),
