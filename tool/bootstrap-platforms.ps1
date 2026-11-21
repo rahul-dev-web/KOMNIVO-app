@@ -59,6 +59,26 @@ try {
     $Gradle += $nl + $nl + 'dependencies {' + $nl + '    implementation("com.google.mlkit:text-recognition:16.0.1")' + $nl + '}' + $nl
   }
   Set-Content -Path $GradleFile -Value $Gradle -Encoding utf8
+
+  # Add a regional Maven Central mirror before the default central repository.
+  # Retain Maven Central/Plugin Portal as fallbacks and keep the generated Kotlin version.
+  $MavenMirror = 'https://maven-central-asia.storage-download.googleapis.com/maven2/'
+  foreach ($GradlePath in @(
+    (Join-Path $Root "android/settings.gradle.kts"),
+    (Join-Path $Root "android/build.gradle.kts")
+  )) {
+    if (Test-Path $GradlePath) {
+      $GradleSource = Get-Content $GradlePath -Raw
+      if (-not $GradleSource.Contains($MavenMirror)) {
+        $GradleSource = $GradleSource.Replace(
+          'repositories {',
+          ('repositories {' + [Environment]::NewLine + '        maven { url = uri("' + $MavenMirror + '") }')
+        )
+        Set-Content -Path $GradlePath -Value $GradleSource -Encoding utf8
+      }
+    }
+  }
+
   Copy-Item (Join-Path $Root "native/web/index.html") (Join-Path $Root "web/index.html") -Force
   Copy-Item (Join-Path $Root "native/web/manifest.json") (Join-Path $Root "web/manifest.json") -Force
 
