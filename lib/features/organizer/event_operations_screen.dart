@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -5,6 +7,7 @@ import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
 import '../community/role_management_screen.dart';
+import '../liveops/liveops_screen.dart';
 
 class EventOperationsScreen extends StatefulWidget {
   const EventOperationsScreen({super.key, required this.event});
@@ -17,6 +20,7 @@ class EventOperationsScreen extends StatefulWidget {
 class _EventOperationsScreenState extends State<EventOperationsScreen> {
   late Future<_EventData> _future;
   bool _busy = false;
+  final Set<String> _selectedMatchIds = <String>{};
   SupabaseClient get _client => Supabase.instance.client;
 
   @override
@@ -45,6 +49,10 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
         .eq('match_results.matches.event_id', eventId)
         .eq('decision', 'disputed')
         .order('created_at', ascending: false),
+      _client.from('event_lobbies')
+        .select('id,lobby_code,lobby_number,status,event_lobby_matches(sequence_no,match_id,matches(match_number,match_code))')
+        .eq('event_id', eventId)
+        .order('lobby_number'),
     ]);
     final matches = List<Map<String, dynamic>>.from(results[1] as List);
     const eventKeys = [
@@ -86,6 +94,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
       results: List<Map<String, dynamic>>.from(results[2] as List),
       rounds: List<Map<String, dynamic>>.from(results[3] as List),
       disputedConfirmations: List<Map<String, dynamic>>.from(results[4] as List),
+      lobbies: List<Map<String, dynamic>>.from(results[5] as List),
       eventPermissions: eventPermissions,
       matchPermissions: Map<String, Map<String, bool>>.fromEntries(matchPermissionEntries),
     );
@@ -254,6 +263,47 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _createLobby() async {
+    final matchIds = _selectedMatchIds.toList();
+    if (matchIds.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final result = await KomnivoRepository.instance.createEventLobby(
+        eventId: widget.event['id'].toString(),
+        matchIds: matchIds,
+        idempotencyKey: 'lobby_${DateTime.now().microsecondsSinceEpoch}_${math.Random.secure().nextInt(1 << 24)}',
+      );
+      if (!mounted) return;
+      setState(() => _selectedMatchIds.clear());
+      _reload();
+      showMessage(
+        context,
+        'Lobby ${result['lobby_code']} created for ${matchIds.length} matches. Lobby ID: ${result['lobby_id']}',
+      );
+    } catch (error) {
+      if (mounted) showMessage(context, error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _startLiveOps(Map<String, dynamic> lobby) async {
+    final lobbyId = lobby['id']?.toString();
+    if (lobbyId == null || lobbyId.isEmpty) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: Text('LiveOps · ${lobby['lobby_code'] ?? 'Lobby'}')),
+          body: LiveOpsScreen(
+            preview: false,
+            initialLobbyId: lobbyId,
+            onBack: () => Navigator.of(context).pop(),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _addRoomCredentials(String matchId) async {
@@ -452,13 +502,24 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
             else
               const Text('Approve registrations, lock rosters, then generate balanced groups.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
             const SizedBox(height: 22),
-            SectionTitle('Match operations', subtitle: 'Create matches only from approved, locked team rosters', trailing: _canEvent(data, 'event.matches.manage')
-                ? FilledButton.icon(
-                    onPressed: _busy || eligible.length < 2 ? null : () => _createMatch(eligible, groups),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Create match'),
-                  )
-                : null),
+            SectionTitle(
+              'Match operations',
+              subtitle: 'Select scheduled matches to group them under one generated Lobby ID',
+              trailing: _canEvent(data, 'event.matches.manage')
+                  ? Wrap(spacing: 8, runSpacing: 6, children: [
+                      OutlinedButton.icon(
+                        onPressed: _busy || _selectedMatchIds.isEmpty ? null : _createLobby,
+                        icon: const Icon(Icons.view_week_outlined),
+                        label: Text('Create Lobby (${_selectedMatchIds.length})'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: _busy || eligible.length < 2 ? null : () => _createMatch(eligible, groups),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Create match'),
+                      ),
+                    ])
+                  : null,
+            ),
             const SizedBox(height: 10),
             if (data.matches.isEmpty) const EmptyState(title: 'No matches created', message: 'Lock at least two team rosters, then create a match.')
             else ...data.matches.map((row) {
@@ -483,16 +544,71 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                 title: 'Match #${row['match_number']} · ${row['group_label'] ?? 'Unassigned group'}',
                 subtitle: '${participants.length} teams · ${row['status']} · ${row['starts_at'] ?? 'Time pending'}',
                 badge: (row['status'] ?? 'scheduled').toString().toUpperCase(),
-                trailing: menuItems.isEmpty ? null : PopupMenuButton<String>(
-                  onSelected: (value) {
-                    if (value == 'room') _addRoomCredentials(row['id'] as String);
-                    else _updateMatchStatus(row['id'] as String, value);
-                  },
-                  itemBuilder: (_) => menuItems,
-                ),
-                footer: hasCredentials ? 'Room details saved · release at ${credentials.first['release_at']}' : 'Room details not added yet',
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (_canEvent(data, 'event.matches.manage') &&
+                      row['status'] == 'scheduled' &&
+                      !data.lobbies.any((lobby) {
+                        final lobbyMatches = lobby['event_lobby_matches'] as List? ?? [];
+                        return lobbyMatches.any((item) => item is Map && item['match_id'] == matchId);
+                      }))
+                    Checkbox(
+                      value: _selectedMatchIds.contains(matchId),
+                      onChanged: _busy || matchId == null ? null : (selected) {
+                        setState(() {
+                          if (selected == true) _selectedMatchIds.add(matchId);
+                          else _selectedMatchIds.remove(matchId);
+                        });
+                      },
+                    ),
+                  if (menuItems.isNotEmpty) PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'room') _addRoomCredentials(row['id'] as String);
+                      else _updateMatchStatus(row['id'] as String, value);
+                    },
+                    itemBuilder: (_) => menuItems,
+                  ),
+                ]),
+                footer: hasCredentials
+                    ? 'Room details saved · release at ${credentials.first['release_at']}'
+                    : (data.lobbies.any((lobby) {
+                        final lobbyMatches = lobby['event_lobby_matches'] as List? ?? [];
+                        return lobbyMatches.any((item) => item is Map && item['match_id'] == matchId);
+                      }) ? 'Assigned to a LiveOps lobby' : 'Room details not added yet'),
               );
             }),
+            const SizedBox(height: 22),
+            SectionTitle('LiveOps lobbies', subtitle: 'One generated Lobby ID can run one or more ordered Match IDs'),
+            const SizedBox(height: 10),
+            if (data.lobbies.isEmpty)
+              const Text('No lobbies yet. Select one or more scheduled matches and create a lobby.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11))
+            else
+              ...data.lobbies.map((lobby) {
+                final lobbyMatches = (lobby['event_lobby_matches'] as List? ?? [])
+                    .whereType<Map>()
+                    .toList()
+                  ..sort((a, b) => (a['sequence_no'] as int? ?? 0).compareTo(b['sequence_no'] as int? ?? 0));
+                final matchLabels = lobbyMatches.map((item) {
+                  final match = item['matches'] is Map
+                      ? Map<String, dynamic>.from(item['matches'] as Map)
+                      : <String, dynamic>{};
+                  return 'M${match['match_number'] ?? '—'}';
+                }).join(' → ');
+                return _OperationCard(
+                  title: '${lobby['lobby_code']} · ${lobby['status']}',
+                  subtitle: matchLabels.isEmpty ? 'No linked matches' : matchLabels,
+                  badge: 'LOBBY ID',
+                  trailing: _canEvent(data, 'event.matches.operate')
+                      ? IconButton(
+                          tooltip: 'Start LiveOps with this Lobby ID',
+                          onPressed: _busy || lobby['status'] == 'completed' || lobby['status'] == 'cancelled'
+                              ? null
+                              : () => _startLiveOps(Map<String, dynamic>.from(lobby)),
+                          icon: const Icon(Icons.radar, color: KomnivoTheme.cyan),
+                        )
+                      : null,
+                  footer: 'Lobby UUID: ${lobby['id']} · Match IDs remain separate for scoring',
+                );
+              }),
             const SizedBox(height: 22),
             SectionTitle('Opponent disputes', subtitle: 'Review disputed confirmations before approving results'),
             const SizedBox(height: 10),
@@ -574,6 +690,7 @@ class _EventData {
     required this.results,
     required this.rounds,
     required this.disputedConfirmations,
+    required this.lobbies,
     required this.eventPermissions,
     required this.matchPermissions,
   });
@@ -582,6 +699,7 @@ class _EventData {
   final List<Map<String, dynamic>> results;
   final List<Map<String, dynamic>> rounds;
   final List<Map<String, dynamic>> disputedConfirmations;
+  final List<Map<String, dynamic>> lobbies;
   final Map<String, bool> eventPermissions;
   final Map<String, Map<String, bool>> matchPermissions;
 }
