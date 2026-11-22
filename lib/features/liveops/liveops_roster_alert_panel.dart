@@ -124,7 +124,8 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
     }
 
     final slotLines = _readSlotLines(widget.ocrText);
-    if (slotLines.isEmpty) return;
+    final slotUids = _readSlotUids(widget.ocrText);
+    if (slotLines.isEmpty && slotUids.isEmpty) return;
 
     final knownPlayers = _teams
         .expand((team) => team.players)
@@ -143,7 +144,8 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
       final slot = team.slotNumber;
       if (slot == null) continue;
       final visibleLines = slotLines[slot] ?? <String>[];
-      if (visibleLines.isEmpty) continue;
+      final visibleUids = slotUids[slot] ?? <String>[];
+      if (visibleLines.isEmpty && visibleUids.isEmpty) continue;
 
       final expected = team.players
           .where((player) => player.isVerified &&
@@ -157,7 +159,6 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
         final foundNameSlots = LiveOpsRosterOcrParser.slotsForExactName(
           slotLines, player.nickname,
         );
-        final slotUids = LiveOpsRosterOcrParser.readSlotUids(widget.ocrText);
         final foundUidSlots = LiveOpsRosterOcrParser.slotsForExactUid(
           slotUids, player.uid,
         );
@@ -279,7 +280,8 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
       ));
     }
     final emptyVisibleSlots = slotLines.entries
-        .where((entry) => entry.value.isEmpty)
+        .where((entry) => entry.value.isEmpty &&
+            (slotUids[entry.key] ?? <String>[]).isEmpty)
         .map((entry) => entry.key)
         .toList()
       ..sort();
