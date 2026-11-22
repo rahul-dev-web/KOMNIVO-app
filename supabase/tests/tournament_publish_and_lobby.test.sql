@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(27);
+select extensions.plan(26);
 
 select extensions.has_table('public','event_publications',
   'An audit-safe record is maintained for each published tournament');
