@@ -9,6 +9,7 @@ import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
 import 'liveops_evidence_panel.dart';
 import 'liveops_room_setup_classifier.dart';
+import 'liveops_match_screen_classifier.dart';
 
 enum _LiveOpsVisualState {
   idle,
@@ -69,12 +70,18 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
   DateTime? _stateObservedAt;
   double? _stateConfidence;
   String _stateSource = 'No observation yet';
+  final LiveOpsStableScreenObserver _matchScreenObserver =
+      LiveOpsStableScreenObserver();
 
-  String get _stateConfidenceLabel => _stateConfidence == null
-      ? 'Not classified'
-      : _stateConfidence! >= 1.0
-          ? 'High · strict 3/3 OCR rule'
-          : '${(_stateConfidence! * 100).toStringAsFixed(0)}%';
+  String get _stateConfidenceLabel {
+    if (_stateConfidence == null) return 'Not classified';
+    if (_stateConfidence! >= 1.0) {
+      return _visualState == _LiveOpsVisualState.roomSetup
+          ? 'High · strict 3/3 OCR markers'
+          : 'High · stable 3/3 OCR observations';
+    }
+    return '${(_stateConfidence! * 100).toStringAsFixed(0)}%';
+  }
 
   DateTime _readObservationTime(dynamic value) {
     if (value is num) {
@@ -266,12 +273,13 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       );
 
       if (!mounted) return;
+      _matchScreenObserver.reset();
       setState(() {
         _capturing = true;
         _matchResultsSubmitted = false;
         _setVisualState(
           _LiveOpsVisualState.unknown,
-          source: 'Capture active; screen classifier not implemented yet',
+          source: 'Capture active; awaiting supported screen observations',
         );
         _state = 'Capturing · screen state not classified';
       });
@@ -373,31 +381,78 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       return;
     }
 
+    var suppressGenericVoicePrompt = false;
     if (state == 'text_detected') {
-      final classification = LiveOpsRoomSetupClassifier.classify(text);
-      final isRoomSetup = classification.isRoomSetup;
-      final source = isRoomSetup
-          ? 'On-device OCR · strict English Room Name + Password + Confirm signature'
-          : classification.hasConflictingSignal
-              ? 'On-device OCR · conflicting join/search cues; state remains Unknown'
-              : 'On-device OCR · Room Setup signature incomplete (${classification.matchedSignalCount}/3 markers)';
-      if (mounted) {
-        setState(() {
-          _setVisualState(
-            isRoomSetup
-                ? _LiveOpsVisualState.roomSetup
-                : _LiveOpsVisualState.unknown,
-            observedAt: observedAt,
-            // 1.0 means all three deterministic markers matched; it is not a
-            // statistically calibrated probability.
-            confidence: isRoomSetup ? 1.0 : null,
-            source: source,
-          );
-          _state = isRoomSetup
-              ? 'Room Setup detected · review the visible fields'
+      final roomSetup = LiveOpsRoomSetupClassifier.classify(text);
+      if (roomSetup.isRoomSetup) {
+        _matchScreenObserver.reset();
+        if (mounted) {
+          setState(() {
+            _setVisualState(
+              _LiveOpsVisualState.roomSetup,
+              observedAt: observedAt,
+              confidence: 1.0,
+              source: 'On-device OCR · strict English Room Name + Password + Confirm signature',
+            );
+            _state = 'Room Setup detected · review the visible fields';
+            _latestText = text;
+          });
+        }
+      } else {
+        final classification = LiveOpsMatchScreenClassifier.classify(text);
+        final stableKind = _matchScreenObserver.observe(
+          classification.kind,
+          observedAt,
+        );
+        final confirmedLobby = stableKind == LiveOpsMatchScreenKind.lobby;
+        final confirmedGameplay =
+            stableKind == LiveOpsMatchScreenKind.matchInProgress;
+        suppressGenericVoicePrompt =
+            classification.kind == LiveOpsMatchScreenKind.matchInProgress ||
+            confirmedGameplay;
+
+        final _LiveOpsVisualState nextVisualState;
+        final String source;
+        final String nextStatus;
+        if (confirmedLobby) {
+          nextVisualState = _LiveOpsVisualState.lobby;
+          source = 'On-device OCR · stable 3/3 observations · strict custom-room team/invite/start signature';
+          nextStatus = 'Custom-room Lobby detected · roster review required';
+        } else if (confirmedGameplay) {
+          nextVisualState = _LiveOpsVisualState.matchInProgress;
+          source = 'On-device OCR · stable 3/3 observations · strict BR Safe Zone + numeric HP/EP HUD signature';
+          nextStatus = 'Match in progress · generic prompts suppressed';
+        } else {
+          nextVisualState = _LiveOpsVisualState.unknown;
+          final candidateLabel = classification.kind ==
+                  LiveOpsMatchScreenKind.lobby
+              ? 'Lobby'
+              : classification.kind ==
+                      LiveOpsMatchScreenKind.matchInProgress
+                  ? 'Gameplay'
+                  : 'screen';
+          source = classification.isClassified
+              ? 'On-device OCR · $candidateLabel candidate ${_matchScreenObserver.pendingCount}/3 consecutive observations'
+              : 'On-device OCR · ${classification.reason}';
+          nextStatus = classification.isClassified
+              ? 'Checking $candidateLabel screen · ${_matchScreenObserver.pendingCount}/3 stable observations'
               : 'Screen text detected · local preview';
-          _latestText = text;
-        });
+        }
+
+        if (mounted) {
+          setState(() {
+            _setVisualState(
+              nextVisualState,
+              observedAt: observedAt,
+              // 1.0 denotes the full strict signature plus 3 consecutive
+              // frames, not a statistically calibrated probability.
+              confidence: confirmedLobby || confirmedGameplay ? 1.0 : null,
+              source: source,
+            );
+            _state = nextStatus;
+            _latestText = text;
+          });
+        }
       }
     } else {
       if (mounted) {
@@ -421,7 +476,9 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
     if (text == _lastObservation) return;
     _lastObservation = text;
 
-    if (_voice) await _speak('Screen text detected. Please review the visible information.');
+    if (_voice && !suppressGenericVoicePrompt) {
+      await _speak('Screen text detected. Please review the visible information.');
+    }
   }
 
   Future<void> _startNextMatch() async {
@@ -447,6 +504,8 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         throw Exception('The server did not return a complete next Match session.');
       }
       if (!mounted) return;
+      _lastObservation = '';
+      _matchScreenObserver.reset();
       setState(() {
         _sessionId = nextSessionId;
         _setVisualState(
@@ -479,6 +538,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
   }
 
   Future<void> _stop() async {
+    _matchScreenObserver.reset();
     try {
       await _methods.invokeMethod<void>('stopCapture');
       await _subscription?.cancel();
