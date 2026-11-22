@@ -22,6 +22,8 @@ class LiveOpsEvidencePanel extends StatefulWidget {
     required this.capturing,
     required this.onPause,
     required this.onNextMatch,
+    required this.onEvidenceSkipped,
+    this.evidenceSkipped = false,
     this.preview = false,
   });
 
@@ -33,6 +35,8 @@ class LiveOpsEvidencePanel extends StatefulWidget {
   final bool capturing;
   final VoidCallback onPause;
   final VoidCallback onNextMatch;
+  final ValueChanged<String> onEvidenceSkipped;
+  final bool evidenceSkipped;
   final bool preview;
 
   @override
@@ -89,7 +93,7 @@ class _LiveOpsEvidencePanelState extends State<LiveOpsEvidencePanel> {
     try {
       // file_picker 12+ exposes pickFiles as a static method returning a
       // List<PlatformFile>; selected bytes are read explicitly from each file.
-      final files = await FilePicker.pickFiles(type: FileType.image);
+      final files = await FilePicker.pickFiles(type: FileType.image, allowMultiple: true);
       if (files.isEmpty) return;
       if (files.length > 8) {
         showMessage(context, 'A batch supports 1 to 8 screenshots. Select at most eight.');
@@ -219,9 +223,13 @@ class _LiveOpsEvidencePanelState extends State<LiveOpsEvidencePanel> {
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Row(children: [Icon(Icons.photo_library_outlined, color: KomnivoTheme.cyan), SizedBox(width: 9), Expanded(child: Text('Standing screenshot evidence', style: TextStyle(fontWeight: FontWeight.w900)))]),
       const SizedBox(height: 7),
-      const Text('Select 1–8 screenshots for the active Match ID. JPG, PNG and WebP are supported, up to 10 MiB each. OCR runs on-device before upload.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.45)),
+      const Text('Active Match ID: ' + widget.matchId, style: TextStyle(color: KomnivoTheme.cyan, fontSize: 11, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 5),
+      const Text('Select 1–8 screenshots per batch. Add more batches as you scroll; there is no fixed screenshot count. JPG, PNG and WebP are supported, up to 10 MiB each. OCR runs on-device before upload.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.45)),
       const SizedBox(height: 11),
-      if (widget.capturing)
+      if (widget.evidenceSkipped)
+        const Text('Evidence step was explicitly skipped for this Match. The recorded reason is available below; use Next Match to continue.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4))
+      else if (widget.capturing)
         SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _uploading ? null : widget.onPause, icon: const Icon(Icons.pause_circle_outline), label: const Text('Pause observation before opening gallery')))
       else
         SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: _preparing || _uploading ? null : _chooseScreenshots, icon: _preparing ? const SizedBox(width: 16,height: 16,child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.add_photo_alternate_outlined), label: Text(_preparing ? 'Reading screenshots on-device…' : 'Choose screenshots'))),
@@ -266,6 +274,7 @@ class _LiveOpsEvidencePanelState extends State<LiveOpsEvidencePanel> {
           matchId: widget.matchId,
           capturing: widget.capturing,
           onNextMatch: widget.onNextMatch,
+          onEvidenceSkipped: widget.onEvidenceSkipped,
         ),
       ],
     ]),
