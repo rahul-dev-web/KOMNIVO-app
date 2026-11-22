@@ -31,8 +31,8 @@ SELECT extensions.ok(
 );
 SELECT extensions.ok(
   position('INSERT INTO public.liveops_match_roster_snapshots' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
-  AND position('ON CONFLICT (session_id) DO NOTHING' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
-  'The first complete locked roster is stored once per LiveOps session'
+  AND position('ON CONFLICT (match_id) DO NOTHING' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
+  'The first complete locked roster is stored once per Match ID'
 );
 SELECT extensions.ok(
   position('r.roster_locked IS TRUE AND r.roster_locked_at IS NOT NULL' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
