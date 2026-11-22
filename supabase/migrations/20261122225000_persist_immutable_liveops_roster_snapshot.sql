@@ -4,10 +4,10 @@
 
 CREATE TABLE IF NOT EXISTS public.liveops_match_roster_snapshots (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id uuid NOT NULL UNIQUE
+  session_id uuid NOT NULL
     REFERENCES public.liveops_sessions(id) ON DELETE RESTRICT,
   event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE RESTRICT,
-  match_id uuid NOT NULL REFERENCES public.matches(id) ON DELETE RESTRICT,
+  match_id uuid NOT NULL UNIQUE REFERENCES public.matches(id) ON DELETE RESTRICT,
   captured_by uuid NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
   roster_snapshot jsonb NOT NULL,
   snapshot_fingerprint text NOT NULL,
@@ -85,7 +85,7 @@ BEGIN
 
   SELECT * INTO v_saved
   FROM public.liveops_match_roster_snapshots s
-  WHERE s.session_id = v_session.id;
+  WHERE s.match_id = v_session.match_id;
   IF FOUND THEN
     RETURN jsonb_build_object(
       'session_id',v_session.id,
@@ -246,13 +246,13 @@ BEGIN
     v_session.id,v_match.event_id,v_match.id,v_uid,
     v_roster,v_fingerprint
   )
-  ON CONFLICT (session_id) DO NOTHING
+  ON CONFLICT (match_id) DO NOTHING
   RETURNING * INTO v_saved;
 
   IF NOT FOUND THEN
     SELECT * INTO v_saved
     FROM public.liveops_match_roster_snapshots s
-    WHERE s.session_id = v_session.id;
+    WHERE s.match_id = v_session.match_id;
   END IF;
 
   RETURN jsonb_build_object(
