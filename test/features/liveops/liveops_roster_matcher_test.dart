@@ -59,7 +59,7 @@ void main() {
     });
 
     test('pairs a visible nickname with its exact UID within the same slot', () {
-      const ocr = 'TEAM 1\\nNOVA 123456789\\nTEAM 2\\nWOLF 987654321';
+      const ocr = 'TEAM 1\nNOVA 123456789\nTEAM 2\nWOLF 987654321';
       final pairs = LiveOpsRosterOcrParser.readNamesPairedWithUids(ocr);
 
       expect(pairs[1]?['nova'], '123456789');
@@ -68,7 +68,7 @@ void main() {
     });
 
     test('extracts visible numeric UIDs and matches them exactly by slot', () {
-      final ocr = 'TEAM 1\\nIGL RAHUL 123456789\\nTEAM 2\\nNOVA 987654321';
+      final ocr = 'TEAM 1\nIGL RAHUL 123456789\nTEAM 2\nNOVA 987654321';
       final slots = LiveOpsRosterOcrParser.readSlotUids(ocr);
 
       expect(slots[1], <String>['123456789']);
