@@ -38,7 +38,7 @@ class LiveOpsRosterOcrParser {
         if (activeSlot != null) {
           result.putIfAbsent(activeSlot, () => <String>[]);
         }
-        final remainder = line.substring(marker.end).trim();
+        final remainder = withoutVisibleUid(line.substring(marker.end)).trim();
         if (activeSlot != null && looksLikePlayerName(remainder)) {
           result[activeSlot]!.add(remainder);
         }
@@ -50,11 +50,14 @@ class LiveOpsRosterOcrParser {
         continue;
       }
 
-      if (activeSlot != null && looksLikePlayerName(line)) {
-        final rows = result.putIfAbsent(activeSlot, () => <String>[]);
-        final canonical = normalise(line);
-        if (!rows.any((value) => normalise(value) == canonical)) {
-          rows.add(line);
+      if (activeSlot != null) {
+        final playerLine = withoutVisibleUid(line).trim();
+        if (looksLikePlayerName(playerLine)) {
+          final rows = result.putIfAbsent(activeSlot, () => <String>[]);
+          final canonical = normalise(playerLine);
+          if (!rows.any((value) => normalise(value) == canonical)) {
+            rows.add(playerLine);
+          }
         }
       }
     }
@@ -111,6 +114,8 @@ class LiveOpsRosterOcrParser {
         .toList(growable: false);
   }
 
+  static String withoutVisibleUid(String value) =>
+      value.replaceAll(RegExp(r'\b\d{5,15}\b'), ' ');
   static String normalise(String value) =>
       value.toLowerCase().replaceAll(RegExp(r'\s+'), '').trim();
 
