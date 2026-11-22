@@ -131,6 +131,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
         .where((name) => name.isNotEmpty)
         .toSet();
     final generated = <_TimedRosterAlert>[];
+    final ambiguousOcrNames = <String>{};
 
     for (final team in _teams) {
       final slot = team.slotNumber;
@@ -148,6 +149,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
       for (final player in expected) {
         final playerName = _normalise(player.nickname);
         final foundSlots = <int>[];
+        final nearHits = <MapEntry<int, String>>[];
         var occurrenceCount = 0;
         for (final entry in slotLines.entries) {
           final occurrences = entry.value.where((line) =>
@@ -156,6 +158,27 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
             foundSlots.add(entry.key);
             occurrenceCount += occurrences;
           }
+          for (final line in entry.value) {
+            final candidate = _normalise(line);
+            if (candidate.isNotEmpty &&
+                candidate != playerName &&
+                _isLikelySimilarName(playerName, candidate)) {
+              nearHits.add(MapEntry<int, String>(entry.key, line));
+              ambiguousOcrNames.add(candidate);
+            }
+          }
+        }
+        if (!foundSlots.contains(slot) && nearHits.isNotEmpty) {
+          final samples = nearHits.take(2).map((hit) =>
+              '"' + hit.value + '" under Slot ' + hit.key.toString()).join('; ');
+          generated.add(_TimedRosterAlert(
+            key: 'ambiguous:' + player.userId + ':' +
+                nearHits.map((hit) => hit.key.toString() + ':' + _normalise(hit.value)).join('|'),
+            title: 'Possible clipped or similar IGN',
+            detail: 'Expected ' + player.nickname + ', but OCR read ' + samples +
+                '. This is not an identity match; the name may be clipped, changed or misread. Host should inspect the live lobby.',
+            icon: Icons.help_outline_rounded,
+          ));
         }
         if (foundSlots.length > 1 || occurrenceCount > 1) {
           final slotLabel = foundSlots.join(', ');
@@ -169,6 +192,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
           ));
         }
         if (foundSlots.contains(slot)) continue;
+        if (nearHits.isNotEmpty) continue;
         if (foundSlots.isNotEmpty) {
           final otherSlot = foundSlots.first;
           generated.add(_TimedRosterAlert(
@@ -201,6 +225,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
       for (final line in entry.value) {
         final candidate = _normalise(line);
         if (candidate.isEmpty ||
+            ambiguousOcrNames.contains(candidate) ||
             allKnownNames.any((name) => name.isNotEmpty &&
                 (candidate.contains(name) || name.contains(candidate)))) {
           continue;
@@ -293,6 +318,34 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
 
   static String _normalise(String value) =>
       value.toLowerCase().replaceAll(RegExp(r'\s+'), '').trim();
+
+  static bool _isLikelySimilarName(String expected, String candidate) {
+    final shortest = expected.length < candidate.length
+        ? expected.length
+        : candidate.length;
+    final longest = expected.length > candidate.length
+        ? expected.length
+        : candidate.length;
+    if (shortest < 4 || longest - shortest > 2) return false;
+    final maxDistance = shortest >= 8 ? 2 : 1;
+    final previous = List<int>.generate(candidate.length + 1, (i) => i);
+    for (var i = 1; i <= expected.length; i++) {
+      final current = <int>[i];
+      for (var j = 1; j <= candidate.length; j++) {
+        final deletion = previous[j] + 1;
+        final insertion = current[j - 1] + 1;
+        final substitution = previous[j - 1] +
+            (expected.codeUnitAt(i - 1) == candidate.codeUnitAt(j - 1) ? 0 : 1);
+        var best = deletion < insertion ? deletion : insertion;
+        if (substitution < best) best = substitution;
+        current.add(best);
+      }
+      for (var j = 0; j < current.length; j++) {
+        previous[j] = current[j];
+      }
+    }
+    return previous.last <= maxDistance;
+  }
 
   void _expireAlerts() {
     if (!mounted || _alerts.isEmpty) return;
