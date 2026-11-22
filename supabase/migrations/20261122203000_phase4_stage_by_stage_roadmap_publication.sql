@@ -300,17 +300,15 @@ BEGIN
 
   v_old := $old$WHERE di.event_id = p_event_id AND di.team_id = er.team_id
       )
-    ) ranked$old$;
+  ) ranked$old$;
   IF position(v_old in v_def) = 0 THEN
     RAISE EXCEPTION 'Could not locate the Stage 1 direct-entry exclusion in generate_event_roadmap';
   END IF;
-  v_def := replace(v_def,$old$WHERE di.event_id = p_event_id AND di.team_id = er.team_id
-      )
-    ) ranked$old$,$new$WHERE di.event_id = p_event_id
+  v_def := replace(v_def,v_old,$new$WHERE di.event_id = p_event_id
           AND di.team_id = er.team_id
           AND di.target_round_number > 1
       )
-    ) ranked$new$);
+  ) ranked$new$);
   EXECUTE v_def;
 
   -- Live-stage reminders are based on the *next* stage's publication state.
