@@ -474,7 +474,59 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   }
 
   Future<bool> _handleTournamentConfirmation(String message) async {
-    final normalized = message.toLowerCase().trim().replaceAll(RegExp(r'[.!?]+
+    final normalized = message.toLowerCase().trim().replaceAll(RegExp(r'[.!?]+$'), '');
+    const affirmative = {
+      'yes', 'y', 'yeah', 'yep', 'haan', 'han', 'ha', 'ji haan',
+      'publish', 'publish tournament', 'yes publish', 'haan publish',
+      'haan publish karo', 'haan publish kar do', 'publish kar do',
+      'go ahead and publish', 'confirm publish', 'sure', 'go ahead',
+      'confirm', 'ok publish', 'okay publish', 'publish it', 'kar do',
+    };
+    const negative = {
+      'no', 'n', 'nope', 'nahi', 'nahin', 'na', 'draft',
+      'keep draft', 'keep as draft', 'save as draft', 'draft rakho',
+      'draft hi rakho', 'publish mat karo', 'not now', 'not yet',
+      'later', 'baad mein', 'abhi nahi', 'keep it private',
+    };
+    final decision = affirmative.contains(normalized)
+        ? 'publish'
+        : negative.contains(normalized)
+            ? 'keep_draft'
+            : null;
+    if (decision == null || !_showOrganizerActions) return false;
+
+    final actionable = _items
+        .where((item) => item.proposal?['workflow_type'] == 'tournament')
+        .where((item) => ['pending_approval', 'approved', 'draft']
+            .contains(item.proposal?['status']?.toString()))
+        .toList();
+    if (actionable.isEmpty) return false;
+
+    setState(() {
+      _items.add(_ChatItem(true, message));
+      if (_input.text.isNotEmpty) _input.clear();
+    });
+    if (actionable.length != 1) {
+      _showActionMessage(
+        'There are multiple unpublished tournament drafts in this chat. Use the Publish Tournament or Keep as Draft button on the exact tournament card you mean. I have not changed any tournament.',
+      );
+      return true;
+    }
+    final proposalId = actionable.single.proposal?['id']?.toString();
+    if (proposalId == null || proposalId.isEmpty) {
+      _showActionMessage(
+        'I could not identify the saved tournament draft. Nothing was published. Please use the action on its preview card.',
+      );
+      return true;
+    }
+    await _resolveProposal(proposalId, decision);
+    return true;
+  }
+
+  Future<void> _sendMessage(String message, {String? communityId}) async {
+    if (message.isEmpty || _sending || _restoring) return;
+    if (await _handleTournamentConfirmation(message)) return;
+
     final selectedCommunityId = communityId ?? _activeCommunityId ?? widget.communityId;
     setState(() {
       _sending = true;
@@ -517,7 +569,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       if (!mounted) return;
       setState(() => _items.add(_ChatItem(
         false,
-        'Request complete nahi ho saka. ${error.toString().replaceFirst("Exception: ", "")}',
+        'Request complete nahi ho saka. \${error.toString().replaceFirst("Exception: ", "")}',
         isError: true,
       )));
     } finally {
