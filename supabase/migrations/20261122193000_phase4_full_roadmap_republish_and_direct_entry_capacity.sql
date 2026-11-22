@@ -88,7 +88,7 @@ BEGIN
   jsonb_build_object('target_round_number',p_target_round_number,'team_ids',to_jsonb(p_team_ids),'team_count',added));
  RETURN jsonb_build_object('event_id',p_event_id,'target_round_number',p_target_round_number,
   'assigned_count',added,'team_ids',to_jsonb(p_team_ids),'republish_required',true);
-END;$function$
+END;$function$;
 
 CREATE OR REPLACE FUNCTION public.publish_event_roadmap(p_event_id uuid, p_stage_configs jsonb)
  RETURNS jsonb
@@ -141,7 +141,7 @@ BEGIN
  VALUES(auth.uid(),p_event_id,'event',p_event_id,'complete_event_roadmap_published','Complete stage-to-stage roadmap published in one action',
   jsonb_build_object('roadmap_version',version_n,'stage_count',n,'summary',summary));
  RETURN jsonb_build_object('event_id',p_event_id,'roadmap_version',version_n,'stage_count',n,'roadmap_published',true);
-END;$function$
+END;$function$;
 
 CREATE OR REPLACE FUNCTION public.generate_event_roadmap(p_event_id uuid, p_matches_per_group integer, p_interval_minutes integer)
  RETURNS jsonb
@@ -330,5 +330,4 @@ BEGIN
     'qualified_team_count',v_expected_qualified,'direct_invite_count',v_direct_invites,
     'schedule_published',true);
 END;
-$function$
-
+$function$;
