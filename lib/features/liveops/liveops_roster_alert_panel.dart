@@ -278,7 +278,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
   void _expireAlerts() {
     if (!mounted || _alerts.isEmpty) return;
     final now = DateTime.now();
-    final remaining = _alerts.where((alert) => alert.expiresAt.isAfter(now)).toList();
+    final remaining = _alerts.where((alert) => alert.expiresAt?.isAfter(now) ?? false).toList();
     setState(() {
       _alerts
         ..clear()
