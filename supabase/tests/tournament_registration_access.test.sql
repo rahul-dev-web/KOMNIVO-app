@@ -59,9 +59,9 @@ select extensions.ok(
 );
 select extensions.ok(
   position('when ''duo'' then 2 when ''squad'' then 4 else 1 end' in
-    pg_get_functiondef('app_private.register_for_event(uuid,uuid)'::regprocedure)) > 0
+    lower(pg_get_functiondef('app_private.register_for_event(uuid,uuid)'::regprocedure)) ) > 0
   and position('when ''duo'' then 2 when ''squad'' then 4 else 1 end' in
-    pg_get_functiondef('app_private.is_event_registration_eligible_player(uuid,uuid,uuid)'::regprocedure)) > 0,
+    lower(pg_get_functiondef('app_private.is_event_registration_eligible_player(uuid,uuid,uuid)'::regprocedure)) ) > 0,
   'Default minimum joined roster is Duo 2 and Squad 4, overridable by configured rules'
 );
 select extensions.ok(
