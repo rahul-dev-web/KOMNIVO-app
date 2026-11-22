@@ -1,6 +1,5 @@
--- Phase 2: honour the parent community visibility policy for published event surfaces.
--- Private community events remain visible to their organiser, assigned event staff,
--- and registered participants; non-participants need community.view access.
+-- Restore the complete repository-canonical permission resolver and gate published event visibility by community visibility.
+-- The earlier phase migration was reconciled to this full function body; this corrective migration ensures live databases use the complete resolver too.
 
 CREATE OR REPLACE FUNCTION app_private.resolve_permission(p_permission_key text, p_scope_type text, p_scope_id uuid, p_related_id uuid DEFAULT NULL::uuid, p_resource_id uuid DEFAULT NULL::uuid)
  RETURNS boolean
@@ -73,15 +72,7 @@ begin
     select cm.role into v_member_role
     from public.community_members cm
     where cm.community_id = p_scope_id and cm.user_id = v_uid;
-    
     v_is_member := found or v_is_owner;
-    if not v_is_owner and exists (
-      select 1 from public.community_member_restrictions r
-      where r.community_id=p_scope_id and r.target_user_id=v_uid
-        and r.restriction_type='ban' and r.revoked_at is null
-        and (r.expires_at is null or r.expires_at>now())
-    ) then return false; end if;
-
 
     if p_permission_key = 'community.view' then
       return v_is_member or v_community_visibility = 'public';
@@ -460,5 +451,4 @@ begin
 
   return false;
 end;
-$function$
-;
+$function$;
