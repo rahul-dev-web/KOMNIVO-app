@@ -47,6 +47,22 @@ void main() {
       );
     });
 
+    test('extracts visible numeric UIDs and matches them exactly by slot', () {
+      final ocr = 'TEAM 1\\nIGL RAHUL 123456789\\nTEAM 2\\nNOVA 987654321';
+      final slots = LiveOpsRosterOcrParser.readSlotUids(ocr);
+
+      expect(slots[1], <String>['123456789']);
+      expect(slots[2], <String>['987654321']);
+      expect(
+        LiveOpsRosterOcrParser.slotsForExactUid(slots, '123456789'),
+        <int>[1],
+      );
+      expect(
+        LiveOpsRosterOcrParser.slotsForExactUid(slots, '12345678'),
+        isEmpty,
+      );
+    });
+
     test('deduplicates repeated identical OCR lines within one slot only', () {
       final slots = LiveOpsRosterOcrParser.readSlots(
         'TEAM 1\nNOVA\nNOVA\nTEAM 2\nNOVA',
