@@ -125,8 +125,8 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
     final knownPlayers = _teams
         .expand((team) => team.players)
         .where((player) => player.isVerified &&
-            player.identitySnapshotAvailable &&
-            player.nickname.trim().isNotEmpty)
+            (player.uid.isNotEmpty ||
+                (player.identitySnapshotAvailable && player.nickname.trim().isNotEmpty)))
         .toList(growable: false);
     final allKnownNames = knownPlayers
         .map((player) => _normalise(player.nickname))
@@ -143,8 +143,8 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
 
       final expected = team.players
           .where((player) => player.isVerified &&
-              player.identitySnapshotAvailable &&
-              player.nickname.trim().isNotEmpty)
+              (player.uid.isNotEmpty ||
+                  (player.identitySnapshotAvailable && player.nickname.trim().isNotEmpty)))
           .toList(growable: false);
       final notSeen = <String>[];
 
@@ -173,7 +173,8 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
         for (final entry in slotLines.entries) {
           for (final line in entry.value) {
             final candidate = _normalise(line);
-            if (candidate.isNotEmpty &&
+            if (playerName.isNotEmpty &&
+                candidate.isNotEmpty &&
                 candidate != playerName &&
                 _isLikelySimilarName(playerName, candidate)) {
               nearHits.add(MapEntry<int, String>(entry.key, line));
@@ -221,7 +222,9 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
             icon: Icons.swap_horiz_rounded,
           ));
         } else {
-          notSeen.add(player.nickname);
+          notSeen.add(player.nickname.isNotEmpty
+              ? player.nickname
+              : 'UID ' + player.uid);
         }
       }
 
@@ -547,7 +550,6 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
             );
             final seenSlots = <int>{...seenByName, ...seenByUid}.toList()..sort();
             final compareLabel = !widget.lobbyConfirmed || !player.isVerified ||
-                    !player.identitySnapshotAvailable ||
                     (playerName.isEmpty && player.uid.isEmpty)
                 ? null
                 : (seenByUid.contains(team.slotNumber)
