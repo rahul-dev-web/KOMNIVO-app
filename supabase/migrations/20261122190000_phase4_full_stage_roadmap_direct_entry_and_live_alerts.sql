@@ -363,7 +363,7 @@ BEGIN
     'qualified_team_count',v_expected_qualified,'direct_invite_count',v_direct_invites,
     'schedule_published',false);
 END;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION app_private.generate_event_stage_matches(p_stage_id uuid, p_matches_per_group integer, p_interval_minutes integer, p_first_match_at timestamp with time zone)
  RETURNS jsonb
@@ -544,7 +544,7 @@ begin
     'match_interval_minutes', p_interval_minutes
   );
 end;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.advance_event_stage_from_roadmap(p_source_stage_id uuid, p_matches_per_group integer, p_interval_minutes integer, p_first_match_at timestamp with time zone)
  RETURNS jsonb
@@ -731,4 +731,4 @@ BEGIN
     'total_team_count',v_total_count,'schedule_published',true
   );
 END;
-$function$
+$function$;
