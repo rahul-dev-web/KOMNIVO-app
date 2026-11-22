@@ -34,6 +34,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
 
   final Map<String, DateTime> _recentAlerts = <String, DateTime>{};
   final List<_TimedRosterAlert> _alerts = <_TimedRosterAlert>[];
+  final Set<String> _processingAlertKeys = <String>{};
   List<_ExpectedTeamSlot> _teams = <_ExpectedTeamSlot>[];
   Timer? _expiryTimer;
   bool _loading = true;
@@ -254,6 +255,20 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
         icon: Icons.photo_library_outlined,
       ));
     }
+    final emptyVisibleSlots = slotLines.entries
+        .where((entry) => entry.value.isEmpty)
+        .map((entry) => entry.key)
+        .toList()
+      ..sort();
+    if (emptyVisibleSlots.isNotEmpty) {
+      generated.add(_TimedRosterAlert(
+        key: 'empty-slot:' + emptyVisibleSlots.join(','),
+        title: 'Slot header found, player text unreadable',
+        detail: 'OCR saw Slot(s) ' + emptyVisibleSlots.join(', ') +
+            ' but could not read player names beneath them. This is unreadable coverage, not proof that a player is absent.',
+        icon: Icons.document_scanner_outlined,
+      ));
+    }
 
     final now = DateTime.now();
     var changed = false;
@@ -321,9 +336,37 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
         until.isBefore(now.subtract(const Duration(minutes: 2))));
   }
 
-  void _markHandled(_TimedRosterAlert alert) {
-    _recentAlerts[alert.key] = DateTime.now().add(_repeatSuppression);
-    setState(() => _alerts.removeWhere((item) => item.key == alert.key));
+  Future<void> _recordHostDecision(
+    _TimedRosterAlert alert,
+    String decision,
+  ) async {
+    if (_processingAlertKeys.contains(alert.key)) return;
+    setState(() => _processingAlertKeys.add(alert.key));
+    try {
+      await Supabase.instance.client.rpc(
+        'record_liveops_roster_alert_decision',
+        params: <String, dynamic>{
+          'p_session_id': widget.sessionId,
+          'p_alert_type': alert.key.split(':').first,
+          'p_decision': decision,
+        },
+      );
+      if (!mounted) return;
+      _recentAlerts[alert.key] = DateTime.now().add(_repeatSuppression);
+      setState(() => _alerts.removeWhere((item) => item.key == alert.key));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Host decision could not be recorded: ' +
+              error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _processingAlertKeys.remove(alert.key));
+      }
+    }
   }
 
   @override
@@ -413,7 +456,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
           ],
           const SizedBox(height: 9),
           const Text(
-            'Player comparisons use exact OCR IGN/name matching against the locked verified-profile snapshot; they are not proof of UID identity. Host actions dismiss only the reminder. KOMNIVO does not kick players, move slots or change the official roster.',
+            'Player comparisons use exact OCR IGN/name matching against the locked verified-profile snapshot; they are not proof of UID identity. Host decisions are audit-logged against this Match. The host performs any game change manually; KOMNIVO never kicks players, moves slots or edits the official roster.',
             style: TextStyle(color: KomnivoTheme.cyan, fontSize: 10, height: 1.4),
           ),
         ],
@@ -538,13 +581,23 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             TextButton(
-              onPressed: () => _markHandled(alert),
-              child: const Text('Keep as-is / ignore'),
+              onPressed: _processingAlertKeys.contains(alert.key)
+                  ? null
+                  : () => _recordHostDecision(alert, 'kept_as_is'),
+              child: const Text('Keep as-is'),
             ),
             const SizedBox(width: 6),
             FilledButton.tonal(
-              onPressed: () => _markHandled(alert),
-              child: const Text('Adjusted in game'),
+              onPressed: _processingAlertKeys.contains(alert.key)
+                  ? null
+                  : () => _recordHostDecision(alert, 'adjusted_in_game'),
+              child: _processingAlertKeys.contains(alert.key)
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Adjusted in game'),
             ),
           ],
         ),
