@@ -69,7 +69,6 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     const eventKeys = [
       'event.manage',
       'event.registrations.manage',
-      'event.roster.lock',
       'event.matches.manage',
       'event.matches.operate',
       'event.results.review',
@@ -1241,8 +1240,8 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                 }),
             ],
             const SizedBox(height: 22),
-            if (_canEvent(data, 'event.roster.lock') || _canEvent(data, 'event.manage'))
-              SectionTitle('Roster control', subtitle: 'Snapshot accepted team members before group allocation'),
+            if (_canEvent(data, 'event.manage'))
+              SectionTitle('Team registration & match setup', subtitle: 'Approved teams enter the roadmap; LiveOps snapshots every current Team member automatically'),
             const SizedBox(height: 10),
             if (_canEvent(data, 'event.manage'))
               Align(
@@ -2394,8 +2393,8 @@ class _OperationCard extends StatelessWidget {
                 }),
             ],
             const SizedBox(height: 22),
-            if (_canEvent(data, 'event.roster.lock') || _canEvent(data, 'event.manage'))
-              SectionTitle('Roster control', subtitle: 'Snapshot accepted team members before group allocation'),
+            if (_canEvent(data, 'event.manage'))
+              SectionTitle('Team registration & match setup', subtitle: 'Approved teams enter the roadmap; LiveOps snapshots every current Team member automatically'),
             const SizedBox(height: 10),
             if (_canEvent(data, 'event.manage'))
               Align(
