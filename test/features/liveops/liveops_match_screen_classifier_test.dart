@@ -42,6 +42,44 @@ void main() {
       expect(noHp.kind, LiveOpsMatchScreenKind.unknown);
     });
 
+
+    test('recognises a Booyah result summary with a player-stat table', () {
+      final result = LiveOpsMatchScreenClassifier.classify(
+        'BOOYAH\\nNAME\\nK\\nDMG\\nPLAY AGAIN',
+      );
+
+      expect(result.kind, LiveOpsMatchScreenKind.resultScreen);
+      expect(result.matchedSignals, containsAll(<String>['BOOYAH', 'NAME', 'K', 'DMG']));
+    });
+
+    test('recognises a defeat result summary with explicit result metrics', () {
+      final result = LiveOpsMatchScreenClassifier.classify(
+        'DEFEAT\\nRESULTS\\nNAME\\nKILLS\\nDAMAGE',
+      );
+
+      expect(result.kind, LiveOpsMatchScreenKind.resultScreen);
+    });
+
+    test('keeps outcome animation and partial result OCR Unknown', () {
+      final outcomeOnly = LiveOpsMatchScreenClassifier.classify('BOOYAH');
+      final oneMetric = LiveOpsMatchScreenClassifier.classify(
+        'DEFEAT\\nNAME\\nKILLS',
+      );
+
+      expect(outcomeOnly.kind, LiveOpsMatchScreenKind.unknown);
+      expect(oneMetric.kind, LiveOpsMatchScreenKind.unknown);
+    });
+
+    test('does not classify conflicting active-screen and result markers', () {
+      final result = LiveOpsMatchScreenClassifier.classify(
+        'BOOYAH\\nNAME\\nK\\nDMG\\n'
+        'SAFE ZONE WILL SHRINK IN 01:21\\nEP 70/220\\nHP 200/200',
+      );
+
+      expect(result.kind, LiveOpsMatchScreenKind.unknown);
+      expect(result.reason, contains('Conflicting'));
+    });
+
     test('does not classify conflicting Lobby and Gameplay evidence', () {
       final result = LiveOpsMatchScreenClassifier.classify(
         'TEAM 1\nINVITE FRIENDS\nTEAM 2\nSTART MATCH\n'
@@ -78,6 +116,30 @@ void main() {
         LiveOpsMatchScreenKind.lobby,
       );
       expect(observer.stableKind, LiveOpsMatchScreenKind.lobby);
+    });
+
+
+    test('requires three consecutive result-screen observations', () {
+      final observer = LiveOpsStableScreenObserver();
+
+      expect(
+        observer.observe(LiveOpsMatchScreenKind.resultScreen, start),
+        LiveOpsMatchScreenKind.unknown,
+      );
+      expect(
+        observer.observe(
+          LiveOpsMatchScreenKind.resultScreen,
+          start.add(const Duration(seconds: 1)),
+        ),
+        LiveOpsMatchScreenKind.unknown,
+      );
+      expect(
+        observer.observe(
+          LiveOpsMatchScreenKind.resultScreen,
+          start.add(const Duration(seconds: 2)),
+        ),
+        LiveOpsMatchScreenKind.resultScreen,
+      );
     });
 
     test('holds the prior state through brief Unknown OCR and then falls back', () {
