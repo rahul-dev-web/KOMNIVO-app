@@ -223,7 +223,7 @@ class _LiveOpsEvidencePanelState extends State<LiveOpsEvidencePanel> {
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Row(children: [Icon(Icons.photo_library_outlined, color: KomnivoTheme.cyan), SizedBox(width: 9), Expanded(child: Text('Standing screenshot evidence', style: TextStyle(fontWeight: FontWeight.w900)))]),
       const SizedBox(height: 7),
-      const Text('Active Match ID: ' + widget.matchId, style: TextStyle(color: KomnivoTheme.cyan, fontSize: 11, fontWeight: FontWeight.w800)),
+      Text('Active Match ID: ' + widget.matchId, style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 11, fontWeight: FontWeight.w800)),
       const SizedBox(height: 5),
       const Text('Select 1–8 screenshots per batch. Add more batches as you scroll; there is no fixed screenshot count. JPG, PNG and WebP are supported, up to 10 MiB each. OCR runs on-device before upload.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.45)),
       const SizedBox(height: 11),
