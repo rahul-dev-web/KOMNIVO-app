@@ -34,6 +34,8 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
   int? _activeMatchSequence;
   bool _capturing = false;
   bool _matchResultsSubmitted = false;
+  bool _matchEvidenceSkipped = false;
+  String _matchEvidenceSkipReason = '';
   bool _voice = true;
   String _lastObservation = '';
 
@@ -63,6 +65,10 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
   }
 
   Future<void> _start() async {
+    if (_matchEvidenceSkipped) {
+      showMessage(context, 'This Match evidence step was skipped. Use Next Match to continue the Lobby.');
+      return;
+    }
     if (_matchResultsSubmitted) {
       showMessage(context, 'This Match already has official result rows. Use Next Match after submission; do not capture or edit it again.');
       return;
@@ -111,13 +117,34 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       if (submittedRows.isNotEmpty) {
         if (mounted) setState(() {
           _matchResultsSubmitted = true;
+          _matchEvidenceSkipped = false;
+          _matchEvidenceSkipReason = '';
           _capturing = false;
           _state = 'Official result submitted · awaiting reviewer';
         });
         showMessage(context, 'Official result rows already exist for this Match. Use the Next Match action below when ready.');
         return;
       }
+      final skipState = await Supabase.instance.client
+          .from('liveops_sessions')
+          .select('evidence_skipped_at,evidence_skip_reason')
+          .eq('id', sessionId)
+          .maybeSingle();
+      if (skipState?['evidence_skipped_at'] != null) {
+        final reason = skipState?['evidence_skip_reason']?.toString() ?? '';
+        if (mounted) setState(() {
+          _matchResultsSubmitted = false;
+          _matchEvidenceSkipped = true;
+          _matchEvidenceSkipReason = reason;
+          _capturing = false;
+          _state = 'Evidence step skipped · Next Match available';
+        });
+        showMessage(context, 'This Match evidence step was already skipped. No score was created; continue with Next Match.');
+        return;
+      }
       _matchResultsSubmitted = false;
+      _matchEvidenceSkipped = false;
+      _matchEvidenceSkipReason = '';
 
       // The Lobby selects or resumes its current ordered Match ID. Each evidence
       // batch and candidate remains bound to that exact Match ID.
@@ -258,6 +285,8 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         _activeLobbyCode = next['lobby_code']?.toString();
         _activeMatchSequence = nextSequence;
         _matchResultsSubmitted = false;
+        _matchEvidenceSkipped = false;
+        _matchEvidenceSkipReason = '';
         _capturing = false;
         _state = 'Next Match ready · sequence $nextSequence';
         _latestText = 'Match $nextSequence is ready. Press Start to begin a new Android screen-observation session.';
@@ -351,6 +380,8 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
             SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _stop, icon: const Icon(Icons.pause_circle_outline), label: const Text('Pause observation for evidence upload')))
           else if (_matchResultsSubmitted)
             const Text('Official result rows are already submitted. Use the Next Match action in the evidence panel to continue this Lobby.', style: TextStyle(color:KomnivoTheme.cyan,fontSize:11,height:1.4))
+          else if (_matchEvidenceSkipped)
+            Text('Evidence skipped for this Match: $_matchEvidenceSkipReason. No result or score was created. Use Next Match below.', style: const TextStyle(color:KomnivoTheme.cyan,fontSize:11,height:1.4))
           else
             SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _start, icon: const Icon(Icons.play_circle_outline), label: Text(_sessionId == null ? 'Start LiveOps session' : 'Start / resume this Match'))),
         ]),
@@ -366,6 +397,17 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
           capturing: _capturing,
           onPause: _stop,
           onNextMatch: _startNextMatch,
+          onEvidenceSkipped: (reason) {
+            if (!mounted) return;
+            setState(() {
+              _matchEvidenceSkipped = true;
+              _matchEvidenceSkipReason = reason;
+              _matchResultsSubmitted = false;
+              _capturing = false;
+              _state = 'Evidence step skipped · Next Match available';
+            });
+          },
+          evidenceSkipped: _matchEvidenceSkipped,
           preview: widget.preview,
         ),
       ],
