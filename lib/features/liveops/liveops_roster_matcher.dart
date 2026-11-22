@@ -114,6 +114,46 @@ class LiveOpsRosterOcrParser {
         .toList(growable: false);
   }
 
+  static Map<int, Map<String, String>> readNamesPairedWithUids(
+    String rawText,
+  ) {
+    final result = <int, Map<String, String>>{};
+    int? activeSlot;
+    final uidPattern = RegExp(r'\b\d{5,15}\b');
+
+    for (final rawLine in rawText.split(RegExp(r'[\r\n]+'))) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue;
+      final marker = _slotMarker.firstMatch(line);
+      if (marker != null) {
+        activeSlot = int.tryParse(marker.group(1) ?? '');
+        final remainder = line.substring(marker.end).trim();
+        _storeNameUidPair(result, activeSlot, remainder, uidPattern);
+        continue;
+      }
+      if (_boundaries.contains(normalise(line))) {
+        activeSlot = null;
+        continue;
+      }
+      _storeNameUidPair(result, activeSlot, line, uidPattern);
+    }
+    return result;
+  }
+
+  static void _storeNameUidPair(
+    Map<int, Map<String, String>> result,
+    int? slot,
+    String line,
+    RegExp uidPattern,
+  ) {
+    if (slot == null) return;
+    final matches = uidPattern.allMatches(line).toList(growable: false);
+    final name = withoutVisibleUid(line).trim();
+    if (matches.isEmpty || !looksLikePlayerName(name)) return;
+    final uid = matches.first.group(0)!;
+    result.putIfAbsent(slot, () => <String, String>{})[normalise(name)] = uid;
+  }
+
   static String withoutVisibleUid(String value) =>
       value.replaceAll(RegExp(r'\b\d{5,15}\b'), ' ');
   static String normalise(String value) =>
