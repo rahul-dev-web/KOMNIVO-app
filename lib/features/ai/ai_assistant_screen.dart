@@ -441,7 +441,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     final summary = StringBuffer()
       ..writeln('Tournament proposal saved successfully. Please review the saved configuration:')
       ..writeln()
-      ..writeln('**${proposal['name'] ?? 'Tournament'}**')
+      ..writeln('${proposal['name'] ?? 'Tournament'}')
       ..writeln('Game: ${proposal['game_name'] ?? '—'} · Mode: ${proposal['format'] ?? '—'} · Capacity: ${proposal['capacity'] ?? '—'} teams')
       ..writeln('Stages: ${config['stage_count'] ?? '—'}${stageNames.isEmpty ? '' : ' ($stageNames)'}')
       ..writeln('Registration: ${proposal['registration_opens_at'] ?? '—'} → ${proposal['registration_closes_at'] ?? '—'}')
@@ -1079,14 +1079,14 @@ class _ProposalInfo extends StatelessWidget {
 ), '');
     const affirmative = {
       'yes', 'y', 'yeah', 'yep', 'haan', 'han', 'ha', 'ji haan',
-      'publish', 'publish tournament', 'yes publish', 'haan publish',
+      'publish', 'publish tournament', 'yes publish', 'haan publish', 'sure', 'go ahead', 'confirm', 'ok publish', 'okay publish', 'publish it',
       'haan publish karo', 'haan publish kar do', 'publish kar do',
-      'go ahead and publish', 'confirm publish',
+      'go ahead and publish', 'confirm publish', 'kar do',
     };
     const negative = {
       'no', 'n', 'nope', 'nahi', 'nahin', 'na', 'draft',
       'keep draft', 'keep as draft', 'save as draft', 'draft rakho',
-      'draft hi rakho', 'publish mat karo', 'not now',
+      'draft hi rakho', 'publish mat karo', 'not now', 'not yet', 'later', 'baad mein', 'abhi nahi', 'keep it private',
     };
     final decision = affirmative.contains(normalized)
         ? 'publish'
