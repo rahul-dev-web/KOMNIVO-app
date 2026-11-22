@@ -474,7 +474,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                 final name = fields['stage_name']!.text.trim();
                 final type = fields['stage_type']!.text.trim();
                 final firstAt = fields['first_match_at']!.text.trim();
-                final timestampHasZone = RegExp(r'(Z|[+-]\d{2}:\d{2}).hasMatch(firstAt);
+                final timestampHasZone = RegExp(r'(Z|[+-]\d{2}:\d{2})$').hasMatch(firstAt);
                 final parsedDate = DateTime.tryParse(firstAt);
                 if (name.isEmpty || type.isEmpty || parsedDate == null ||
                     !timestampHasZone || !parsedDate.isAfter(DateTime.now())) {
