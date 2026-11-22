@@ -47,6 +47,17 @@ void main() {
       );
     });
 
+    test('keeps nickname text separate when OCR reads a UID on the same row', () {
+      const ocr = 'TEAM 1\nNOVA 123456789\nTEAM 2\nWOLF 987654321';
+      final names = LiveOpsRosterOcrParser.readSlots(ocr);
+      final uids = LiveOpsRosterOcrParser.readSlotUids(ocr);
+
+      expect(names[1], <String>['NOVA']);
+      expect(names[2], <String>['WOLF']);
+      expect(uids[1], <String>['123456789']);
+      expect(uids[2], <String>['987654321']);
+    });
+
     test('extracts visible numeric UIDs and matches them exactly by slot', () {
       final ocr = 'TEAM 1\\nIGL RAHUL 123456789\\nTEAM 2\\nNOVA 987654321';
       final slots = LiveOpsRosterOcrParser.readSlotUids(ocr);
