@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(16);
+select extensions.plan(17);
 
 select extensions.ok(
   to_regprocedure('app_private.is_event_registration_eligible_player(uuid,uuid,uuid)') is not null,
@@ -68,6 +68,13 @@ select extensions.ok(
   position('v_event.registration_opens_at > now()' in
     pg_get_functiondef('app_private.register_for_event(uuid,uuid)'::regprocedure)) > 0,
   'Actual event registration is rejected before its configured start time'
+);
+select extensions.ok(
+  position('Registration close time is not configured' in
+    pg_get_functiondef('app_private.register_for_event(uuid,uuid)'::regprocedure)) > 0
+  and position('v_event.registration_closes_at <= now()' in
+    pg_get_functiondef('app_private.register_for_event(uuid,uuid)'::regprocedure)) > 0,
+  'Actual registration requires a configured future close time'
 );
 select extensions.ok(
   position('v_event.registration_closes_at <= now()' in
