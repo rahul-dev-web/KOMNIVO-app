@@ -31,14 +31,14 @@ class LiveOpsMatchScreenClassifier {
     'TEAM 2',
   ];
 
-  static final RegExp _hpValue = RegExp(r'\\bHP\\s*\\d{1,4}\\s*/\\s*\\d{1,4}\\b');
-  static final RegExp _epValue = RegExp(r'\\bEP\\s*\\d{1,4}\\s*/\\s*\\d{1,4}\\b');
+  static final RegExp _hpValue = RegExp(r'\bHP\s*\\d{1,4}\s*/\s*\\d{1,4}\\b');
+  static final RegExp _epValue = RegExp(r'\bEP\s*\\d{1,4}\s*/\s*\\d{1,4}\\b');
 
   static LiveOpsMatchScreenClassification classify(String rawOcrText) {
     final normalized = rawOcrText
         .toUpperCase()
         .replaceAll(RegExp(r'[^A-Z0-9/]+'), ' ')
-        .replaceAll(RegExp(r'\\s+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
     bool containsPhrase(String phrase) =>
