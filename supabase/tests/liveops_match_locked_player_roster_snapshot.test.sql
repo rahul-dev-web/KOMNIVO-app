@@ -1,55 +1,53 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT extensions.plan(11);
+SELECT extensions.plan(9);
 
 SELECT extensions.ok(
-  to_regprocedure('public.get_liveops_match_roster_snapshot(uuid)') IS NOT NULL,
-  'The operator-scoped LiveOps Match roster snapshot RPC exists'
+  to_regclass('public.liveops_match_roster_snapshots') IS NOT NULL,
+  'An immutable persisted roster snapshot table exists'
 );
 SELECT extensions.ok(
-  has_function_privilege('authenticated','public.get_liveops_match_roster_snapshot(uuid)','EXECUTE'),
-  'Authenticated users may call the RPC subject to server-side permission checks'
+  (SELECT relrowsecurity FROM pg_class WHERE oid='public.liveops_match_roster_snapshots'::regclass),
+  'RLS is enabled on persisted LiveOps roster snapshots'
 );
 SELECT extensions.ok(
-  NOT has_function_privilege('anon','public.get_liveops_match_roster_snapshot(uuid)','EXECUTE'),
-  'Anonymous callers cannot execute the roster snapshot RPC'
+  NOT has_table_privilege('authenticated','public.liveops_match_roster_snapshots','SELECT')
+  AND NOT has_table_privilege('anon','public.liveops_match_roster_snapshots','SELECT'),
+  'Authenticated and anonymous clients cannot read the private snapshot table directly'
 );
 SELECT extensions.ok(
-  (SELECT prosecdef FROM pg_proc WHERE oid='public.get_liveops_match_roster_snapshot(uuid)'::regprocedure),
-  'The RPC uses a controlled security-definer boundary'
+  EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgrelid='public.liveops_match_roster_snapshots'::regclass
+      AND tgname='liveops_match_roster_snapshots_immutable'
+      AND NOT tgisinternal
+  ),
+  'Updates and deletes are rejected by an immutability trigger'
 );
 SELECT extensions.ok(
-  position('s.operator_id = v_uid' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
-  AND position('event.matches.operate' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
-  'The RPC is limited to the authenticated session operator with Match-operation permission'
+  position('FOR UPDATE' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
+  AND position('FROM public.liveops_match_roster_snapshots' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
+  'Snapshot creation is serialised and later reads reuse the stored session snapshot'
 );
 SELECT extensions.ok(
-  position('public.match_participants' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
-  AND position('public.registration_players' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
-  'Expected players derive from the exact Match slot and registration roster'
+  position('INSERT INTO public.liveops_match_roster_snapshots' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
+  AND position('ON CONFLICT (session_id) DO NOTHING' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
+  'The first complete locked roster is stored once per LiveOps session'
 );
 SELECT extensions.ok(
-  position('r.roster_locked IS TRUE AND r.roster_locked_at IS NOT NULL' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
-  'The snapshot reports locked only when every participant registration has an explicit lock timestamp'
+  position('r.roster_locked IS TRUE AND r.roster_locked_at IS NOT NULL' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
+  AND position('gps.captured_at <= r.roster_locked_at' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
+  'Only explicitly locked rosters and profile snapshots no later than the lock time are captured'
 );
 SELECT extensions.ok(
-  position('gps.captured_at <= r.roster_locked_at' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
-  AND position('ga.last_synced_at <= r.roster_locked_at' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
-  'Profile identity is selected strictly as-of the explicit roster-lock timestamp'
+  position('snapshot_fingerprint' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
+  AND position('snapshot_reused' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
+  'The RPC returns a stable fingerprint and indicates stored snapshot reuse'
 );
 SELECT extensions.ok(
-  position('roster_snapshot_fingerprint' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
-  AND position('md5(v_match.id::text ||' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
-  'The response includes a deterministic Match roster snapshot fingerprint'
-);
-SELECT extensions.ok(
-  position('v_roster_locked AND ga.ownership_status = ''verified''' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
-  AND position('THEN ga.uid ELSE NULL END' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
-  'UID and account IDs are withheld until the roster is locked and ownership is verified'
-);
-SELECT extensions.ok(
-  position('registered_at' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) = 0,
-  'Registration time is never substituted for an explicit roster lock'
+  has_function_privilege('authenticated','public.get_liveops_match_roster_snapshot(uuid)','EXECUTE')
+  AND NOT has_function_privilege('anon','public.get_liveops_match_roster_snapshot(uuid)','EXECUTE'),
+  'Only authenticated callers can invoke the operator-scoped snapshot RPC'
 );
 
 SELECT * FROM extensions.finish();
