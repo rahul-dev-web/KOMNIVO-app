@@ -279,13 +279,11 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
     if (!mounted || _alerts.isEmpty) return;
     final now = DateTime.now();
     final remaining = _alerts.where((alert) => alert.expiresAt.isAfter(now)).toList();
-    if (remaining.length != _alerts.length) {
-      setState(() {
-        _alerts
-          ..clear()
-          ..addAll(remaining);
-      });
-    }
+    setState(() {
+      _alerts
+        ..clear()
+        ..addAll(remaining);
+    });
     _recentAlerts.removeWhere((_, until) =>
         until.isBefore(now.subtract(const Duration(minutes: 2))));
   }
@@ -431,6 +429,20 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
                     ' · ' + (player.region.isEmpty ? 'Region —' : player.region) +
                     ' · Snapshot ' + player.snapshotAtLabel
                 : 'This roster member remains in the team but cannot be name-matched by verified UID.';
+            final slotLines = widget.lobbyConfirmed ? _readSlotLines(widget.ocrText) : <int, List<String>>{};
+            final playerName = _normalise(player.nickname);
+            final seenSlots = playerName.isEmpty ? <int>[] : slotLines.entries
+                .where((entry) => entry.value.any((line) =>
+                    _normalise(line).contains(playerName)))
+                .map((entry) => entry.key).toList();
+            final compareLabel = !widget.lobbyConfirmed || !player.isVerified ||
+                    !player.identitySnapshotAvailable || playerName.isEmpty
+                ? null
+                : (seenSlots.contains(team.slotNumber)
+                    ? 'Seen in assigned slot'
+                    : (seenSlots.isNotEmpty
+                        ? 'Detected under Slot ' + seenSlots.first.toString()
+                        : 'Not detected in this OCR scan'));
             return Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -440,6 +452,14 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(title, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
                   Text(detail, style: const TextStyle(fontSize: 9, color: KomnivoTheme.muted)),
+                  if (compareLabel != null)
+                    Text(compareLabel, style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      color: compareLabel == 'Seen in assigned slot'
+                          ? KomnivoTheme.cyan
+                          : const Color(0xFFFFC078),
+                    )),
                 ])),
               ]),
             );
@@ -450,7 +470,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
   }
 
   Widget _buildAlert(_TimedRosterAlert alert) {
-    final remaining = alert.expiresAt.difference(DateTime.now()).inSeconds.clamp(0, 15);
+    final remaining = alert.expiresAt!.difference(DateTime.now()).inSeconds.clamp(0, 15);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(11),
