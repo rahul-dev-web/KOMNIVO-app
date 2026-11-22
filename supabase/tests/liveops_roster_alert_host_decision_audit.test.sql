@@ -1,6 +1,6 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT extensions.plan(7);
+SELECT extensions.plan(8);
 
 SELECT extensions.ok(
   to_regprocedure('public.record_liveops_roster_alert_decision(uuid,text,text)') IS NOT NULL,
@@ -38,6 +38,14 @@ SELECT extensions.ok(
   AND position('game_action_performed_by_komnivo' IN
     pg_get_functiondef('public.record_liveops_roster_alert_decision(uuid,text,text)'::regprocedure)) > 0,
   'The audit record explicitly confirms no roster mutation or automated game action'
+);
+
+SELECT extensions.ok(
+  position('coalesce(p_alert_type' IN
+    pg_get_functiondef('public.record_liveops_roster_alert_decision(uuid,text,text)'::regprocedure)) > 0
+  AND position('coalesce(p_decision' IN
+    pg_get_functiondef('public.record_liveops_roster_alert_decision(uuid,text,text)'::regprocedure)) > 0,
+  'NULL alert types and decisions are rejected rather than falling through validation'
 );
 
 SELECT * FROM extensions.finish();
