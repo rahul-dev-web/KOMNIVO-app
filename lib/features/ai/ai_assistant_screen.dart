@@ -883,10 +883,26 @@ class _EventProposalCard extends StatelessWidget {
     final capacity = proposal['capacity']?.toString() ?? '—';
     final game = proposal['game_name']?.toString() ?? 'Game';
     final startsAt = DateTime.tryParse(proposal['starts_at']?.toString() ?? '');
+    final opens = DateTime.tryParse(proposal['registration_opens_at']?.toString() ?? '');
     final close = DateTime.tryParse(proposal['registration_closes_at']?.toString() ?? '');
     final eventConfig = proposal['event_config'] is Map
         ? Map<String, dynamic>.from(proposal['event_config'] as Map)
         : <String, dynamic>{};
+    final roadmap = eventConfig['roadmap'] is Map
+        ? Map<String, dynamic>.from(eventConfig['roadmap'] as Map)
+        : <String, dynamic>{};
+    final rulebook = eventConfig['rulebook'] is Map
+        ? Map<String, dynamic>.from(eventConfig['rulebook'] as Map)
+        : <String, dynamic>{};
+    final rules = proposal['rules_json'] is Map
+        ? Map<String, dynamic>.from(proposal['rules_json'] as Map)
+        : <String, dynamic>{};
+    final scoring = proposal['scoring_config'] is Map
+        ? Map<String, dynamic>.from(proposal['scoring_config'] as Map)
+        : <String, dynamic>{};
+    final stageNames = eventConfig['stage_names'] is List
+        ? (eventConfig['stage_names'] as List).map((value) => value.toString()).toList()
+        : <String>[];
     final entryType = eventConfig['entry_type']?.toString() ?? 'free';
     final stageCount = eventConfig['stage_count']?.toString() ?? '—';
     final prizePool = eventConfig['prize_pool_amount']?.toString() ?? '0';
@@ -939,10 +955,33 @@ class _EventProposalCard extends StatelessWidget {
           _ProposalChip(icon: Icons.card_giftcard_outlined, label: '₹$prizePool prize pool'),
         ]),
         const SizedBox(height: 10),
-        if (startsAt != null)
-          _ProposalInfo(icon: Icons.event_outlined, label: 'Matches start: ${startsAt.toLocal()}'),
+        if (opens != null)
+          _ProposalInfo(icon: Icons.how_to_reg_outlined, label: 'Registration opens: ${opens.toLocal()}'),
         if (close != null)
           _ProposalInfo(icon: Icons.lock_clock_outlined, label: 'Registration closes: ${close.toLocal()}'),
+        if (startsAt != null)
+          _ProposalInfo(icon: Icons.event_outlined, label: 'Tournament starts: ${startsAt.toLocal()}'),
+        if (stageNames.isNotEmpty)
+          _ProposalInfo(icon: Icons.account_tree_outlined, label: 'Stage names: ${stageNames.join(' → ')}'),
+        if (roadmap.isNotEmpty)
+          _ProposalInfo(
+            icon: Icons.groups_outlined,
+            label: 'Roadmap: group size ${roadmap['group_size']}, ${roadmap['qualifiers_per_group']} qualifiers/group, ${roadmap['qualified_team_count']} qualified + ${roadmap['direct_invites']} direct invites → ${roadmap['next_round_team_count']} teams',
+          ),
+        _ProposalInfo(
+          icon: Icons.rule_outlined,
+          label: 'Rules: ${eventConfig['rules_source'] == 'standard' ? '${rulebook['title'] ?? 'Standard rulebook'} ${rulebook['version'] ?? ''}' : 'Custom rules'}',
+        ),
+        if (rules['custom_text'] != null)
+          _ProposalInfo(icon: Icons.description_outlined, label: 'Custom rules: ${rules['custom_text']}'),
+        if (scoring.isNotEmpty)
+          _ProposalInfo(icon: Icons.calculate_outlined, label: 'Scoring configuration: ${scoring.entries.map((entry) => '${entry.key}: ${entry.value}').join(' · ')}'),
+        if ((eventConfig['prize_distribution']?.toString() ?? '').isNotEmpty)
+          _ProposalInfo(icon: Icons.card_giftcard_outlined, label: 'Prize distribution: ${eventConfig['prize_distribution']}'),
+        if ((eventConfig['entry_fee']?.toString() ?? '').isNotEmpty)
+          _ProposalInfo(icon: Icons.payments_outlined, label: 'Entry fee: ₹${eventConfig['entry_fee']}'),
+        if ((proposal['banner_path']?.toString() ?? '').isNotEmpty || (eventConfig['banner_path']?.toString() ?? '').isNotEmpty)
+          const _ProposalInfo(icon: Icons.image_outlined, label: 'Tournament banner uploaded'),
         if (sources.isNotEmpty) ...[
           const SizedBox(height: 10),
           const Text('Based on uploaded sources', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11)),
