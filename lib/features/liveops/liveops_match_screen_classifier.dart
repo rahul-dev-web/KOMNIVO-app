@@ -107,14 +107,17 @@ class LiveOpsStableScreenObserver {
   final int requiredObservations;
   final Duration maximumGap;
 
+  LiveOpsMatchScreenKind _stableKind = LiveOpsMatchScreenKind.unknown;
   LiveOpsMatchScreenKind _pendingKind = LiveOpsMatchScreenKind.unknown;
   DateTime? _previousAt;
   int _pendingCount = 0;
 
+  LiveOpsMatchScreenKind get stableKind => _stableKind;
   int get pendingCount => _pendingCount;
   LiveOpsMatchScreenKind get pendingKind => _pendingKind;
 
   void reset() {
+    _stableKind = LiveOpsMatchScreenKind.unknown;
     _pendingKind = LiveOpsMatchScreenKind.unknown;
     _previousAt = null;
     _pendingCount = 0;
@@ -124,9 +127,11 @@ class LiveOpsStableScreenObserver {
     LiveOpsMatchScreenKind candidate,
     DateTime observedAt,
   ) {
-    if (candidate == LiveOpsMatchScreenKind.unknown) {
-      reset();
-      return LiveOpsMatchScreenKind.unknown;
+    if (candidate == _stableKind) {
+      _pendingKind = LiveOpsMatchScreenKind.unknown;
+      _pendingCount = 0;
+      _previousAt = observedAt;
+      return _stableKind;
     }
 
     final previousAt = _previousAt;
@@ -144,8 +149,14 @@ class LiveOpsStableScreenObserver {
     }
     _previousAt = observedAt;
 
-    return _pendingCount >= requiredObservations
-        ? candidate
-        : LiveOpsMatchScreenKind.unknown;
+    if (_pendingCount >= requiredObservations) {
+      _stableKind = candidate;
+      _pendingKind = LiveOpsMatchScreenKind.unknown;
+      _pendingCount = 0;
+    }
+    // Keep the last confirmed state during a short transition/flicker window.
+    // At startup that state is Unknown, so one transient candidate cannot
+    // produce a premature Lobby or Gameplay label.
+    return _stableKind;
   }
 }
