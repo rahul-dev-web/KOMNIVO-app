@@ -13,12 +13,14 @@ class LiveOpsCandidatePanel extends StatefulWidget {
     required this.matchId,
     required this.capturing,
     required this.onNextMatch,
+    required this.onEvidenceSkipped,
   });
 
   final String sessionId;
   final String matchId;
   final bool capturing;
   final VoidCallback onNextMatch;
+  final ValueChanged<String> onEvidenceSkipped;
 
   @override
   State<LiveOpsCandidatePanel> createState() => _LiveOpsCandidatePanelState();
@@ -30,6 +32,8 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
   bool _loading = false;
   bool _saving = false;
   bool _submitting = false;
+  bool _evidenceSkipped = false;
+  String _evidenceSkipReason = '';
   List<Map<String, dynamic>> _participants = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _observations = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _candidates = <Map<String, dynamic>>[];
@@ -76,6 +80,9 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
             .select('id,team_id,placement,kills,status,result_json')
             .eq('match_id', widget.matchId)
             .order('placement'),
+        client.from('liveops_sessions')
+            .select('evidence_skipped_at,evidence_skip_reason')
+            .eq('id', widget.sessionId).maybeSingle(),
       ]);
       if (!mounted) return;
       final observations = List<Map<String, dynamic>>.from(result[1] as List)
@@ -87,6 +94,9 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
         _observations = observations;
         _candidates = candidateRows;
         _officialResults = List<Map<String, dynamic>>.from(result[3] as List);
+        final sessionState = result[4] as Map<String, dynamic>?;
+        _evidenceSkipped = sessionState?['evidence_skipped_at'] != null;
+        _evidenceSkipReason = sessionState?['evidence_skip_reason']?.toString() ?? '';
         final participantIds = _participants.map((row) => row['team_id'].toString()).toSet();
         if (_selectedTeamId != null && !participantIds.contains(_selectedTeamId)) {
           _selectedTeamId = null;
@@ -109,6 +119,10 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
   }
 
   Future<void> _saveCandidate() async {
+    if (_evidenceSkipped) {
+      showMessage(context, 'This Match evidence step was skipped; candidate edits are locked.');
+      return;
+    }
     if (widget.capturing) {
       showMessage(context, 'Pause LiveOps before mapping OCR rows to teams.');
       return;
@@ -170,7 +184,7 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
   }
 
   bool get _canSubmitReviewedResults {
-    if (widget.capturing || _loading || _saving || _submitting ||
+    if (_evidenceSkipped || widget.capturing || _loading || _saving || _submitting ||
         _participants.isEmpty || _officialResults.isNotEmpty) {
       return false;
     }
@@ -193,6 +207,75 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
       }
     }
     return true;
+  }
+
+  Future<void> _skipEvidenceStep() async {
+    if (widget.capturing || _submitting || _evidenceSkipped || _officialResults.isNotEmpty) {
+      return;
+    }
+    final controller = TextEditingController();
+    String? reason;
+    try {
+      reason = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Skip this Match evidence step?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('This records an audited skip reason and allows this Lobby to move to its next scheduled Match. No result rows, points or standings will be created for this Match.'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                minLines: 3,
+                maxLines: 5,
+                maxLength: 500,
+                decoration: const InputDecoration(
+                  labelText: 'Reason for skipping (required)',
+                  hintText: 'Explain why the screenshot evidence cannot be submitted.',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                final value = controller.text.trim();
+                if (value.length < 10) {
+                  showMessage(context, 'Enter at least 10 characters explaining the skip.');
+                  return;
+                }
+                Navigator.pop(dialogContext, value);
+              },
+              child: const Text('Record skip'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      controller.dispose();
+    }
+    if (reason == null || !mounted) return;
+
+    setState(() => _submitting = true);
+    try {
+      await Supabase.instance.client.rpc('skip_liveops_match_evidence', params: {
+        'p_session_id': widget.sessionId,
+        'p_reason': reason,
+      });
+      await _loadContext();
+      if (!mounted) return;
+      widget.onEvidenceSkipped(reason);
+      showMessage(context, 'Evidence skip reason recorded for this Match. No score was created; Next Match is now available.');
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not record evidence skip: ' +
+          error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   Future<void> _submitReviewedResults() async {
@@ -335,7 +418,33 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
           );
         }),
       ],
-      if (_officialResults.isNotEmpty) ...[
+      if (_evidenceSkipped) ...[
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF192231),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: KomnivoTheme.line),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Evidence step skipped · reason recorded', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+            const SizedBox(height: 6),
+            Text(_evidenceSkipReason, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4)),
+            const SizedBox(height: 6),
+            const Text('This Match remains without official result rows. Skipping does not create a placement, score or standing.', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 10, height: 1.4)),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: widget.capturing || _submitting ? null : widget.onNextMatch,
+                icon: const Icon(Icons.skip_next_rounded),
+                label: const Text('Load next Match in this Lobby'),
+              ),
+            ),
+          ]),
+        ),
+      ] else if (_officialResults.isNotEmpty) ...[
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.all(12),
@@ -387,6 +496,20 @@ class _LiveOpsCandidatePanelState extends State<LiveOpsCandidatePanel> {
       ] else if (_candidates.isNotEmpty && !widget.capturing) ...[
         const SizedBox(height: 10),
         const Text('Official submission unlocks after every team in this Match has an accepted reviewer-confirmed row and at least one linked screenshot.', style: TextStyle(color:KomnivoTheme.muted,fontSize:10,height:1.4)),
+      ],
+      if (!_evidenceSkipped && _officialResults.isEmpty &&
+          !widget.capturing && !_loading && !_submitting) ...[
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _skipEvidenceStep,
+            icon: const Icon(Icons.skip_next_rounded),
+            label: const Text('Skip evidence step with reason'),
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text('Use only when this Match cannot provide screenshot evidence. The backend stores the reason and never creates fake results.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.4)),
       ],
       const SizedBox(height: 8),
       const Text('This creates one candidate per Team ID in this Match ID. Overlapping screenshots add provenance links, not extra points. The same team in another Match ID remains a separate candidate. Provisional OCR rows do not affect official results; a reviewer must accept every team before the operator can submit this Match for official result approval.',style:TextStyle(color:KomnivoTheme.cyan,fontSize:10,height:1.4)),
