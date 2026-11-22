@@ -487,7 +487,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
               : 'On-device OCR · stable 3/3 observations · strict BR Safe Zone + numeric HP/EP HUD signature';
           nextStatus = retainingPriorState
               ? 'Match in progress · checking screen transition'
-              : 'Match in progress · generic prompts suppressed';
+              : 'Match in progress · minimal voice guidance';
         } else if (confirmedResult) {
           nextVisualState = _LiveOpsVisualState.resultScreen;
           source = retainingPriorState
