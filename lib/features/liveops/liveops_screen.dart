@@ -65,7 +65,12 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
   bool _matchEvidenceSkipped = false;
   String _matchEvidenceSkipReason = '';
   bool _voice = true;
-  String _lastObservation = '';
+  _LiveOpsVisualState? _lastGuidanceState;
+  DateTime? _lastGuidanceAt;
+  final Map<_LiveOpsVisualState, DateTime> _lastGuidanceAtByState =
+      <_LiveOpsVisualState, DateTime>{};
+  static const Duration _statePromptCooldown = Duration(seconds: 30);
+  static const Duration _minimumPromptInterval = Duration(seconds: 6);
   _LiveOpsVisualState _visualState = _LiveOpsVisualState.idle;
   DateTime? _stateObservedAt;
   double? _stateConfidence;
@@ -124,6 +129,48 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         showMessage(context, error.message ?? 'Voice guidance is unavailable.');
       }
     }
+  }
+
+  Future<void> _speakGuidanceForState(_LiveOpsVisualState state) async {
+    final String? prompt = switch (state) {
+      _LiveOpsVisualState.idle => null,
+      _LiveOpsVisualState.permissionPending => null,
+      _LiveOpsVisualState.roomSetup =>
+        'Room setup detected. Enter the room details manually; I will not create the room.',
+      _LiveOpsVisualState.lobby =>
+        'Lobby detected. Review the visible players against the locked roster.',
+      _LiveOpsVisualState.matchInProgress =>
+        'Match is in progress. Focus on the game; I will stay quiet unless the screen changes.',
+      _LiveOpsVisualState.resultScreen =>
+        'Result screen detected. Review the visible summary manually; no score has been submitted.',
+      _LiveOpsVisualState.unknown =>
+        'Screen not recognised. Continue manually; I will stay quiet until a supported screen appears.',
+      _LiveOpsVisualState.pausedCaptureStopped =>
+        'Screen capture stopped. Restart LiveOps when you are ready.',
+      _LiveOpsVisualState.error =>
+        'Screen capture failed. Check permission and retry when ready.',
+    };
+    if (prompt == null || widget.preview || !_voice) return;
+    if (_lastGuidanceState == state) return;
+
+    final now = DateTime.now();
+    final stateLastPrompt = _lastGuidanceAtByState[state];
+    if (stateLastPrompt != null &&
+        now.difference(stateLastPrompt) < _statePromptCooldown) {
+      return;
+    }
+    final lastPrompt = _lastGuidanceAt;
+    if (lastPrompt != null &&
+        now.difference(lastPrompt) < _minimumPromptInterval) {
+      return;
+    }
+
+    // Record only prompts that will actually be sent. If the global gap blocks
+    // this state, the next observation may retry after the cooldown.
+    _lastGuidanceState = state;
+    _lastGuidanceAt = now;
+    _lastGuidanceAtByState[state] = now;
+    await _speak(prompt);
   }
 
   Future<void> _stopVoice() async {
@@ -244,6 +291,9 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
           .eq('id', sessionId)
           .eq('operator_id', Supabase.instance.client.auth.currentUser!.id);
 
+      _lastGuidanceState = null;
+      _lastGuidanceAt = null;
+      _lastGuidanceAtByState.clear();
       _subscription = _events.receiveBroadcastStream().listen(
         _onObservation,
         onError: (Object error) async {
@@ -259,6 +309,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
               _latestText = error.toString();
             });
           }
+          await _speakGuidanceForState(_LiveOpsVisualState.error);
           if (activeSessionId != null) {
             try {
               await Supabase.instance.client.from('liveops_sessions').update({
@@ -284,6 +335,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         _state = 'Capturing · screen state not classified';
       });
       if (_voice) {
+        _lastGuidanceAt = DateTime.now();
         await _speak('LiveOps is active for lobby ${_activeLobbyCode ?? 'selected'} and Match ${_activeMatchSequence ?? 1}.');
       }
     } catch (error) {
@@ -310,6 +362,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         });
         showMessage(context, error.toString());
       }
+      await _speakGuidanceForState(_LiveOpsVisualState.error);
     }
   }
   Future<void> _onObservation(dynamic event) async {
@@ -337,6 +390,11 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
           if (text.isNotEmpty) _latestText = text;
         });
       }
+      await _speakGuidanceForState(
+        state == 'capture_stopped'
+            ? _LiveOpsVisualState.pausedCaptureStopped
+            : _LiveOpsVisualState.error,
+      );
       if (sessionId != null) {
         try {
           await Supabase.instance.client.from('liveops_sessions').update({
@@ -381,7 +439,6 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       return;
     }
 
-    var suppressGenericVoicePrompt = false;
     if (state == 'text_detected') {
       final roomSetup = LiveOpsRoomSetupClassifier.classify(text);
       if (roomSetup.isRoomSetup) {
@@ -398,6 +455,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
             _latestText = text;
           });
         }
+        await _speakGuidanceForState(_LiveOpsVisualState.roomSetup);
       } else {
         final classification = LiveOpsMatchScreenClassifier.classify(text);
         final stableKind = _matchScreenObserver.observe(
@@ -411,12 +469,6 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
             stableKind == LiveOpsMatchScreenKind.resultScreen;
         final retainingPriorState = stableKind != LiveOpsMatchScreenKind.unknown &&
             classification.kind != stableKind;
-        suppressGenericVoicePrompt =
-            classification.kind == LiveOpsMatchScreenKind.matchInProgress ||
-            classification.kind == LiveOpsMatchScreenKind.resultScreen ||
-            confirmedGameplay ||
-            confirmedResult;
-
         final _LiveOpsVisualState nextVisualState;
         final String source;
         final String nextStatus;
@@ -479,6 +531,9 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
             _latestText = text;
           });
         }
+        if (text.trim().isNotEmpty) {
+          await _speakGuidanceForState(nextVisualState);
+        }
       }
     } else {
       if (mounted) {
@@ -494,17 +549,9 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       }
       return;
     }
-    if (text.trim().isEmpty) return;
-
     // The raw OCR string stays on-device. It may include notifications or unrelated
-    // private content on Android 13 full-display capture. Only classified, user-approved
-    // lobby/result fields should ever be persisted to the backend.
-    if (text == _lastObservation) return;
-    _lastObservation = text;
-
-    if (_voice && !suppressGenericVoicePrompt) {
-      await _speak('Screen text detected. Please review the visible information.');
-    }
+    // private content on Android 13 full-display capture. Screen-state guidance is
+    // emitted only on a state transition, not for every changing OCR frame.
   }
 
   Future<void> _startNextMatch() async {
@@ -530,8 +577,10 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         throw Exception('The server did not return a complete next Match session.');
       }
       if (!mounted) return;
-      _lastObservation = '';
       _matchScreenObserver.reset();
+      _lastGuidanceState = null;
+      _lastGuidanceAt = null;
+      _lastGuidanceAtByState.clear();
       setState(() {
         _sessionId = nextSessionId;
         _setVisualState(
@@ -550,6 +599,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         _latestText = 'Match $nextSequence is ready. Press Start to begin a new Android screen-observation session.';
       });
       if (_voice) {
+        _lastGuidanceAt = DateTime.now();
         await _speak('The next Match in this Lobby is ready. Press Start when you are ready to capture.');
       }
     } catch (error) {
@@ -585,6 +635,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         );
         _state = 'Paused · ready for screenshot upload';
       });
+      await _speakGuidanceForState(_LiveOpsVisualState.pausedCaptureStopped);
     }
   }
 
