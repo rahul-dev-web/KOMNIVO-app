@@ -144,17 +144,23 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
       for (final player in expected) {
         final playerName = _normalise(player.nickname);
         final foundSlots = <int>[];
+        var occurrenceCount = 0;
         for (final entry in slotLines.entries) {
-          if (entry.value.any((line) => _normalise(line).contains(playerName))) {
+          final occurrences = entry.value.where((line) =>
+              _normalise(line).contains(playerName)).length;
+          if (occurrences > 0) {
             foundSlots.add(entry.key);
+            occurrenceCount += occurrences;
           }
         }
-        if (foundSlots.length > 1) {
+        if (foundSlots.length > 1 || occurrenceCount > 1) {
+          final slotLabel = foundSlots.join(', ');
           generated.add(_TimedRosterAlert(
-            key: 'duplicate:' + player.userId + ':' + foundSlots.join(','),
-            title: 'Possible duplicate player across slots',
-            detail: player.nickname + ' was read under multiple slots (' +
-                foundSlots.join(', ') + '). This may be an OCR overlap/duplicate row or the same player appearing twice; inspect the live lobby before acting.',
+            key: 'duplicate:' + player.userId + ':' + slotLabel + ':' + occurrenceCount.toString(),
+            title: 'Possible duplicate player entry',
+            detail: player.nickname + ' was read ' + occurrenceCount.toString() +
+                ' times under slot(s) ' + slotLabel +
+                '. This may be an OCR overlap/duplicate row or the same player appearing twice; inspect the live lobby before acting.',
             icon: Icons.copy_all_rounded,
           ));
         }
