@@ -43,7 +43,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
   Timer? _expiryTimer;
   bool _loading = true;
   bool _ocrLayoutSupported = true;
-  bool _rosterLocked = false;
+  bool _snapshotReady = false;
   String? _rosterFingerprint;
   String? _loadError;
 
@@ -62,7 +62,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
       _recentAlerts.clear();
       _alerts.clear();
       _teams = <_ExpectedTeamSlot>[];
-      _rosterLocked = false;
+      _snapshotReady = false;
       _rosterFingerprint = null;
       unawaited(_loadSnapshot());
       return;
@@ -101,7 +101,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
       if (payload['match_id']?.toString() != widget.matchId) {
         throw Exception('The roster snapshot belongs to a different Match ID.');
       }
-      final rosterLocked = payload['roster_locked'] == true;
+      final snapshotReady = payload['snapshot_ready'] == true;
       final rosterFingerprint = payload['roster_snapshot_fingerprint']?.toString();
       final rawTeams = payload['roster_snapshot'];
       final teams = rawTeams is List
@@ -111,7 +111,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
       if (!mounted) return;
       setState(() {
         _teams = teams;
-        _rosterLocked = rosterLocked;
+        _snapshotReady = snapshotReady;
         _rosterFingerprint = rosterFingerprint;
         _loading = false;
       });
@@ -127,7 +127,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
 
   void _evaluateLobby() {
     if (!mounted || _loading || _loadError != null ||
-        !widget.lobbyConfirmed || !_rosterLocked || _teams.isEmpty ||
+        !widget.lobbyConfirmed || !_snapshotReady || _teams.isEmpty ||
         widget.ocrText.trim().isEmpty) {
       return;
     }
@@ -459,19 +459,19 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
           ]),
           const SizedBox(height: 6),
           const Text(
-            'Expected identities come from this Match’s registration snapshot. A later IGN refresh does not rename this locked roster.',
+            'Expected identities come from this Match’s first-read snapshot of every current Team member. Only members with verified game accounts are eligible identity matches; later profile refreshes do not rewrite this snapshot.',
             style: TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.4),
           ),
-          if (_rosterLocked && _rosterFingerprint != null) ...[
+          if (_snapshotReady && _rosterFingerprint != null) ...[
             const SizedBox(height: 5),
             Text(
-              'Locked Match roster snapshot · ' + _rosterFingerprint!.substring(0, 8),
+              'Match team snapshot · ' + _rosterFingerprint!.substring(0, 8),
               style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 9, fontWeight: FontWeight.w800),
             ),
           ] else if (!widget.preview && !_loading) ...[
             const SizedBox(height: 5),
             const Text(
-              'Roster comparison is paused until every assigned registration has an explicit roster lock. No player is marked Missing or Unexpected yet.',
+              'The team snapshot is not available yet. Assign teams to this Match before starting player comparison.',
               style: TextStyle(color: Color(0xFFFFC078), fontSize: 10, height: 1.4),
             ),
           ],
@@ -507,9 +507,9 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
           ] else ...[
             const SizedBox(height: 11),
             ..._teams.map(_buildTeam),
-            if (!_rosterLocked && widget.lobbyConfirmed) ...[
+            if (!_snapshotReady && widget.lobbyConfirmed) ...[
               const SizedBox(height: 10),
-              const Text('Waiting for the Match registration roster lock. OCR player alerts are disabled.',
+              const Text('Waiting for the Match team-member snapshot. OCR player alerts are disabled.',
                 style: TextStyle(color: Color(0xFFFFC078), fontSize: 10)),
             ] else if (widget.lobbyConfirmed && _alerts.isNotEmpty) ...[
               const SizedBox(height: 14),
@@ -534,7 +534,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
           ],
           const SizedBox(height: 9),
           const Text(
-            'Player comparisons use exact OCR IGN/name matching against the locked verified-profile snapshot; they are not proof of UID identity. Host decisions are audit-logged against this Match. The host performs any game change manually; KOMNIVO never kicks players, moves slots or edits the official roster.',
+            'Player comparisons use exact visible UID first and exact IGN/name fallback against verified game accounts from every Team member captured for this Match; OCR alone is not proof of identity. Host decisions are audit-logged. The host performs any game change manually; KOMNIVO never kicks players, moves slots or edits the official team roster.',
             style: TextStyle(color: KomnivoTheme.cyan, fontSize: 10, height: 1.4),
           ),
         ],
@@ -574,7 +574,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
         ]),
         if (team.players.isEmpty) ...[
           const SizedBox(height: 6),
-          const Text('No player identity rows are attached to this registration.',
+          const Text('No Team members were present when this Match snapshot was captured.',
             style: TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
         ] else ...[
           const SizedBox(height: 6),
@@ -588,7 +588,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
                 ? 'UID ' + (player.uid.isEmpty ? '—' : player.uid) +
                     ' · ' + (player.region.isEmpty ? 'Region —' : player.region) +
                     ' · Snapshot ' + player.snapshotAtLabel
-                : 'This roster member remains in the team but cannot be name-matched by verified UID.';
+                : 'This Team member is included in the snapshot but has no verified game account; OCR will not treat this member as an eligible identity.';
             final slotLines = widget.lobbyConfirmed
                 ? _readSlotLines(widget.ocrText)
                 : <int, List<String>>{};
@@ -605,7 +605,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
               slotUids, player.uid,
             );
             final seenSlots = <int>{...seenByName, ...seenByUid}.toList()..sort();
-            final compareLabel = !widget.lobbyConfirmed || !_rosterLocked || !player.isVerified ||
+            final compareLabel = !widget.lobbyConfirmed || !_snapshotReady || !player.isVerified ||
                     (playerName.isEmpty && player.uid.isEmpty)
                 ? null
                 : (seenByUid.contains(team.slotNumber)
