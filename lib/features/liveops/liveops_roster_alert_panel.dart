@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/komnivo_theme.dart';
+import 'liveops_roster_matcher.dart';
 
 /// Read-only Match roster comparison. OCR alerts are temporary local suggestions;
 /// this widget never edits the official roster or controls the game.
@@ -148,16 +149,15 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
 
       for (final player in expected) {
         final playerName = _normalise(player.nickname);
-        final foundSlots = <int>[];
+        final foundSlots = LiveOpsRosterOcrParser.slotsForExactName(
+          slotLines, player.nickname,
+        );
+        final occurrenceCount = slotLines.values
+            .expand((lines) => lines)
+            .where((line) => _normalise(line) == playerName)
+            .length;
         final nearHits = <MapEntry<int, String>>[];
-        var occurrenceCount = 0;
         for (final entry in slotLines.entries) {
-          final occurrences = entry.value.where((line) =>
-              _normalise(line).contains(playerName)).length;
-          if (occurrences > 0) {
-            foundSlots.add(entry.key);
-            occurrenceCount += occurrences;
-          }
           for (final line in entry.value) {
             final candidate = _normalise(line);
             if (candidate.isNotEmpty &&
@@ -223,11 +223,10 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
 
     for (final entry in slotLines.entries) {
       for (final line in entry.value) {
-        final candidate = _normalise(line);
+          final candidate = _normalise(line);
         if (candidate.isEmpty ||
             ambiguousOcrNames.contains(candidate) ||
-            allKnownNames.any((name) => name.isNotEmpty &&
-                (candidate.contains(name) || name.contains(candidate)))) {
+            allKnownNames.contains(candidate)) {
           continue;
         }
         generated.add(_TimedRosterAlert(
@@ -238,6 +237,22 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
           icon: Icons.person_search_rounded,
         ));
       }
+    }
+
+    final visibleSlots = slotLines.keys.toSet();
+    final expectedSlots = _teams
+        .map((team) => team.slotNumber)
+        .whereType<int>()
+        .toSet();
+    final unobservedSlots = expectedSlots.difference(visibleSlots).toList()..sort();
+    if (unobservedSlots.isNotEmpty) {
+      generated.add(_TimedRosterAlert(
+        key: 'coverage:' + unobservedSlots.join(','),
+        title: 'Lobby slot coverage is incomplete',
+        detail: 'This OCR view did not expose Slot(s) ' + unobservedSlots.join(', ') +
+            '. They are unassessed, not marked Missing. Scroll or capture the other lobby rows before making a decision.',
+        icon: Icons.photo_library_outlined,
+      ));
     }
 
     final now = DateTime.now();
@@ -257,67 +272,11 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
     }
   }
 
-  Map<int, List<String>> _readSlotLines(String rawText) {
-    final result = <int, List<String>>{};
-    int? activeSlot;
-    final lines = rawText.split(RegExp(r'[\r\n]+'));
-    final slotMarker = RegExp(r'\bTEAM\s*#?\s*(\d{1,2})\b', caseSensitive: false);
-
-    for (final rawLine in lines) {
-      final line = rawLine.trim();
-      if (line.isEmpty) continue;
-      final marker = slotMarker.firstMatch(line);
-      if (marker != null) {
-        activeSlot = int.tryParse(marker.group(1) ?? '');
-        if (activeSlot != null) result.putIfAbsent(activeSlot, () => <String>[]);
-        final remainder = line.substring(marker.end).trim();
-        if (activeSlot != null && _looksLikePlayerName(remainder)) {
-          result[activeSlot]!.add(remainder);
-        }
-        continue;
-      }
-      if (_isLobbyBoundary(line)) {
-        activeSlot = null;
-        continue;
-      }
-      if (activeSlot != null && _looksLikePlayerName(line)) {
-        final rows = result.putIfAbsent(activeSlot, () => <String>[]);
-        if (!rows.any((value) => _normalise(value) == _normalise(line))) {
-          rows.add(line);
-        }
-      }
-    }
-    return result;
-  }
-
-  bool _isLobbyBoundary(String line) {
-    final value = _normalise(line);
-    const exact = <String>{
-      'startmatch', 'invitefriends', 'invite', 'spectate', 'observe',
-      'back', 'exit', 'cancel', 'customroom', 'freefire', 'players',
-      'friends', 'roomid', 'password',
-    };
-    return exact.contains(value);
-  }
-
-  bool _looksLikePlayerName(String line) {
-    final value = line.trim();
-    if (value.length < 3 || value.length > 28 ||
-        _isLobbyBoundary(value) ||
-        RegExp(r'^\d+$').hasMatch(value) ||
-        RegExp(r'^TEAM\s*#?\s*\d+$', caseSensitive: false).hasMatch(value)) {
-      return false;
-    }
-    // Keep Unicode letters and symbols intact; this only selects review candidates.
-    return value.runes.any((rune) =>
-        (rune >= 48 && rune <= 57) ||
-        (rune >= 65 && rune <= 90) ||
-        (rune >= 97 && rune <= 122) ||
-        rune > 127);
-  }
+  Map<int, List<String>> _readSlotLines(String rawText) =>
+      LiveOpsRosterOcrParser.readSlots(rawText);
 
   static String _normalise(String value) =>
-      value.toLowerCase().replaceAll(RegExp(r'\s+'), '').trim();
+      LiveOpsRosterOcrParser.normalise(value);
 
   static bool _isLikelySimilarName(String expected, String candidate) {
     final shortest = expected.length < candidate.length
@@ -355,11 +314,8 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
   void _expireAlerts() {
     if (!mounted || _alerts.isEmpty) return;
     final now = DateTime.now();
-    final remaining = _alerts.where((alert) => alert.expiresAt?.isAfter(now) ?? false).toList();
     setState(() {
-      _alerts
-        ..clear()
-        ..addAll(remaining);
+      _alerts.removeWhere((alert) => alert.expiresAt?.isAfter(now) != true);
     });
     _recentAlerts.removeWhere((_, until) =>
         until.isBefore(now.subtract(const Duration(minutes: 2))));
@@ -457,7 +413,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
           ],
           const SizedBox(height: 9),
           const Text(
-            'Player comparisons are IGN/name-based only unless a visible UID is separately read. Alerts are suggestions, not player verification. “Handled in game” only dismisses the reminder; it does not kick players, move slots or change the official roster.',
+            'Player comparisons use exact OCR IGN/name matching against the locked verified-profile snapshot; they are not proof of UID identity. Host actions dismiss only the reminder. KOMNIVO does not kick players, move slots or change the official roster.',
             style: TextStyle(color: KomnivoTheme.cyan, fontSize: 10, height: 1.4),
           ),
         ],
@@ -514,10 +470,11 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
                 : 'This roster member remains in the team but cannot be name-matched by verified UID.';
             final slotLines = widget.lobbyConfirmed ? _readSlotLines(widget.ocrText) : <int, List<String>>{};
             final playerName = _normalise(player.nickname);
-            final seenSlots = playerName.isEmpty ? <int>[] : slotLines.entries
-                .where((entry) => entry.value.any((line) =>
-                    _normalise(line).contains(playerName)))
-                .map((entry) => entry.key).toList();
+            final seenSlots = playerName.isEmpty
+                ? <int>[]
+                : LiveOpsRosterOcrParser.slotsForExactName(
+                    slotLines, player.nickname,
+                  );
             final compareLabel = !widget.lobbyConfirmed || !player.isVerified ||
                     !player.identitySnapshotAvailable || playerName.isEmpty
                 ? null
@@ -577,12 +534,19 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
         const SizedBox(height: 6),
         Text(alert.detail, style: const TextStyle(fontSize: 10, height: 1.4,
           color: Color(0xFFE8DED1))),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed: () => _markHandled(alert),
-            child: const Text('Handled in game'),
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            TextButton(
+              onPressed: () => _markHandled(alert),
+              child: const Text('Keep as-is / ignore'),
+            ),
+            const SizedBox(width: 6),
+            FilledButton.tonal(
+              onPressed: () => _markHandled(alert),
+              child: const Text('Adjusted in game'),
+            ),
+          ],
         ),
       ]),
     );
