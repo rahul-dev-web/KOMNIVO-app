@@ -6,6 +6,7 @@ const GAME_CODE = "free_fire_max";
 const MAX_VERIFY_ATTEMPTS = 3;
 const VERIFY_RETRY_SECONDS = 15;
 const PROFILE_REFRESH_RETRY_SECONDS = 15;
+const PROFILE_REFRESH_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
 const CHALLENGE_LIFETIME_MS = 30 * 60 * 1000;
 
 const corsHeaders = {
@@ -257,7 +258,7 @@ Deno.serve(async (req: Request) => {
       // proven. It refreshes public profile data but never changes trust state
       // or consumes a Bio-verification attempt.
       const { data: accounts, error: accountError } = await admin.from("game_accounts")
-        .select("id, uid, region, ownership_status")
+        .select("id, uid, region, ownership_status, profile_refresh_last_success_at")
         .eq("user_id", user.id)
         .eq("game_id", game.id)
         .limit(2);
@@ -277,6 +278,23 @@ Deno.serve(async (req: Request) => {
           ownership_status: account.ownership_status,
           error: "Complete Free Fire UID ownership verification before refreshing this profile.",
         }, 403);
+      }
+
+      const lastSuccessfulRefreshAt = account.profile_refresh_last_success_at
+        ? Date.parse(String(account.profile_refresh_last_success_at))
+        : Number.NaN;
+      if (Number.isFinite(lastSuccessfulRefreshAt)) {
+        const nextRefreshAt = new Date(lastSuccessfulRefreshAt + PROFILE_REFRESH_COOLDOWN_MS);
+        const remainingMs = nextRefreshAt.getTime() - Date.now();
+        if (remainingMs > 0) {
+          return json({
+            status: "throttled",
+            retry_after_seconds: Math.ceil(remainingMs / 1000),
+            retry_after_at: nextRefreshAt.toISOString(),
+            error: "Free Fire profile refresh is limited to once every 30 days. You can refresh again after " +
+              nextRefreshAt.toLocaleDateString("en-IN") + ".",
+          }, 429);
+        }
       }
 
       const apiKey = Deno.env.get("FREEFIRE_API_KEY");
@@ -377,6 +395,7 @@ Deno.serve(async (req: Request) => {
           provider: PROVIDER,
           sync_status: "synced",
           last_synced_at: syncedAt,
+          profile_refresh_last_success_at: syncedAt,
           raw_profile: cleanInfo,
           raw_stats: stats,
           updated_at: syncedAt,
@@ -413,6 +432,7 @@ Deno.serve(async (req: Request) => {
         nickname: String(profile.nickname),
         profile,
         last_synced_at: syncedAt,
+        next_refresh_at: new Date(Date.parse(syncedAt) + PROFILE_REFRESH_COOLDOWN_MS).toISOString(),
         message: "Your Free Fire profile and in-game name have been refreshed.",
       });
     }
