@@ -150,12 +150,24 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
 
       for (final player in expected) {
         final playerName = _normalise(player.nickname);
-        final foundSlots = LiveOpsRosterOcrParser.slotsForExactName(
+        final foundNameSlots = LiveOpsRosterOcrParser.slotsForExactName(
           slotLines, player.nickname,
         );
-        final occurrenceCount = slotLines.values
+        final slotUids = LiveOpsRosterOcrParser.readSlotUids(widget.ocrText);
+        final foundUidSlots = LiveOpsRosterOcrParser.slotsForExactUid(
+          slotUids, player.uid,
+        );
+        final foundSlots = <int>{
+          ...foundNameSlots,
+          ...foundUidSlots,
+        }.toList()..sort();
+        final nameOccurrenceCount = slotLines.values
             .expand((lines) => lines)
             .where((line) => _normalise(line) == playerName)
+            .length;
+        final uidOccurrenceCount = slotUids.values
+            .expand((uids) => uids)
+            .where((uid) => player.uid.isNotEmpty && uid == player.uid)
             .length;
         final nearHits = <MapEntry<int, String>>[];
         for (final entry in slotLines.entries) {
@@ -181,14 +193,15 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
             icon: Icons.help_outline_rounded,
           ));
         }
-        if (foundSlots.length > 1 || occurrenceCount > 1) {
+        if (foundSlots.length > 1 ||
+            nameOccurrenceCount > 1 ||
+            uidOccurrenceCount > 1) {
           final slotLabel = foundSlots.join(', ');
           generated.add(_TimedRosterAlert(
             key: 'duplicate:' + player.userId + ':' + slotLabel + ':' + occurrenceCount.toString(),
             title: 'Possible duplicate player entry',
-            detail: player.nickname + ' was read ' + occurrenceCount.toString() +
-                ' times under slot(s) ' + slotLabel +
-                '. This may be an OCR overlap/duplicate row or the same player appearing twice; inspect the live lobby before acting.',
+            detail: player.nickname + ' was read more than once in slot(s) ' + slotLabel +
+                ' by exact IGN or UID text. This may be overlapping OCR or a duplicate lobby entry; inspect the game before acting.',
             icon: Icons.copy_all_rounded,
           ));
         }
@@ -200,8 +213,11 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
             key: 'slot:' + player.userId + ':' + slot.toString() + ':' + otherSlot.toString(),
             title: 'Player appears in a different slot',
             detail: player.nickname + ' is expected in Slot ' + slot.toString() +
-                ' (' + team.displayName + ') but OCR text appears under Slot ' +
-                otherSlot.toString() + '. Name-based comparison only; check the game lobby manually.',
+                ' (' + team.displayName + ') but OCR found this identity under Slot ' +
+                otherSlot.toString() + (foundUidSlots.isNotEmpty
+                  ? ' using an exact visible UID.'
+                  : ' using an exact IGN/name match only.') +
+                ' Check the actual lobby before deciding.',
             icon: Icons.swap_horiz_rounded,
           ));
         } else {
@@ -289,6 +305,9 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
 
   Map<int, List<String>> _readSlotLines(String rawText) =>
       LiveOpsRosterOcrParser.readSlots(rawText);
+
+  Map<int, List<String>> _readSlotUids(String rawText) =>
+      LiveOpsRosterOcrParser.readSlotUids(rawText);
 
   static String _normalise(String value) =>
       LiveOpsRosterOcrParser.normalise(value);
@@ -511,23 +530,37 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
                     ' · ' + (player.region.isEmpty ? 'Region —' : player.region) +
                     ' · Snapshot ' + player.snapshotAtLabel
                 : 'This roster member remains in the team but cannot be name-matched by verified UID.';
-            final slotLines = widget.lobbyConfirmed ? _readSlotLines(widget.ocrText) : <int, List<String>>{};
+            final slotLines = widget.lobbyConfirmed
+                ? _readSlotLines(widget.ocrText)
+                : <int, List<String>>{};
+            final slotUids = widget.lobbyConfirmed
+                ? _readSlotUids(widget.ocrText)
+                : <int, List<String>>{};
             final playerName = _normalise(player.nickname);
-            final seenSlots = playerName.isEmpty
+            final seenByName = playerName.isEmpty
                 ? <int>[]
                 : LiveOpsRosterOcrParser.slotsForExactName(
                     slotLines, player.nickname,
                   );
+            final seenByUid = LiveOpsRosterOcrParser.slotsForExactUid(
+              slotUids, player.uid,
+            );
+            final seenSlots = <int>{...seenByName, ...seenByUid}.toList()..sort();
             final compareLabel = !widget.lobbyConfirmed || !player.isVerified ||
-                    !player.identitySnapshotAvailable || playerName.isEmpty
+                    !player.identitySnapshotAvailable ||
+                    (playerName.isEmpty && player.uid.isEmpty)
                 ? null
-                : (seenSlots.length > 1
-                    ? 'Possible duplicate · slots ' + seenSlots.join(', ')
-                    : (seenSlots.contains(team.slotNumber)
-                        ? 'IGN/name matched in assigned slot'
-                        : (seenSlots.isNotEmpty
-                            ? 'IGN/name seen under Slot ' + seenSlots.first.toString()
-                            : 'IGN/name not detected in this scan')));
+                : (seenByUid.contains(team.slotNumber)
+                    ? 'Exact UID matched in assigned slot'
+                    : (seenByUid.isNotEmpty
+                        ? 'Exact UID seen under Slot ' + seenByUid.first.toString()
+                        : (seenByName.contains(team.slotNumber)
+                            ? 'IGN/name matched in assigned slot'
+                            : (seenSlots.length > 1
+                                ? 'Possible duplicate · slots ' + seenSlots.join(', ')
+                                : (seenSlots.isNotEmpty
+                                    ? 'IGN/name seen under Slot ' + seenSlots.first.toString()
+                                    : 'Identity not detected in this OCR scan')))));
             return Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -541,7 +574,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
                     Text(compareLabel, style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.w800,
-                      color: compareLabel == 'IGN/name matched in assigned slot'
+                      color: compareLabel.contains('matched in assigned slot')
                           ? KomnivoTheme.cyan
                           : const Color(0xFFFFC078),
                     )),
