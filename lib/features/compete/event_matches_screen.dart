@@ -15,6 +15,7 @@ class EventMatchesScreen extends StatefulWidget {
 
 class _EventMatchesScreenState extends State<EventMatchesScreen> {
   late Future<_EventMatchesData> _future;
+  bool _registrationBusy = false;
 
   @override
   void initState() {
@@ -40,6 +41,225 @@ class _EventMatchesScreenState extends State<EventMatchesScreen> {
     return _EventMatchesData(
       matches: List<Map<String, dynamic>>.from(results[0] as List),
       standings: List<Map<String, dynamic>>.from(results[1] as List),
+    );
+  }
+
+  Future<void> _startRegistration(String registrationType) async {
+    if (_registrationBusy) return;
+    final event = widget.event;
+    final status = event['status']?.toString() ?? '';
+    final now = DateTime.now();
+    final closeAt = DateTime.tryParse(event['registration_closes_at']?.toString() ?? '');
+    final openAt = DateTime.tryParse(event['registration_opens_at']?.toString() ?? '');
+    final eventIsPublished = status == 'published' || status == 'registration_open';
+
+    if (!eventIsPublished || closeAt == null || !now.isBefore(closeAt)) {
+      showMessage(context, 'This tournament registration window is closed or has no configured close time.');
+      return;
+    }
+    if (registrationType == 'real' && (openAt == null || now.isBefore(openAt))) {
+      showMessage(context, 'Real registration has not opened yet. Test registration is available separately while the test window remains open.');
+      return;
+    }
+
+    String? teamId;
+    final format = event['format']?.toString() ?? 'squad';
+    if (format != 'solo') {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) {
+        showMessage(context, 'Sign in before registering.');
+        return;
+      }
+      try {
+        final rows = await Supabase.instance.client
+            .from('team_members')
+            .select('team_id, teams(id,name,tag,game_id)')
+            .eq('user_id', userId);
+        final gameId = event['game_id']?.toString();
+        final teams = List<Map<String, dynamic>>.from(rows).where((row) {
+          final team = row['teams'];
+          return team is Map && team['game_id']?.toString() == gameId;
+        }).map((row) => Map<String, dynamic>.from(row['teams'] as Map)).toList();
+
+        if (teams.isEmpty) {
+          showMessage(context, 'You need to belong to a team for this game before registering.');
+          return;
+        }
+
+        String selectedTeamId = teams.first['id'].toString();
+        final chosen = await showDialog<String>(
+          context: context,
+          builder: (dialogContext) => StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+              title: Text(registrationType == 'test' ? 'Test registration' : 'Tournament registration'),
+              content: SizedBox(
+                width: 420,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Choose the team you are submitting for. Any current team member can submit once the minimum roster has joined this tournament community.'),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      value: selectedTeamId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Your team'),
+                      items: teams.map((team) => DropdownMenuItem<String>(
+                        value: team['id'].toString(),
+                        child: Text(team['name']?.toString() ?? 'Team', overflow: TextOverflow.ellipsis),
+                      )).toList(),
+                      onChanged: (value) {
+                        if (value != null) setDialogState(() => selectedTeamId = value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      registrationType == 'test'
+                          ? 'Test entries do not reserve real slots or affect public participants and standings.'
+                          : 'This submits a real tournament registration for the selected team.',
+                      style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, selectedTeamId),
+                  child: Text(registrationType == 'test' ? 'Submit test' : 'Register team'),
+                ),
+              ],
+            ),
+          ),
+        );
+        if (chosen == null || !mounted) return;
+        teamId = chosen;
+      } catch (error) {
+        if (mounted) showMessage(context, error.toString());
+        return;
+      }
+    } else {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(registrationType == 'test' ? 'Submit test registration?' : 'Register for tournament?'),
+          content: Text(
+            registrationType == 'test'
+                ? 'This creates an isolated test entry. It does not reserve a real slot or enter scoring.'
+                : 'This submits your real registration for this tournament.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Continue')),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
+    setState(() => _registrationBusy = true);
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'register-event',
+        body: {
+          'event_id': event['id'],
+          'team_id': teamId,
+          'registration_type': registrationType,
+        },
+      );
+      if (response.status < 200 || response.status >= 300) {
+        final details = response.data is Map ? (response.data as Map)['error'] : null;
+        throw Exception(details?.toString() ?? 'Registration could not be submitted.');
+      }
+      if (mounted) {
+        showMessage(
+          context,
+          registrationType == 'test'
+              ? 'Test registration submitted. It will not use real tournament capacity.'
+              : 'Real tournament registration submitted.',
+        );
+      }
+    } catch (error) {
+      if (mounted) showMessage(context, error.toString());
+    } finally {
+      if (mounted) setState(() => _registrationBusy = false);
+    }
+  }
+
+  bool get _realRegistrationOpen {
+    final status = widget.event['status']?.toString();
+    final opens = DateTime.tryParse(widget.event['registration_opens_at']?.toString() ?? '');
+    final closes = DateTime.tryParse(widget.event['registration_closes_at']?.toString() ?? '');
+    final now = DateTime.now();
+    return (status == 'published' || status == 'registration_open') &&
+        opens != null && closes != null &&
+        !now.isBefore(opens) && now.isBefore(closes);
+  }
+
+  bool get _testRegistrationOpen {
+    final status = widget.event['status']?.toString();
+    final closes = DateTime.tryParse(widget.event['registration_closes_at']?.toString() ?? '');
+    return (status == 'published' || status == 'registration_open') &&
+        closes != null && DateTime.now().isBefore(closes);
+  }
+
+  Widget _registrationPanel() {
+    final format = widget.event['format']?.toString() ?? 'squad';
+    final openAt = DateTime.tryParse(widget.event['registration_opens_at']?.toString() ?? '');
+    final closeAt = DateTime.tryParse(widget.event['registration_closes_at']?.toString() ?? '');
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: KomnivoTheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: KomnivoTheme.line),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Tournament registration', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 5),
+        Text(
+          format == 'solo'
+              ? 'Solo registration'
+              : 'Team registration · Any current team member can submit when the minimum required roster has joined the community.',
+          style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Real registration: ' + (openAt?.toLocal().toString() ?? 'Not announced'),
+          style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+        ),
+        Text(
+          'Registration closes: ' + (closeAt?.toLocal().toString() ?? 'Not configured'),
+          style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+        ),
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.icon(
+            onPressed: _registrationBusy || !_realRegistrationOpen
+                ? null : () => _startRegistration('real'),
+            icon: _registrationBusy
+                ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.how_to_reg_outlined, size: 17),
+            label: const Text('Register'),
+          ),
+          OutlinedButton.icon(
+            onPressed: _registrationBusy || !_testRegistrationOpen
+                ? null : () => _startRegistration('test'),
+            icon: const Icon(Icons.science_outlined, size: 17),
+            label: const Text('Test registration'),
+          ),
+        ]),
+        if (!_realRegistrationOpen && _testRegistrationOpen) ...[
+          const SizedBox(height: 8),
+          const Text('Real registration has not opened yet. You can submit a test entry before the deadline.',
+            style: TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
+        ],
+        if (!_realRegistrationOpen && !_testRegistrationOpen) ...[
+          const SizedBox(height: 8),
+          const Text('Registration is not currently available.',
+            style: TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
+        ],
+      ]),
     );
   }
 
@@ -79,6 +299,8 @@ class _EventMatchesScreenState extends State<EventMatchesScreen> {
                 ]),
               ]),
             ),
+            const SizedBox(height: 18),
+            _registrationPanel(),
             const SizedBox(height: 24),
             const SectionTitle('Match schedule', subtitle: 'Open a match to check in, view room details and submit evidence'),
             const SizedBox(height: 10),
