@@ -12,14 +12,14 @@ BEGIN
   v_def := pg_get_functiondef(
     'app_private.submit_liveops_match_results(uuid,uuid,text[],jsonb)'::regprocedure
   );
-  v_old := $old$IF NOT FOUND THEN RAISE EXCEPTION 'LiveOps session not found'; END IF;$old$;
+  v_old := $old$if not found then raise exception 'LiveOps session not found'; end if;$old$;
   IF position(v_old in v_def)=0 THEN
     RAISE EXCEPTION 'Could not locate the legacy result submit session guard';
   END IF;
-  v_def := replace(v_def,v_old,$new$IF NOT FOUND THEN RAISE EXCEPTION 'LiveOps session not found'; END IF;
-  IF v_session.evidence_skipped_at IS NOT NULL THEN
-    RAISE EXCEPTION 'This Match evidence step was skipped; result submission is blocked';
-  END IF;$new$);
+  v_def := replace(v_def,v_old,$new$if not found then raise exception 'LiveOps session not found'; end if;
+  if v_session.evidence_skipped_at is not null then
+    raise exception 'This Match evidence step was skipped; result submission is blocked';
+  end if;$new$);
   EXECUTE v_def;
 
   -- A skipped Match is labelled awaiting_result, never completed or scored.
