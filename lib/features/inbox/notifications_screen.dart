@@ -6,6 +6,7 @@ import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/push_service.dart';
 import '../../core/ui.dart';
+import '../compete/event_matches_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -44,6 +45,34 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (mounted) setState(_reload);
     } catch (error) {
       if (mounted) showMessage(context, error.toString());
+    }
+  }
+
+  Future<void> _openNotification(Map<String, dynamic> row) async {
+    final id = row['id']?.toString() ?? '';
+    if (id.isNotEmpty && row['read_at'] == null) {
+      await _markRead(id);
+    }
+    if (!mounted || row['entity_type']?.toString() != 'event') return;
+    final eventId = row['entity_id']?.toString();
+    if (eventId == null || eventId.isEmpty) return;
+    try {
+      final event = await KomnivoRepository.instance.client
+          .from('events')
+          .select('id,name,description,format,status,starts_at,registration_opens_at,registration_closes_at,capacity,game_id,community_id,games(name,code),communities(name)')
+          .eq('id', eventId)
+          .maybeSingle();
+      if (!mounted) return;
+      if (event == null) {
+        showMessage(context, 'This tournament is no longer available to your account.');
+        return;
+      }
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(builder: (_) => EventMatchesScreen(event: Map<String, dynamic>.from(event))),
+      );
+    } catch (error) {
+      if (mounted) showMessage(context, 'Could not open the tournament: $error');
     }
   }
 
@@ -96,7 +125,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final id = row['id']?.toString() ?? '';
 
     return InkWell(
-      onTap: read || id.isEmpty ? null : () => _markRead(id),
+      onTap: id.isEmpty ? null : () => _openNotification(row),
       borderRadius: BorderRadius.circular(15),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
