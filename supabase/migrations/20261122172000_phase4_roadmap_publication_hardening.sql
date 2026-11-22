@@ -336,5 +336,4 @@ BEGIN
   RETURN jsonb_build_object('stage_id',p_stage_id,'schedule_version',v_version,
     'matches_published',v_match_count,'schedule_published',true);
 END;
-$function$
-
+$function$;
