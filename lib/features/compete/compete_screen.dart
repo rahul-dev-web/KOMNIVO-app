@@ -68,7 +68,7 @@ class _CompeteScreenState extends State<CompeteScreen> {
     final subtitle = [
       game['name']?.toString(),
       event['format']?.toString().toUpperCase(),
-      '\${event['capacity'] ?? '—'} slots',
+      '${event['capacity'] ?? '—'} slots',
       if (community['name'] != null) community['name'].toString(),
     ].whereType<String>().where((value) => value.isNotEmpty).join(' · ');
     return Container(
@@ -98,7 +98,7 @@ class _CompeteScreenState extends State<CompeteScreen> {
         ],
         const SizedBox(height: 8),
         Text(
-          close == null ? 'Registration close time not announced' : 'Registration closes \${close.toLocal()}',
+          close == null ? 'Registration close time not announced' : 'Registration closes ${close.toLocal()}',
           style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10),
         ),
         const SizedBox(height: 9),
@@ -623,7 +623,7 @@ class _CompeteScreenState extends State<CompeteScreen> {
                 ChoiceChip(
                   label: const Text('Tournaments'),
                   selected: _activeTab == 'Tournaments',
-                  onSelected: () {
+                  onSelected: (_) {
                     setState(() {
                       _activeTab = 'Tournaments';
                       _tournamentsFuture ??= _loadTournaments();
