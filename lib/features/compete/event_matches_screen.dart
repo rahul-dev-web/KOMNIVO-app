@@ -15,12 +15,26 @@ class EventMatchesScreen extends StatefulWidget {
 
 class _EventMatchesScreenState extends State<EventMatchesScreen> {
   late Future<_EventMatchesData> _future;
+  late Future<List<Map<String, dynamic>>> _myTestRegistrationsFuture;
   bool _registrationBusy = false;
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+    _myTestRegistrationsFuture = _loadMyTestRegistrations();
+  }
+
+  Future<List<Map<String, dynamic>>> _loadMyTestRegistrations() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return <Map<String, dynamic>>[];
+    final rows = await Supabase.instance.client
+        .from('event_test_registrations')
+        .select('id,status,review_note,created_at,teams(name,tag)')
+        .eq('event_id', widget.event['id'])
+        .eq('submitted_by', userId)
+        .order('created_at', ascending: false);
+    return List<Map<String, dynamic>>.from(rows);
   }
 
   Future<_EventMatchesData> _load() async {
@@ -172,6 +186,9 @@ class _EventMatchesScreenState extends State<EventMatchesScreen> {
         throw Exception(details?.toString() ?? 'Registration could not be submitted.');
       }
       if (mounted) {
+        if (registrationType == 'test') {
+          setState(() => _myTestRegistrationsFuture = _loadMyTestRegistrations());
+        }
         showMessage(
           context,
           registrationType == 'test'
@@ -259,6 +276,52 @@ class _EventMatchesScreenState extends State<EventMatchesScreen> {
           const Text('Registration is not currently available.',
             style: TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
         ],
+        const SizedBox(height: 14),
+        const Divider(color: KomnivoTheme.line),
+        const SizedBox(height: 8),
+        const Text('Your test-registration history',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 6),
+        FutureBuilder<List<Map<String, dynamic>>>(
+          future: _myTestRegistrationsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: LinearProgressIndicator(),
+              );
+            }
+            if (snapshot.hasError) {
+              return Text(snapshot.error.toString(),
+                style: const TextStyle(color: Color(0xFFFF8193), fontSize: 10));
+            }
+            final rows = snapshot.data ?? [];
+            if (rows.isEmpty) {
+              return const Text('You have not submitted a test entry for this tournament.',
+                style: TextStyle(color: KomnivoTheme.muted, fontSize: 10));
+            }
+            return Column(children: rows.map((row) {
+              final team = row['teams'] is Map
+                  ? Map<String, dynamic>.from(row['teams'] as Map)
+                  : <String, dynamic>{};
+              final reviewNote = row['review_note']?.toString() ?? '';
+              final state = row['status']?.toString() ?? 'submitted';
+              return ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.science_outlined, color: KomnivoTheme.cyan, size: 18),
+                title: Text(team['name']?.toString() ?? 'Solo test entry',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                subtitle: Text(
+                  reviewNote.isEmpty ? 'Status: ' + state.replaceAll('_', ' ') : reviewNote,
+                  style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+                ),
+                trailing: Text(state.toUpperCase(),
+                  style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 9, fontWeight: FontWeight.w900)),
+              );
+            }).toList());
+          },
+        ),
       ]),
     );
   }
