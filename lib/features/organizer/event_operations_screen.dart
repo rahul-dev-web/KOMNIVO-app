@@ -1045,7 +1045,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                     title: stage['name']?.toString() ?? 'Stage $roundNumber',
                     subtitle: '${stageGroups.length} groups · $stageMatches generated matches · ${stage['schedule_published_at'] == null ? 'schedule not published' : 'schedule v${stage['schedule_version'] ?? 1} published'}',
                     badge: (stage['status'] ?? 'draft').toString().toUpperCase(),
-                    trailing: _canEvent(data, 'event.matches.manage') && stageMatches > 0
+                    trailing: _canEvent(data, 'event.manage') && stageMatches > 0
                         ? TextButton.icon(
                             onPressed: _busy ? null : () => _publishStageSchedule(stage['id'].toString()),
                             icon: const Icon(Icons.campaign_outlined),
