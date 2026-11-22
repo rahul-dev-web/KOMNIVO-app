@@ -316,6 +316,8 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final rosterPlayers = _teams.expand((team) => team.players).toList(growable: false);
+    final verifiedPlayers = rosterPlayers.where((player) => player.isVerified).length;
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
@@ -337,9 +339,13 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
               const SizedBox(width: 15, height: 15,
                 child: CircularProgressIndicator(strokeWidth: 2)),
             if (!_loading && _teams.isNotEmpty)
-              Text(_teams.length.toString() + ' SLOTS',
+              Text(
+                _teams.length.toString() + ' SLOTS · ' +
+                    verifiedPlayers.toString() + '/' +
+                    rosterPlayers.length.toString() + ' VERIFIED',
                 style: const TextStyle(color: KomnivoTheme.muted,
-                  fontSize: 9, fontWeight: FontWeight.w900)),
+                  fontSize: 9, fontWeight: FontWeight.w900),
+              ),
           ]),
           const SizedBox(height: 6),
           const Text(
@@ -523,14 +529,12 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
 
 class _ExpectedTeamSlot {
   const _ExpectedTeamSlot({
-    required this.teamId,
     required this.teamName,
     required this.teamTag,
     required this.slotNumber,
     required this.players,
   });
 
-  final String teamId;
   final String teamName;
   final String teamTag;
   final int? slotNumber;
@@ -542,7 +546,6 @@ class _ExpectedTeamSlot {
   factory _ExpectedTeamSlot.fromMap(Map<String, dynamic> map) {
     final rawPlayers = map['players'];
     return _ExpectedTeamSlot(
-      teamId: map['team_id']?.toString() ?? '',
       teamName: map['team_name']?.toString() ?? 'Team',
       teamTag: map['team_tag']?.toString() ?? '',
       slotNumber: int.tryParse(map['slot_number']?.toString() ?? ''),
