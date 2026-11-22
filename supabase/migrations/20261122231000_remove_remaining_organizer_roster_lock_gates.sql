@@ -34,8 +34,20 @@ BEGIN
     );
     v_updated := regexp_replace(
       v_updated,
+      '(?i)approved, locked roster',
+      'approved Team registration',
+      'g'
+    );
+    v_updated := regexp_replace(
+      v_updated,
       '(?i)approved, roster-locked registration',
       'approved Team registration',
+      'g'
+    );
+    v_updated := regexp_replace(
+      v_updated,
+      '(?i)approved, roster-locked teams',
+      'approved Team registrations',
       'g'
     );
     v_updated := regexp_replace(
@@ -44,14 +56,8 @@ BEGIN
       'approved Team registrations',
       'g'
     );
-    v_updated := regexp_replace(
-      v_updated,
-      '(?i)roster-locked registration',
-      'Team registration',
-      'g'
-    );
     IF position('roster_locked' IN v_updated) > 0
-       OR v_updated ~* 'roster-locked|locked roster' THEN
+       OR v_updated ~* 'roster-locked|locked roster|locked rosters' THEN
       RAISE EXCEPTION 'Legacy roster lock reference remains in %', v_function;
     END IF;
     EXECUTE v_updated;
