@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
+import 'event_matches_screen.dart';
 
 class CompeteScreen extends StatefulWidget {
   const CompeteScreen({super.key, required this.preview});
@@ -22,6 +24,95 @@ class _CompeteScreenState extends State<CompeteScreen> {
   static bool _allowTeamPromotions = true;
   String _activeTab = 'Discover';
   String _searchQuery = '';
+  Future<List<Map<String, dynamic>>>? _tournamentsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.preview) _tournamentsFuture = _loadTournaments();
+  }
+
+  Future<List<Map<String, dynamic>>> _loadTournaments() async {
+    final rows = await Supabase.instance.client
+        .from('events')
+        .select('id,name,description,format,status,starts_at,registration_opens_at,registration_closes_at,capacity,game_id,community_id,games(name,code),communities(name)')
+        .inFilter('status', ['published','registration_open'])
+        .order('starts_at', ascending: true)
+        .limit(50);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  List<Map<String, dynamic>> _filteredTournaments(List<Map<String, dynamic>> rows) {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return rows;
+    return rows.where((event) {
+      final game = event['games'] is Map ? (event['games'] as Map)['name']?.toString() ?? '' : '';
+      final community = event['communities'] is Map ? (event['communities'] as Map)['name']?.toString() ?? '' : '';
+      return [event['name'], event['description'], game, community, event['format']]
+          .whereType<Object>()
+          .any((value) => value.toString().toLowerCase().contains(query));
+    }).toList();
+  }
+
+  Future<void> _openTournament(Map<String, dynamic> event) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => EventMatchesScreen(event: event)),
+    );
+  }
+
+  Widget _buildTournamentCard(Map<String, dynamic> event) {
+    final game = event['games'] is Map ? Map<String, dynamic>.from(event['games'] as Map) : <String, dynamic>{};
+    final community = event['communities'] is Map ? Map<String, dynamic>.from(event['communities'] as Map) : <String, dynamic>{};
+    final close = DateTime.tryParse(event['registration_closes_at']?.toString() ?? '');
+    final subtitle = [
+      game['name']?.toString(),
+      event['format']?.toString().toUpperCase(),
+      '\${event['capacity'] ?? '—'} slots',
+      if (community['name'] != null) community['name'].toString(),
+    ].whereType<String>().where((value) => value.isNotEmpty).join(' · ');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: KomnivoTheme.surface,
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: KomnivoTheme.line),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(event['name']?.toString() ?? 'Tournament', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14))),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: KomnivoTheme.cyan.withValues(alpha: .12), borderRadius: BorderRadius.circular(20)),
+            child: Text((event['status'] ?? 'published').toString().replaceAll('_', ' ').toUpperCase(),
+              style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 9, fontWeight: FontWeight.w900)),
+          ),
+        ]),
+        const SizedBox(height: 5),
+        Text(subtitle, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
+        if ((event['description'] ?? '').toString().trim().isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(event['description'].toString(), maxLines: 2, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35)),
+        ],
+        const SizedBox(height: 8),
+        Text(
+          close == null ? 'Registration close time not announced' : 'Registration closes \${close.toLocal()}',
+          style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+        ),
+        const SizedBox(height: 9),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.tonalIcon(
+            onPressed: () => _openTournament(event),
+            icon: const Icon(Icons.open_in_new_rounded, size: 16),
+            label: const Text('View tournament'),
+          ),
+        ),
+      ]),
+    );
+  }
 
   static const List<_PromotionType> _promotionTypes = <_PromotionType>[
     _PromotionType(
@@ -530,6 +621,16 @@ class _CompeteScreenState extends State<CompeteScreen> {
                   onSelected: (_) => setState(() => _activeTab = 'Discover'),
                 ),
                 ChoiceChip(
+                  label: const Text('Tournaments'),
+                  selected: _activeTab == 'Tournaments',
+                  onSelected: () {
+                    setState(() {
+                      _activeTab = 'Tournaments';
+                      _tournamentsFuture ??= _loadTournaments();
+                    });
+                  },
+                ),
+                ChoiceChip(
                   label: const Text('My promotions'),
                   selected: _activeTab == 'My promotions',
                   onSelected: (_) => setState(() => _activeTab = 'My promotions'),
@@ -541,9 +642,11 @@ class _CompeteScreenState extends State<CompeteScreen> {
               controller: _searchController,
               onChanged: (value) => setState(() => _searchQuery = value),
               decoration: InputDecoration(
-                hintText: _activeTab == 'Discover'
-                    ? 'Find a promotion type'
-                    : 'Search your drafts',
+                hintText: switch (_activeTab) {
+                  'Discover' => 'Find a promotion type',
+                  'Tournaments' => 'Search published tournaments',
+                  _ => 'Search your drafts',
+                },
                 prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: _searchQuery.isEmpty
                     ? null
@@ -558,7 +661,47 @@ class _CompeteScreenState extends State<CompeteScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            if (_activeTab == 'Discover') ...[
+            if (_activeTab == 'Tournaments') ...[
+              Row(children: [
+                const Expanded(
+                  child: Text('Published tournaments',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                ),
+                IconButton(
+                  tooltip: 'Refresh tournaments',
+                  onPressed: () => setState(() => _tournamentsFuture = _loadTournaments()),
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              FutureBuilder<List<Map<String, dynamic>>>(
+                future: _tournamentsFuture ??= _loadTournaments(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Padding(
+                      padding: EdgeInsets.all(28),
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return EmptyState(
+                      title: 'Tournaments are unavailable',
+                      message: snapshot.error.toString(),
+                      icon: Icons.cloud_off_outlined,
+                    );
+                  }
+                  final rows = _filteredTournaments(snapshot.data ?? []);
+                  if (rows.isEmpty) {
+                    return const EmptyState(
+                      title: 'No published tournaments',
+                      message: 'Published tournaments visible to your account will appear here.',
+                      icon: Icons.emoji_events_outlined,
+                    );
+                  }
+                  return Column(children: rows.map(_buildTournamentCard).toList());
+                },
+              ),
+            ] else if (_activeTab == 'Discover') ...[
               const Text('What do you want to promote?',
                 style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
               const SizedBox(height: 5),
