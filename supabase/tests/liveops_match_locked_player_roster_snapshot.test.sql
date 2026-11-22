@@ -1,6 +1,6 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT extensions.plan(13);
+SELECT extensions.plan(14);
 
 SELECT extensions.ok(
   to_regclass('public.liveops_match_roster_snapshots') IS NOT NULL,
@@ -70,6 +70,14 @@ SELECT extensions.ok(
   has_function_privilege('authenticated','public.get_liveops_match_roster_snapshot(uuid)','EXECUTE')
   AND NOT has_function_privilege('anon','public.get_liveops_match_roster_snapshot(uuid)','EXECUTE'),
   'Only authenticated callers can invoke the operator-scoped snapshot RPC'
+);
+
+SELECT extensions.ok(
+  position('roster_locked' IN pg_get_functiondef('app_private.create_match(uuid,uuid[],timestamp with time zone,text)'::regprocedure)) = 0
+  AND position('roster_locked' IN pg_get_functiondef('app_private.generate_event_groups(uuid,integer,integer)'::regprocedure)) = 0
+  AND position('roster_locked' IN pg_get_functiondef('public.publish_event_stage_roadmap(uuid,jsonb)'::regprocedure)) = 0
+  AND position('roster_locked' IN pg_get_functiondef('public.set_event_stage_direct_invites(uuid,integer,uuid[])'::regprocedure)) = 0,
+  'Manual Match creation, manual group generation, direct-entry roadmap validation and direct-entry selection do not require Organizer roster locks'
 );
 
 SELECT * FROM extensions.finish();
