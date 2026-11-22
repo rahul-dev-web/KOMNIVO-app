@@ -407,6 +407,8 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         final confirmedLobby = stableKind == LiveOpsMatchScreenKind.lobby;
         final confirmedGameplay =
             stableKind == LiveOpsMatchScreenKind.matchInProgress;
+        final retainingPriorState = stableKind != LiveOpsMatchScreenKind.unknown &&
+            classification.kind != stableKind;
         suppressGenericVoicePrompt =
             classification.kind == LiveOpsMatchScreenKind.matchInProgress ||
             confirmedGameplay;
@@ -416,12 +418,20 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         final String nextStatus;
         if (confirmedLobby) {
           nextVisualState = _LiveOpsVisualState.lobby;
-          source = 'On-device OCR · stable 3/3 observations · strict custom-room team/invite/start signature';
-          nextStatus = 'Custom-room Lobby detected · roster review required';
+          source = retainingPriorState
+              ? 'On-device OCR · retaining confirmed Lobby while candidate stabilises (${_matchScreenObserver.pendingCount}/3)'
+              : 'On-device OCR · stable 3/3 observations · strict custom-room team/invite/start signature';
+          nextStatus = retainingPriorState
+              ? 'Lobby retained · checking screen transition'
+              : 'Custom-room Lobby detected · roster review required';
         } else if (confirmedGameplay) {
           nextVisualState = _LiveOpsVisualState.matchInProgress;
-          source = 'On-device OCR · stable 3/3 observations · strict BR Safe Zone + numeric HP/EP HUD signature';
-          nextStatus = 'Match in progress · generic prompts suppressed';
+          source = retainingPriorState
+              ? 'On-device OCR · retaining confirmed Gameplay while candidate stabilises (${_matchScreenObserver.pendingCount}/3)'
+              : 'On-device OCR · stable 3/3 observations · strict BR Safe Zone + numeric HP/EP HUD signature';
+          nextStatus = retainingPriorState
+              ? 'Match in progress · checking screen transition'
+              : 'Match in progress · generic prompts suppressed';
         } else {
           nextVisualState = _LiveOpsVisualState.unknown;
           final candidateLabel = classification.kind ==
@@ -443,7 +453,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
           setState(() {
             _setVisualState(
               nextVisualState,
-              observedAt: observedAt,
+              observedAt: retainingPriorState ? _stateObservedAt : observedAt,
               // 1.0 denotes the full strict signature plus 3 consecutive
               // frames, not a statistically calibrated probability.
               confidence: confirmedLobby || confirmedGameplay ? 1.0 : null,
