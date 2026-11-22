@@ -70,8 +70,8 @@ BEGIN
 END;$function$;
 REVOKE ALL ON FUNCTION public.set_event_stage_direct_invites(uuid,integer,uuid[]) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.set_event_stage_direct_invites(uuid,integer,uuid[]) TO authenticated;
-CREATE OR REPLACE FUNCTION public.set_event_stage_direct_invites(uuid,uuid[]) RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path=''
-AS $function$ SELECT public.set_event_stage_direct_invites($1,2,$2) $function$;
+CREATE OR REPLACE FUNCTION public.set_event_stage_direct_invites(p_event_id uuid,p_team_ids uuid[]) RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path=''
+AS $function$ SELECT public.set_event_stage_direct_invites(p_event_id,2,p_team_ids) $function$;
 REVOKE ALL ON FUNCTION public.set_event_stage_direct_invites(uuid,uuid[]) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.set_event_stage_direct_invites(uuid,uuid[]) TO authenticated;
 
