@@ -326,7 +326,12 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
     final longest = expected.length > candidate.length
         ? expected.length
         : candidate.length;
-    if (shortest < 4 || longest - shortest > 2) return false;
+    if (shortest < 4) return false;
+    if (expected.startsWith(candidate) || candidate.startsWith(expected) ||
+        expected.endsWith(candidate) || candidate.endsWith(expected)) {
+      return true;
+    }
+    if (longest - shortest > 2) return false;
     final maxDistance = shortest >= 8 ? 2 : 1;
     final previous = List<int>.generate(candidate.length + 1, (i) => i);
     for (var i = 1; i <= expected.length; i++) {
