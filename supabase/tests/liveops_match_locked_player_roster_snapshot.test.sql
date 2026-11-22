@@ -1,6 +1,6 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT extensions.plan(9);
+SELECT extensions.plan(13);
 
 SELECT extensions.ok(
   to_regclass('public.liveops_match_roster_snapshots') IS NOT NULL,
@@ -27,22 +27,44 @@ SELECT extensions.ok(
 SELECT extensions.ok(
   position('FOR UPDATE' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
   AND position('FROM public.liveops_match_roster_snapshots' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
-  'Snapshot creation is serialised and later reads reuse the stored session snapshot'
+  'Snapshot creation is serialised and later reads reuse the stored Match snapshot'
 );
 SELECT extensions.ok(
   position('INSERT INTO public.liveops_match_roster_snapshots' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
   AND position('ON CONFLICT (match_id) DO NOTHING' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
-  'The first complete locked roster is stored once per Match ID'
+  'The first complete team-member snapshot is stored once per Match ID'
 );
 SELECT extensions.ok(
-  position('r.roster_locked IS TRUE AND r.roster_locked_at IS NOT NULL' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
-  AND position('gps.captured_at <= r.roster_locked_at' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
-  'Only explicitly locked rosters and profile snapshots no later than the lock time are captured'
+  position('public.team_members' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
+  AND position('LEFT JOIN LATERAL' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
+  AND position('registration_players' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) = 0,
+  'Every current Team member is sourced from team_members, not the submitted registration player list'
 );
 SELECT extensions.ok(
-  position('snapshot_fingerprint' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
-  AND position('snapshot_reused' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
-  'The RPC returns a stable fingerprint and indicates stored snapshot reuse'
+  position('ownership_status = ''verified''' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
+  AND position('is_community_member' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
+  'Only verified game accounts expose matchable identity; Community membership is reported separately'
+);
+SELECT extensions.ok(
+  position('roster_locked' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) = 0
+  AND position('snapshot_ready' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
+  'LiveOps snapshot readiness no longer depends on Organizer roster locking'
+);
+SELECT extensions.ok(
+  position('team_members_at_capture' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0
+  AND position('gps.captured_at <= v_snapshot_at' IN pg_get_functiondef('public.get_liveops_match_roster_snapshot(uuid)'::regprocedure)) > 0,
+  'The snapshot records its Team-member capture basis and profile values as-of capture time'
+);
+SELECT extensions.ok(
+  position('roster_locked' IN pg_get_functiondef('public.generate_event_roadmap(uuid,integer,integer)'::regprocedure)) = 0
+  AND position('roster_locked' IN pg_get_functiondef('app_private.generate_event_stage_matches(uuid,integer,integer,timestamp with time zone)'::regprocedure)) = 0
+  AND position('roster_locked' IN pg_get_functiondef('public.advance_event_stage_from_roadmap(uuid,integer,integer,timestamp with time zone)'::regprocedure)) = 0,
+  'Approval status, not roster_locked, gates Stage 1, match generation and direct-entry validation'
+);
+SELECT extensions.ok(
+  NOT has_function_privilege('authenticated','public.lock_event_rosters(uuid)','EXECUTE')
+  AND NOT has_function_privilege('anon','public.lock_event_rosters(uuid)','EXECUTE'),
+  'Organizer clients can no longer invoke the roster-lock RPC'
 );
 SELECT extensions.ok(
   has_function_privilege('authenticated','public.get_liveops_match_roster_snapshot(uuid)','EXECUTE')
