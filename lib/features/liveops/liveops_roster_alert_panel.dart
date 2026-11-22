@@ -149,6 +149,15 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
             foundSlots.add(entry.key);
           }
         }
+        if (foundSlots.length > 1) {
+          generated.add(_TimedRosterAlert(
+            key: 'duplicate:' + player.userId + ':' + foundSlots.join(','),
+            title: 'Possible duplicate player across slots',
+            detail: player.nickname + ' was read under multiple slots (' +
+                foundSlots.join(', ') + '). This may be an OCR overlap/duplicate row or the same player appearing twice; inspect the live lobby before acting.',
+            icon: Icons.copy_all_rounded,
+          ));
+        }
         if (foundSlots.contains(slot)) continue;
         if (foundSlots.isNotEmpty) {
           final otherSlot = foundSlots.first;
@@ -157,7 +166,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
             title: 'Player appears in a different slot',
             detail: player.nickname + ' is expected in Slot ' + slot.toString() +
                 ' (' + team.displayName + ') but OCR text appears under Slot ' +
-                otherSlot.toString() + '. Check the game lobby manually; this may be an OCR row error.',
+                otherSlot.toString() + '. Name-based comparison only; check the game lobby manually.',
             icon: Icons.swap_horiz_rounded,
           ));
         } else {
@@ -374,7 +383,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
           ],
           const SizedBox(height: 9),
           const Text(
-            'Alerts are suggestions, not player verification. “Handled in game” only dismisses the reminder; it does not kick players, move slots or change the official roster.',
+            'Player comparisons are IGN/name-based only unless a visible UID is separately read. Alerts are suggestions, not player verification. “Handled in game” only dismisses the reminder; it does not kick players, move slots or change the official roster.',
             style: TextStyle(color: KomnivoTheme.cyan, fontSize: 10, height: 1.4),
           ),
         ],
@@ -438,11 +447,13 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
             final compareLabel = !widget.lobbyConfirmed || !player.isVerified ||
                     !player.identitySnapshotAvailable || playerName.isEmpty
                 ? null
-                : (seenSlots.contains(team.slotNumber)
-                    ? 'Seen in assigned slot'
-                    : (seenSlots.isNotEmpty
-                        ? 'Detected under Slot ' + seenSlots.first.toString()
-                        : 'Not detected in this OCR scan'));
+                : (seenSlots.length > 1
+                    ? 'Possible duplicate · slots ' + seenSlots.join(', ')
+                    : (seenSlots.contains(team.slotNumber)
+                        ? 'IGN/name matched in assigned slot'
+                        : (seenSlots.isNotEmpty
+                            ? 'IGN/name seen under Slot ' + seenSlots.first.toString()
+                            : 'IGN/name not detected in this scan')));
             return Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -456,7 +467,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
                     Text(compareLabel, style: TextStyle(
                       fontSize: 9,
                       fontWeight: FontWeight.w800,
-                      color: compareLabel == 'Seen in assigned slot'
+                      color: compareLabel == 'IGN/name matched in assigned slot'
                           ? KomnivoTheme.cyan
                           : const Color(0xFFFFC078),
                     )),
