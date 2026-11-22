@@ -93,7 +93,7 @@ class _LiveOpsEvidencePanelState extends State<LiveOpsEvidencePanel> {
     try {
       // file_picker 12+ exposes pickFiles as a static method returning a
       // List<PlatformFile>; selected bytes are read explicitly from each file.
-      final files = await FilePicker.pickFiles(type: FileType.image, allowMultiple: true);
+      final files = await FilePicker.pickFiles(type: FileType.image);
       if (files.isEmpty) return;
       if (files.length > 8) {
         showMessage(context, 'A batch supports 1 to 8 screenshots. Select at most eight.');
