@@ -74,6 +74,7 @@ BEGIN
       v_group_count,v_qualify_per_group,v_group_count * v_qualify_per_group,v_expected_qualified;
   END IF;
 
+  SELECT id INTO v_stage_id
   FROM public.event_rounds WHERE event_id = p_event_id AND round_number = 1
   FOR UPDATE;
   IF v_stage_id IS NOT NULL THEN
