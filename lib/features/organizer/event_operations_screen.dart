@@ -194,6 +194,110 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     }
   }
 
+  Future<List<String>?> _selectDirectInviteTeams({
+    required int requiredCount,
+  }) async {
+    if (requiredCount == 0) return <String>[];
+    final eventId = widget.event['id'].toString();
+    final rows = await _client
+        .from('event_registrations')
+        .select('team_id, teams!inner(name,tag,game_id)')
+        .eq('event_id', eventId)
+        .inFilter('status', ['approved', 'checked_in'])
+        .eq('roster_locked', true)
+        .not('team_id', 'is', null)
+        .order('registered_at');
+    final gameId = widget.event['game_id']?.toString();
+    final candidatesById = <String, Map<String, dynamic>>{};
+    for (final raw in rows as List) {
+      if (raw is! Map) continue;
+      final row = Map<String, dynamic>.from(raw);
+      final team = row['teams'] is Map
+          ? Map<String, dynamic>.from(row['teams'] as Map)
+          : <String, dynamic>{};
+      final id = row['team_id']?.toString() ?? '';
+      if (id.isEmpty || (gameId != null && team['game_id']?.toString() != gameId)) {
+        continue;
+      }
+      candidatesById[id] = {'id': id, ...team};
+    }
+    final candidates = candidatesById.values.toList()
+      ..sort((a, b) => (a['name']?.toString() ?? '')
+          .compareTo(b['name']?.toString() ?? ''));
+    if (candidates.length < requiredCount) {
+      throw StateError(
+        'Roadmap needs $requiredCount direct-entry teams, but only '
+        '${candidates.length} approved, roster-locked teams for this game are available.',
+      );
+    }
+
+    final current = await _client
+        .from('event_stage_direct_invites')
+        .select('team_id')
+        .eq('event_id', eventId)
+        .eq('target_round_number', 2);
+    final candidateIds = candidates.map((team) => team['id'].toString()).toSet();
+    final selected = <String>{
+      for (final row in current as List)
+        if (candidateIds.contains(row['team_id']?.toString()))
+          row['team_id'].toString(),
+    };
+
+    return showDialog<List<String>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Select $requiredCount direct-entry teams'),
+          content: SizedBox(
+            width: 480,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'These already-approved teams skip Stage 1 and enter Stage 2. '
+                    'KOMNIVO will not choose teams automatically.',
+                  ),
+                  const SizedBox(height: 8),
+                  ...candidates.map((team) {
+                    final id = team['id'].toString();
+                    return CheckboxListTile(
+                      value: selected.contains(id),
+                      onChanged: (value) => setDialogState(() {
+                        if (value == true) {
+                          if (selected.length < requiredCount) selected.add(id);
+                        } else {
+                          selected.remove(id);
+                        }
+                      }),
+                      title: Text(team['name']?.toString() ?? 'Team'),
+                      subtitle: Text(team['tag']?.toString() ?? ''),
+                      controlAffinity: ListTileControlAffinity.leading,
+                    );
+                  }),
+                  const SizedBox(height: 8),
+                  Text('${selected.length} / $requiredCount selected'),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: selected.length == requiredCount
+                  ? () => Navigator.pop(dialogContext, selected.toList())
+                  : null,
+              child: const Text('Confirm direct-entry teams'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _generateRoadmap() async {
     final config = widget.event['event_config'] is Map
         ? Map<String, dynamic>.from(widget.event['event_config'] as Map)
@@ -205,6 +309,14 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
       showMessage(context, 'This tournament has no saved roadmap. Update the tournament draft first.');
       return;
     }
+    final directInviteCount = int.tryParse(
+      roadmap['direct_invites']?.toString() ?? '0',
+    ) ?? 0;
+    if (directInviteCount < 0) {
+      showMessage(context, 'Saved direct-entry count is invalid.');
+      return;
+    }
+
     final matches = TextEditingController();
     final interval = TextEditingController();
     final ok = await showDialog<bool>(
@@ -213,6 +325,11 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
         title: const Text('Generate approved tournament roadmap'),
         content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('Saved roadmap · Group size ${roadmap['group_size']} · ${roadmap['qualifiers_per_group']} qualify per group'),
+          if (directInviteCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text('$directInviteCount registered teams will bypass Stage 1 and enter Stage 2.'),
+            ),
           const SizedBox(height: 12),
           TextField(
             controller: matches,
@@ -242,16 +359,35 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
       if (mounted) showMessage(context, 'Enter 1–20 matches and a 1–240 minute interval.');
       return;
     }
+
     setState(() => _busy = true);
     try {
+      final eventId = widget.event['id'].toString();
+      final firstStage = await _client
+          .from('event_rounds')
+          .select('id')
+          .eq('event_id', eventId)
+          .eq('round_number', 1)
+          .limit(1);
+      if ((firstStage as List).isEmpty) {
+        final directTeamIds = await _selectDirectInviteTeams(
+          requiredCount: directInviteCount,
+        );
+        if (directTeamIds == null || !mounted) return;
+        await _client.rpc('set_event_stage_direct_invites', params: {
+          'p_event_id': eventId,
+          'p_team_ids': directTeamIds,
+        });
+      }
+
       final result = await _client.rpc('generate_event_roadmap', params: {
-        'p_event_id': widget.event['id'],
+        'p_event_id': eventId,
         'p_matches_per_group': matchesPerGroup,
         'p_interval_minutes': intervalMinutes,
       });
       _reload();
       if (mounted) showMessage(context,
-        'Roadmap generated: ${result['group_count']} groups · ${result['matches_created']} matches. Publish the schedule separately when ready.');
+        'Roadmap generated: ${result['group_count']} groups · ${result['matches_created']} matches · $directInviteCount direct-entry teams saved. Publish the schedule separately when ready.');
     } catch (error) {
       if (mounted) showMessage(context, error.toString());
     } finally {
