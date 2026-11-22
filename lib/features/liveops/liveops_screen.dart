@@ -8,6 +8,7 @@ import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
 import 'liveops_evidence_panel.dart';
+import 'liveops_roster_alert_panel.dart';
 import 'liveops_room_setup_classifier.dart';
 import 'liveops_match_screen_classifier.dart';
 
@@ -720,6 +721,16 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
             SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: _start, icon: const Icon(Icons.play_circle_outline), label: Text(_sessionId == null ? 'Start LiveOps session' : 'Start / resume this Match'))),
         ]),
       ),
+      if (_sessionId != null && _activeMatchId != null) ...[
+        const SizedBox(height: 14),
+        LiveOpsRosterAlertPanel(
+          sessionId: _sessionId!,
+          matchId: _activeMatchId!,
+          ocrText: _latestText,
+          lobbyConfirmed: _capturing && _visualState == _LiveOpsVisualState.lobby,
+          preview: widget.preview,
+        ),
+      ],
       if (_sessionId != null && _activeEventId != null && _activeMatchId != null) ...[
         const SizedBox(height: 14),
         LiveOpsEvidencePanel(
