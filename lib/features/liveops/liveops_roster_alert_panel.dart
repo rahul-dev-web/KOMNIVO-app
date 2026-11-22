@@ -42,6 +42,8 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
   List<_ExpectedTeamSlot> _teams = <_ExpectedTeamSlot>[];
   Timer? _expiryTimer;
   bool _loading = true;
+  bool _rosterLocked = false;
+  String? _rosterFingerprint;
   String? _loadError;
 
   @override
@@ -59,6 +61,8 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
       _recentAlerts.clear();
       _alerts.clear();
       _teams = <_ExpectedTeamSlot>[];
+      _rosterLocked = false;
+      _rosterFingerprint = null;
       unawaited(_loadSnapshot());
       return;
     }
@@ -96,6 +100,8 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
       if (payload['match_id']?.toString() != widget.matchId) {
         throw Exception('The roster snapshot belongs to a different Match ID.');
       }
+      final rosterLocked = payload['roster_locked'] == true;
+      final rosterFingerprint = payload['roster_snapshot_fingerprint']?.toString();
       final rawTeams = payload['roster_snapshot'];
       final teams = rawTeams is List
           ? rawTeams.whereType<Map>().map((row) =>
@@ -104,6 +110,8 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
       if (!mounted) return;
       setState(() {
         _teams = teams;
+        _rosterLocked = rosterLocked;
+        _rosterFingerprint = rosterFingerprint;
         _loading = false;
       });
       _evaluateLobby();
@@ -118,7 +126,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
 
   void _evaluateLobby() {
     if (!mounted || _loading || _loadError != null ||
-        !widget.lobbyConfirmed || _teams.isEmpty ||
+        !widget.lobbyConfirmed || !_rosterLocked || _teams.isEmpty ||
         widget.ocrText.trim().isEmpty) {
       return;
     }
@@ -449,6 +457,19 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
             'Expected identities come from this Match’s registration snapshot. A later IGN refresh does not rename this locked roster.',
             style: TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.4),
           ),
+          if (_rosterLocked && _rosterFingerprint != null) ...[
+            const SizedBox(height: 5),
+            Text(
+              'Locked Match roster snapshot · ' + _rosterFingerprint!.substring(0, 8),
+              style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 9, fontWeight: FontWeight.w800),
+            ),
+          ] else if (!widget.preview && !_loading) ...[
+            const SizedBox(height: 5),
+            const Text(
+              'Roster comparison is paused until every assigned registration has an explicit roster lock. No player is marked Missing or Unexpected yet.',
+              style: TextStyle(color: Color(0xFFFFC078), fontSize: 10, height: 1.4),
+            ),
+          ],
           const SizedBox(height: 5),
           Text(
             'Source: ' + widget.observationSource +
@@ -481,7 +502,11 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
           ] else ...[
             const SizedBox(height: 11),
             ..._teams.map(_buildTeam),
-            if (widget.lobbyConfirmed && _alerts.isNotEmpty) ...[
+            if (!_rosterLocked && widget.lobbyConfirmed) ...[
+              const SizedBox(height: 10),
+              const Text('Waiting for the Match registration roster lock. OCR player alerts are disabled.',
+                style: TextStyle(color: Color(0xFFFFC078), fontSize: 10)),
+            ] else if (widget.lobbyConfirmed && _alerts.isNotEmpty) ...[
               const SizedBox(height: 14),
               const Text('OPTIONAL HOST ALERTS · AUTO-HIDE IN 15 SECONDS',
                 style: TextStyle(color: Color(0xFFFFC078), fontSize: 9,
@@ -571,7 +596,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
               slotUids, player.uid,
             );
             final seenSlots = <int>{...seenByName, ...seenByUid}.toList()..sort();
-            final compareLabel = !widget.lobbyConfirmed || !player.isVerified ||
+            final compareLabel = !widget.lobbyConfirmed || !_rosterLocked || !player.isVerified ||
                     (playerName.isEmpty && player.uid.isEmpty)
                 ? null
                 : (seenByUid.contains(team.slotNumber)
