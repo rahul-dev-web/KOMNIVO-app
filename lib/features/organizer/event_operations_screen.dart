@@ -1209,7 +1209,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                   Expanded(child: FilledButton.icon(
                     onPressed: _busy || locked.length < 2 || data.rounds.isNotEmpty ? null : _generateRoadmap,
                     icon: const Icon(Icons.account_tree_outlined),
-                    label: const Text('Generate roadmap'),
+                    label: const Text('Generate Stage 1'),
                   )),
               ]),
             const SizedBox(height: 10),
