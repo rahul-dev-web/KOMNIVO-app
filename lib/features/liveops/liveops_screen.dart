@@ -8,6 +8,7 @@ import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
 import 'liveops_evidence_panel.dart';
+import 'liveops_room_setup_classifier.dart';
 
 enum _LiveOpsVisualState {
   idle,
@@ -71,7 +72,9 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
 
   String get _stateConfidenceLabel => _stateConfidence == null
       ? 'Not classified'
-      : '${(_stateConfidence! * 100).toStringAsFixed(0)}%';
+      : _stateConfidence! >= 1.0
+          ? 'High · strict 3/3 OCR rule'
+          : '${(_stateConfidence! * 100).toStringAsFixed(0)}%';
 
   DateTime _readObservationTime(dynamic value) {
     if (value is num) {
@@ -371,14 +374,28 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
     }
 
     if (state == 'text_detected') {
+      final classification = LiveOpsRoomSetupClassifier.classify(text);
+      final isRoomSetup = classification.isRoomSetup;
+      final source = isRoomSetup
+          ? 'On-device OCR · strict English Room Name + Password + Confirm signature'
+          : classification.hasConflictingSignal
+              ? 'On-device OCR · conflicting join/search cues; state remains Unknown'
+              : 'On-device OCR · Room Setup signature incomplete (${classification.matchedSignalCount}/3 markers)';
       if (mounted) {
         setState(() {
           _setVisualState(
-            _LiveOpsVisualState.unknown,
+            isRoomSetup
+                ? _LiveOpsVisualState.roomSetup
+                : _LiveOpsVisualState.unknown,
             observedAt: observedAt,
-            source: 'On-device OCR text; screen state not classified',
+            // 1.0 means all three deterministic markers matched; it is not a
+            // statistically calibrated probability.
+            confidence: isRoomSetup ? 1.0 : null,
+            source: source,
           );
-          _state = 'Screen text detected · local preview';
+          _state = isRoomSetup
+              ? 'Room Setup detected · review the visible fields'
+              : 'Screen text detected · local preview';
           _latestText = text;
         });
       }
