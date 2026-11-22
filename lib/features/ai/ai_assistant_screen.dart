@@ -474,19 +474,24 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   }
 
   Future<bool> _handleTournamentConfirmation(String message) async {
-    final normalized = message.toLowerCase().trim().replaceAll(RegExp(r'[.!?,]+
+    final normalized = message.toLowerCase().trim()
+        .replaceAll(RegExp(r'[.!?]+$'), '')
+        .replaceAll(',', ' ')
+        .replaceAll(RegExp(r'  +'), ' ');
     const affirmative = {
       'yes', 'y', 'yeah', 'yep', 'haan', 'han', 'ha', 'ji haan',
-      'publish', 'publish tournament', 'yes publish', 'haan publish',
-      'haan publish karo', 'haan publish kar do', 'publish kar do',
-      'go ahead and publish', 'confirm publish', 'sure', 'go ahead',
-      'confirm', 'ok publish', 'okay publish', 'publish it', 'kar do',
+      'publish', 'publish tournament', 'yes publish', 'yes  publish',
+      'haan publish', 'haan publish karo', 'haan publish kar do',
+      'publish kar do', 'go ahead and publish', 'confirm publish',
+      'sure', 'go ahead', 'confirm', 'ok publish', 'okay publish',
+      'publish it', 'kar do',
     };
     const negative = {
       'no', 'n', 'nope', 'nahi', 'nahin', 'na', 'draft',
-      'keep draft', 'keep as draft', 'save as draft', 'draft rakho',
-      'draft hi rakho', 'publish mat karo', 'not now', 'not yet',
-      'later', 'baad mein', 'abhi nahi', 'keep it private',
+      'keep draft', 'keep as draft', 'no keep as draft',
+      'save as draft', 'draft rakho', 'draft hi rakho',
+      'publish mat karo', 'not now', 'not yet', 'later',
+      'baad mein', 'abhi nahi', 'keep it private',
     };
     final decision = affirmative.contains(normalized)
         ? 'publish'
