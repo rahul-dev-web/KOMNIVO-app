@@ -9,6 +9,32 @@ import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
 import 'liveops_evidence_panel.dart';
 
+enum _LiveOpsVisualState {
+  idle,
+  permissionPending,
+  unknown,
+  roomSetup,
+  lobby,
+  matchInProgress,
+  resultScreen,
+  pausedCaptureStopped,
+  error,
+}
+
+extension on _LiveOpsVisualState {
+  String get label => switch (this) {
+    _LiveOpsVisualState.idle => 'Idle',
+    _LiveOpsVisualState.permissionPending => 'Permission pending',
+    _LiveOpsVisualState.unknown => 'Unknown / not classified',
+    _LiveOpsVisualState.roomSetup => 'Room setup',
+    _LiveOpsVisualState.lobby => 'Lobby',
+    _LiveOpsVisualState.matchInProgress => 'Match in progress',
+    _LiveOpsVisualState.resultScreen => 'Result screen',
+    _LiveOpsVisualState.pausedCaptureStopped => 'Paused / capture stopped',
+    _LiveOpsVisualState.error => 'Error',
+  };
+}
+
 class LiveOpsScreen extends StatefulWidget {
   const LiveOpsScreen({super.key, required this.preview, this.onBack, this.initialLobbyId, this.initialMatchId});
   final bool preview;
@@ -38,6 +64,37 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
   String _matchEvidenceSkipReason = '';
   bool _voice = true;
   String _lastObservation = '';
+  _LiveOpsVisualState _visualState = _LiveOpsVisualState.idle;
+  DateTime? _stateObservedAt;
+  double? _stateConfidence;
+  String _stateSource = 'No observation yet';
+
+  String get _stateConfidenceLabel => _stateConfidence == null
+      ? 'Not classified'
+      : '${(_stateConfidence! * 100).toStringAsFixed(0)}%';
+
+  DateTime _readObservationTime(dynamic value) {
+    if (value is num) {
+      return DateTime.fromMillisecondsSinceEpoch(value.toInt());
+    }
+    if (value is String) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) return parsed;
+    }
+    return DateTime.now();
+  }
+
+  void _setVisualState(
+    _LiveOpsVisualState state, {
+    DateTime? observedAt,
+    double? confidence,
+    required String source,
+  }) {
+    _visualState = state;
+    _stateObservedAt = observedAt ?? DateTime.now();
+    _stateConfidence = confidence;
+    _stateSource = source;
+  }
 
   String get _selectedLobbyId => widget.initialLobbyId?.trim() ?? '';
   bool get _hasSelectedLobbyContext => _selectedLobbyId.isNotEmpty;
@@ -157,6 +214,15 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
 
       // The Lobby selects or resumes its current ordered Match ID. Each evidence
       // batch and candidate remains bound to that exact Match ID.
+      if (mounted) {
+        setState(() {
+          _setVisualState(
+            _LiveOpsVisualState.permissionPending,
+            source: 'Android MediaProjection consent',
+          );
+          _state = 'Waiting for Android screen-capture permission...';
+        });
+      }
       final captureGranted = await _methods.invokeMethod<bool>('startCapture');
       if (captureGranted != true) {
         throw Exception('Screen capture permission was not granted.');
@@ -175,6 +241,10 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
           if (mounted) {
             setState(() {
               _capturing = false;
+              _setVisualState(
+                _LiveOpsVisualState.error,
+                source: 'Native EventChannel error',
+              );
               _state = 'Capture error';
               _latestText = error.toString();
             });
@@ -196,7 +266,11 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       setState(() {
         _capturing = true;
         _matchResultsSubmitted = false;
-        _state = 'Capturing · Lobby bound';
+        _setVisualState(
+          _LiveOpsVisualState.unknown,
+          source: 'Capture active; screen classifier not implemented yet',
+        );
+        _state = 'Capturing · screen state not classified';
       });
       if (_voice) {
         await _speak('LiveOps is active for lobby ${_activeLobbyCode ?? 'selected'} and Match ${_activeMatchSequence ?? 1}.');
@@ -216,6 +290,10 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       if (mounted) {
         setState(() {
           _capturing = false;
+          _setVisualState(
+            _LiveOpsVisualState.error,
+            source: 'LiveOps start failure',
+          );
           _state = 'Start failed';
           _sessionId = null;
         });
@@ -227,6 +305,7 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
     if (event is! Map) return;
     final state = event['state']?.toString() ?? 'unknown';
     final text = event['text']?.toString() ?? '';
+    final observedAt = _readObservationTime(event['observed_at']);
 
     if (state == 'capture_stopped' || state == 'capture_error') {
       final sessionId = _sessionId;
@@ -234,7 +313,16 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       if (mounted) {
         setState(() {
           _capturing = false;
-          _state = state == 'capture_stopped' ? 'Paused · ready for screenshot upload' : 'Capture error';
+          _setVisualState(
+            state == 'capture_stopped'
+                ? _LiveOpsVisualState.pausedCaptureStopped
+                : _LiveOpsVisualState.error,
+            observedAt: observedAt,
+            source: 'Android MediaProjection lifecycle',
+          );
+          _state = state == 'capture_stopped'
+              ? 'Paused · ready for screenshot upload'
+              : 'Capture error';
           if (text.isNotEmpty) _latestText = text;
         });
       }
@@ -252,8 +340,63 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       return;
     }
 
-    if (text.trim().isEmpty || state != 'text_detected') return;
-    if (mounted) setState(() { _state = 'Screen text detected · local preview'; _latestText = text; });
+    if (state == 'capturing') {
+      if (mounted) {
+        setState(() {
+          _setVisualState(
+            _LiveOpsVisualState.unknown,
+            observedAt: observedAt,
+            source: 'Native capture active; no screen classification supplied',
+          );
+          _state = 'Capturing · screen state not classified';
+          if (text.isNotEmpty) _latestText = text;
+        });
+      }
+      return;
+    }
+
+    if (state == 'ocr_error') {
+      if (mounted) {
+        setState(() {
+          _setVisualState(
+            _LiveOpsVisualState.unknown,
+            observedAt: observedAt,
+            source: 'On-device OCR warning',
+          );
+          _state = 'Capture active · OCR warning';
+          if (text.isNotEmpty) _latestText = text;
+        });
+      }
+      return;
+    }
+
+    if (state == 'text_detected') {
+      if (mounted) {
+        setState(() {
+          _setVisualState(
+            _LiveOpsVisualState.unknown,
+            observedAt: observedAt,
+            source: 'On-device OCR text; screen state not classified',
+          );
+          _state = 'Screen text detected · local preview';
+          _latestText = text;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _setVisualState(
+            _LiveOpsVisualState.unknown,
+            observedAt: observedAt,
+            source: 'Unrecognised native observation event',
+          );
+          _state = 'Capturing · unknown observation';
+          if (text.isNotEmpty) _latestText = text;
+        });
+      }
+      return;
+    }
+    if (text.trim().isEmpty) return;
 
     // The raw OCR string stays on-device. It may include notifications or unrelated
     // private content on Android 13 full-display capture. Only classified, user-approved
@@ -289,6 +432,10 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       if (!mounted) return;
       setState(() {
         _sessionId = nextSessionId;
+        _setVisualState(
+          _LiveOpsVisualState.idle,
+          source: 'Next Match ready; waiting for screen capture',
+        );
         _activeEventId = next['event_id']?.toString();
         _activeMatchId = nextMatchId;
         _activeLobbyCode = next['lobby_code']?.toString();
@@ -327,7 +474,14 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
     } catch (error) {
       if (mounted) showMessage(context, error.toString());
     } finally {
-      if (mounted) setState(() { _capturing = false; _state = 'Paused · ready for screenshot upload'; });
+      if (mounted) setState(() {
+        _capturing = false;
+        _setVisualState(
+          _LiveOpsVisualState.pausedCaptureStopped,
+          source: 'Operator paused screen observation',
+        );
+        _state = 'Paused · ready for screenshot upload';
+      });
     }
   }
 
@@ -359,6 +513,13 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
             ])),
             if (_capturing) const Icon(Icons.circle, size: 10, color: Color(0xFF73D6A2)),
           ]),
+          const SizedBox(height: 6),
+          Text('Screen state: ${_visualState.label}', style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 12, fontWeight: FontWeight.w800)),
+          Text('Confidence: $_stateConfidenceLabel · Source: $_stateSource', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
+          Text(
+            'Observed: ${_stateObservedAt?.toLocal().toString().split('.').first ?? '—'}',
+            style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10),
+          ),
           const SizedBox(height: 16),
           TextField(
             controller: _lobbyId,
