@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT extensions.plan(28);
+SELECT extensions.plan(27);
 
 SELECT extensions.has_table('public','event_test_registrations',
   'Test registrations have a dedicated isolated table');
