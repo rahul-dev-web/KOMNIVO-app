@@ -46,7 +46,7 @@ Map<String, dynamic>? buildTournamentRoadmap({
   final nextRound = parsed[2]!;
   final qualified = parsed[3]!;
   final invited = parsed[4]!;
-  if (group < 2 || group > 1000 || qualifiers < 1 || qualifiers > group ||
+  if (group < 2 || group > 24 || qualifiers < 1 || qualifiers > group ||
       nextRound < 1 || qualified < 0 || invited < 0 ||
       qualified + invited != nextRound) {
     throw const FormatException(
