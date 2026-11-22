@@ -499,6 +499,12 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
             ? 'keep_draft'
             : null;
     if (decision == null || !_showOrganizerActions) return false;
+    // A typed confirmation is valid only immediately after the tournament
+    // preview card. Do not let an unrelated later "yes" publish an old draft.
+    if (_items.isEmpty ||
+        _items.last.proposal?['workflow_type'] != 'tournament') {
+      return false;
+    }
 
     final actionable = _items
         .where((item) => item.proposal?['workflow_type'] == 'tournament')
