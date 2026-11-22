@@ -281,7 +281,7 @@ Deno.serve(async (req: Request) => {
 
       const apiKey = Deno.env.get("FREEFIRE_API_KEY");
       if (!apiKey) return json({ error: "The Free Fire profile provider is not configured on the server." }, 503);
-      const base = (Deno.env.get("FREEFIRE_API_BASE_URL") ?? DEFAULT_BASE_URL).replace(/\\/+$/, "");
+      const base = (Deno.env.get("FREEFIRE_API_BASE_URL") ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
 
       // Atomically reserve a short refresh interval. Concurrent button taps
       // cannot fan out multiple provider requests for the same game account.
