@@ -202,16 +202,14 @@ BEGIN
   v_def := pg_get_functiondef(
     'app_private.register_liveops_evidence_batch(uuid,uuid,uuid,text,text,jsonb)'::regprocedure
   );
-  v_old := $old$IF NOT FOUND THEN RAISE EXCEPTION 'LiveOps session not found'; END IF;
-  IF v_session.lobby_id IS DISTINCT FROM p_lobby_id$sql$;
+  v_old := $old$IF NOT FOUND THEN RAISE EXCEPTION 'LiveOps session not found'; END IF;$old$;
   IF position(v_old in v_def)=0 THEN
     RAISE EXCEPTION 'Could not locate the evidence upload session guard';
   END IF;
   v_def := replace(v_def,v_old,$new$IF NOT FOUND THEN RAISE EXCEPTION 'LiveOps session not found'; END IF;
   IF v_session.evidence_skipped_at IS NOT NULL THEN
     RAISE EXCEPTION 'This Match evidence step was skipped; start the next Match instead';
-  END IF;
-  IF v_session.lobby_id IS DISTINCT FROM p_lobby_id$sql$);
+  END IF;$new$);
   EXECUTE v_def;
 
   v_def := pg_get_functiondef(
