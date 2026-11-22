@@ -728,6 +728,8 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
           matchId: _activeMatchId!,
           ocrText: _latestText,
           lobbyConfirmed: _capturing && _visualState == _LiveOpsVisualState.lobby,
+          observedAt: _stateObservedAt,
+          observationSource: _stateSource,
           preview: widget.preview,
         ),
       ],
