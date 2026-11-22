@@ -145,6 +145,27 @@ void main() {
       );
     });
 
+    test('a stale gap expires the previously confirmed screen state', () {
+      final observer = LiveOpsStableScreenObserver();
+      for (var second = 0; second < 3; second++) {
+        observer.observe(
+          LiveOpsMatchScreenKind.lobby,
+          start.add(Duration(seconds: second)),
+        );
+      }
+      expect(observer.stableKind, LiveOpsMatchScreenKind.lobby);
+
+      expect(
+        observer.observe(
+          LiveOpsMatchScreenKind.lobby,
+          start.add(const Duration(seconds: 6)),
+        ),
+        LiveOpsMatchScreenKind.unknown,
+      );
+      expect(observer.pendingCount, 1);
+      expect(observer.stableKind, LiveOpsMatchScreenKind.unknown);
+    });
+
     test('a stale observation gap resets the stability streak', () {
       final observer = LiveOpsStableScreenObserver();
       observer.observe(LiveOpsMatchScreenKind.lobby, start);
