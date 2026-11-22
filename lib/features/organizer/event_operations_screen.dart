@@ -1274,20 +1274,32 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
             SectionTitle(
               'Match operations',
               subtitle: 'Select scheduled matches to group them under one generated Lobby ID',
-              trailing: _canEvent(data, 'event.matches.manage')
-                  ? Wrap(spacing: 8, runSpacing: 6, children: [
-                      OutlinedButton.icon(
-                        onPressed: _busy || _selectedMatchIds.isEmpty ? null : () => _createLobby(data.matches),
-                        icon: const Icon(Icons.view_week_outlined),
-                        label: Text('Create Lobby (${_selectedMatchIds.length})'),
-                      ),
-                      FilledButton.icon(
-                        onPressed: _busy || eligible.length < 2 ? null : () => _createMatch(eligible, groups),
-                        icon: const Icon(Icons.add),
-                        label: const Text('Manual match fallback'),
-                      ),
-                    ])
-                  : null,
+              trailing: Wrap(spacing: 8, runSpacing: 6, children: [
+                if (_canEvent(data, 'event.manage')) ...[
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : _publishCompleteRoadmap,
+                    icon: const Icon(Icons.account_tree_outlined),
+                    label: const Text('Publish full roadmap'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : _assignDirectEntryTeams,
+                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                    label: const Text('Add direct-entry teams'),
+                  ),
+                ],
+                if (_canEvent(data, 'event.matches.manage')) ...[
+                  OutlinedButton.icon(
+                    onPressed: _busy || _selectedMatchIds.isEmpty ? null : () => _createLobby(data.matches),
+                    icon: const Icon(Icons.view_week_outlined),
+                    label: Text('Create Lobby (${_selectedMatchIds.length})'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _busy || eligible.length < 2 ? null : () => _createMatch(eligible, groups),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Manual match fallback'),
+                  ),
+                ],
+              ]),
             ),
             const SizedBox(height: 10),
             if (data.matches.isEmpty) const EmptyState(title: 'No matches created', message: 'Lock at least two team rosters, then create a match.')
