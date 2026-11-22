@@ -5,6 +5,7 @@ const DEFAULT_BASE_URL = "https://developers.freefirecommunity.com/api/v1";
 const GAME_CODE = "free_fire_max";
 const MAX_VERIFY_ATTEMPTS = 3;
 const VERIFY_RETRY_SECONDS = 15;
+const PROFILE_REFRESH_RETRY_SECONDS = 15;
 const CHALLENGE_LIFETIME_MS = 30 * 60 * 1000;
 
 const corsHeaders = {
@@ -248,6 +249,171 @@ Deno.serve(async (req: Request) => {
           : challenge?.status === "expired"
             ? "The previous code expired. Generate a new code; your three verification requests are not reset."
             : "Ownership remains Verification Pending until the exact code is visible in the complete in-game Bio.",
+      });
+    }
+
+    if (action === "refresh") {
+      // Manual refresh is available only after ownership has already been
+      // proven. It refreshes public profile data but never changes trust state
+      // or consumes a Bio-verification attempt.
+      const { data: accounts, error: accountError } = await admin.from("game_accounts")
+        .select("id, uid, region, ownership_status")
+        .eq("user_id", user.id)
+        .eq("game_id", game.id)
+        .limit(2);
+
+      if (accountError) return json({ error: "Could not load your linked Free Fire account." }, 500);
+      if (!accounts || accounts.length === 0) {
+        return json({ status: "not_linked", error: "Link and verify your Free Fire UID before refreshing its profile." }, 404);
+      }
+      if (accounts.length > 1) {
+        return json({ error: "Multiple Free Fire accounts are linked. Contact KOMNIVO Support before refreshing." }, 409);
+      }
+
+      const account = accounts[0];
+      if (account.ownership_status !== "verified") {
+        return json({
+          status: "proof_pending",
+          ownership_status: account.ownership_status,
+          error: "Complete Free Fire UID ownership verification before refreshing this profile.",
+        }, 403);
+      }
+
+      const apiKey = Deno.env.get("FREEFIRE_API_KEY");
+      if (!apiKey) return json({ error: "The Free Fire profile provider is not configured on the server." }, 503);
+      const base = (Deno.env.get("FREEFIRE_API_BASE_URL") ?? DEFAULT_BASE_URL).replace(/\\/+$/, "");
+
+      // Atomically reserve a short refresh interval. Concurrent button taps
+      // cannot fan out multiple provider requests for the same game account.
+      const attemptAt = new Date();
+      const attemptAtIso = attemptAt.toISOString();
+      const cutoff = new Date(
+        attemptAt.getTime() - PROFILE_REFRESH_RETRY_SECONDS * 1000,
+      ).toISOString();
+      const { data: reservation, error: reservationError } = await admin
+        .from("game_accounts")
+        .update({ profile_refresh_last_attempt_at: attemptAtIso })
+        .eq("id", account.id)
+        .eq("user_id", user.id)
+        .eq("game_id", game.id)
+        .eq("ownership_status", "verified")
+        .or("profile_refresh_last_attempt_at.is.null,profile_refresh_last_attempt_at.lt." + cutoff)
+        .select("id")
+        .maybeSingle();
+
+      if (reservationError) {
+        return json({ error: "Could not safely reserve a profile refresh. Please retry." }, 500);
+      }
+      if (!reservation) {
+        return json({
+          status: "throttled",
+          retry_after_seconds: PROFILE_REFRESH_RETRY_SECONDS,
+          error: "Please wait a few seconds before refreshing this Free Fire profile again.",
+        }, 429);
+      }
+
+      let info: RecordData;
+      try {
+        const query = new URLSearchParams({
+          region: String(account.region).toLowerCase(),
+          uid: String(account.uid),
+        });
+        const response = await fetch(base + "/info?" + query.toString(), {
+          headers: {
+            "x-api-key": apiKey,
+            "User-Agent": "KOMNIVO/1.0 (esports community app)",
+          },
+          signal: AbortSignal.timeout(15_000),
+        });
+
+        if (!response.ok) {
+          const detail = response.status === 404
+            ? "The provider could not find this UID in the selected region."
+            : response.status === 429
+              ? "The Free Fire provider rate-limited this refresh."
+              : "The Free Fire provider returned HTTP " + response.status + ".";
+          return json({
+            status: "provider_unavailable",
+            ownership_status: "verified",
+            error: detail + " Your existing verified identity and saved profile have been kept unchanged.",
+          }, response.status === 429 ? 429 : 502);
+        }
+        info = await response.json() as RecordData;
+      } catch (providerError) {
+        const detail = providerError instanceof Error
+          ? providerError.message
+          : "The Free Fire provider could not complete this refresh.";
+        return json({
+          status: "provider_unavailable",
+          ownership_status: "verified",
+          error: detail + " Your existing verified identity and saved profile have been kept unchanged.",
+        }, 502);
+      }
+
+      const profile = buildProfile(info, String(account.region).toLowerCase());
+      if (profile.nickname === null || String(profile.nickname).trim().length === 0) {
+        return json({
+          status: "provider_unavailable",
+          ownership_status: "verified",
+          error: "The provider response did not contain a usable in-game name. Your saved profile has been kept unchanged.",
+        }, 502);
+      }
+      if (profile.account_id !== null && String(profile.account_id) !== String(account.uid)) {
+        return json({
+          status: "needs_review",
+          ownership_status: "verified",
+          error: "The provider returned a different UID. Your saved profile has been kept unchanged.",
+        }, 502);
+      }
+
+      const cleanInfo = withoutPublicBio(info);
+      const stats = asRecord(info.stats ?? info.statsInfo ?? {});
+      const syncedAt = new Date().toISOString();
+      const { data: saved, error: saveError } = await admin.from("game_accounts")
+        .update({
+          nickname: String(profile.nickname),
+          level: typeof profile.level === "number" ? profile.level : null,
+          rank_label: profile.rank === null ? null : String(profile.rank),
+          provider: PROVIDER,
+          sync_status: "synced",
+          last_synced_at: syncedAt,
+          raw_profile: cleanInfo,
+          raw_stats: stats,
+          updated_at: syncedAt,
+        })
+        .eq("id", account.id)
+        .eq("user_id", user.id)
+        .eq("ownership_status", "verified")
+        .select("id")
+        .maybeSingle();
+
+      if (saveError) return json({ error: "The refreshed game profile could not be saved. Your existing ownership status was not changed." }, 500);
+      if (!saved) {
+        return json({ status: "ownership_changed", error: "This game account is no longer marked Verified. Reload your profile before refreshing." }, 409);
+      }
+
+      const { error: snapshotError } = await admin.from("game_profile_snapshots").insert({
+        user_id: user.id,
+        game_account_id: account.id,
+        provider: PROVIDER,
+        region: account.region,
+        profile_json: cleanInfo,
+        stats_json: stats,
+      });
+      if (snapshotError) {
+        console.warn("Could not save refreshed game profile snapshot.", { code: snapshotError.code });
+      }
+
+      return json({
+        status: "verified",
+        ownership_status: "verified",
+        account_id: account.id,
+        uid: account.uid,
+        region: account.region,
+        nickname: String(profile.nickname),
+        profile,
+        last_synced_at: syncedAt,
+        message: "Your Free Fire profile and in-game name have been refreshed.",
       });
     }
 
