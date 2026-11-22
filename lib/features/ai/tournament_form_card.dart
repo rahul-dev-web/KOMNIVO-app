@@ -657,6 +657,9 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
             'registration_opens_at': payload['registration_opens_at'],
             'registration_closes_at': payload['registration_closes_at'],
             'event_config': payload['event_config'],
+            'rules_json': payload['rules_json'],
+            'scoring_config': payload['scoring_config'],
+            'banner_path': payload['banner_path'],
           },
         });
       }
