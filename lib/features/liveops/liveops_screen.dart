@@ -407,11 +407,15 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
         final confirmedLobby = stableKind == LiveOpsMatchScreenKind.lobby;
         final confirmedGameplay =
             stableKind == LiveOpsMatchScreenKind.matchInProgress;
+        final confirmedResult =
+            stableKind == LiveOpsMatchScreenKind.resultScreen;
         final retainingPriorState = stableKind != LiveOpsMatchScreenKind.unknown &&
             classification.kind != stableKind;
         suppressGenericVoicePrompt =
             classification.kind == LiveOpsMatchScreenKind.matchInProgress ||
-            confirmedGameplay;
+            classification.kind == LiveOpsMatchScreenKind.resultScreen ||
+            confirmedGameplay ||
+            confirmedResult;
 
         final _LiveOpsVisualState nextVisualState;
         final String source;
@@ -432,6 +436,14 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
           nextStatus = retainingPriorState
               ? 'Match in progress · checking screen transition'
               : 'Match in progress · generic prompts suppressed';
+        } else if (confirmedResult) {
+          nextVisualState = _LiveOpsVisualState.resultScreen;
+          source = retainingPriorState
+              ? 'On-device OCR · retaining confirmed Result Screen while candidate stabilises (${_matchScreenObserver.pendingCount}/3)'
+              : 'On-device OCR · stable 3/3 observations · BOOYAH/DEFEAT + NAME + two result-stat headers';
+          nextStatus = retainingPriorState
+              ? 'Result Screen retained · checking screen transition'
+              : 'Result Screen detected · review manually; no score extracted';
         } else {
           nextVisualState = _LiveOpsVisualState.unknown;
           final candidateLabel = classification.kind ==
@@ -440,7 +452,9 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
               : classification.kind ==
                       LiveOpsMatchScreenKind.matchInProgress
                   ? 'Gameplay'
-                  : 'screen';
+                  : classification.kind == LiveOpsMatchScreenKind.resultScreen
+                      ? 'Result Screen'
+                      : 'screen';
           source = classification.isClassified
               ? 'On-device OCR · $candidateLabel candidate ${_matchScreenObserver.pendingCount}/3 consecutive observations'
               : 'On-device OCR · ${classification.reason}';
@@ -456,7 +470,9 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
               observedAt: retainingPriorState ? _stateObservedAt : observedAt,
               // 1.0 denotes the full strict signature plus 3 consecutive
               // frames, not a statistically calibrated probability.
-              confidence: confirmedLobby || confirmedGameplay ? 1.0 : null,
+              confidence: confirmedLobby || confirmedGameplay || confirmedResult
+                  ? 1.0
+                  : null,
               source: source,
             );
             _state = nextStatus;
