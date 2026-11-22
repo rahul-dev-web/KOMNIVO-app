@@ -6,15 +6,34 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const authorization = readBearer(req);
   if (!authorization) return json({ error: "Authentication required" }, 401);
+
   const client = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
-    global: { headers: { Authorization: authorization } }, auth: { persistSession: false },
+    global: { headers: { Authorization: authorization } },
+    auth: { persistSession: false },
   });
   const { data: { user }, error: authError } = await client.auth.getUser();
   if (authError || !user) return json({ error: "Invalid session" }, 401);
+
   try {
     const body = await req.json();
-    if (typeof body.event_id !== "string") return json({ error: "event_id is required" }, 400);
-    const { data, error } = await client.rpc("register_for_event", {
+    if (typeof body.event_id !== "string") {
+      return json({ error: "event_id is required" }, 400);
+    }
+
+    // Backward compatibility: clients that omit registration_type still use
+    // the real registration path. Test entries are routed to isolated storage.
+    const registrationType = body.registration_type ?? "real";
+    if (registrationType !== "real" && registrationType !== "test") {
+      return json({ error: "registration_type must be 'real' or 'test'." }, 400);
+    }
+    if (body.team_id !== undefined && body.team_id !== null && typeof body.team_id !== "string") {
+      return json({ error: "team_id must be a UUID string or null." }, 400);
+    }
+
+    const rpcName = registrationType === "test"
+      ? "submit_test_registration"
+      : "register_for_event";
+    const { data, error } = await client.rpc(rpcName, {
       p_event_id: body.event_id,
       p_team_id: typeof body.team_id === "string" ? body.team_id : null,
     });
