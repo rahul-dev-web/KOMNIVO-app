@@ -7,12 +7,14 @@ select extensions.has_column('public','liveops_sessions','evidence_skipped_at',
   'A LiveOps session records whether its evidence step was explicitly skipped');
 select extensions.has_column('public','liveops_sessions','evidence_skip_reason',
   'A skipped evidence step must preserve the organiser/operator reason');
-select extensions.has_function('public','skip_liveops_match_evidence',
-  array['uuid','text'],
-  'The authenticated app has a dedicated Match evidence skip RPC');
-select extensions.has_function('app_private','skip_liveops_match_evidence',
-  array['uuid','text'],
-  'The skip implementation stays in the private schema');
+select extensions.ok(
+  to_regprocedure('public.skip_liveops_match_evidence(uuid,text)') is not null,
+  'The authenticated app has a dedicated Match evidence skip RPC'
+);
+select extensions.ok(
+  to_regprocedure('app_private.skip_liveops_match_evidence(uuid,text)') is not null,
+  'The skip implementation stays in the private schema'
+);
 select extensions.ok(
   has_function_privilege('authenticated','public.skip_liveops_match_evidence(uuid,text)','EXECUTE'),
   'Authenticated users can invoke the reasoned skip wrapper'
