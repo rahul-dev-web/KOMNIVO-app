@@ -2,7 +2,7 @@
 -- Run with: supabase test db
 begin;
 create extension if not exists pgtap with schema extensions;
-select extensions.plan(19);
+select extensions.plan(27);
 
 select extensions.has_table('public','event_publications',
   'An audit-safe record is maintained for each published tournament');
@@ -79,6 +79,59 @@ select extensions.ok(
   exists(select 1 from pg_indexes where schemaname='public'
     and tablename='event_publications' and indexname='event_publications_category_idx'),
   'Published category lookup is indexed'
+);
+
+
+select extensions.ok(
+  position('resolve_permission(''community.view'',''community'',v_event_community_id' in
+    pg_get_functiondef('app_private.resolve_permission(text,text,uuid,uuid,uuid)'::regprocedure)) > 0,
+  'Published event view requires the parent community visibility policy'
+);
+select extensions.ok(
+  position('elsif p_scope_type = ''liveops_session'' then' in
+    pg_get_functiondef('app_private.resolve_permission(text,text,uuid,uuid,uuid)'::regprocedure)) > 0
+  and position('elsif p_scope_type = ''match'' then' in
+    pg_get_functiondef('app_private.resolve_permission(text,text,uuid,uuid,uuid)'::regprocedure)) > 0
+  and position('elsif p_scope_type = ''group'' then' in
+    pg_get_functiondef('app_private.resolve_permission(text,text,uuid,uuid,uuid)'::regprocedure)) > 0,
+  'The full match, group and LiveOps permission resolver remains intact'
+);
+select extensions.ok(
+  position('(1,''info''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(2,''updates''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(3,''roadmap''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(4,''schedule''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(5,''registration''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(6,''registration-confirmation''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(7,''test-registration''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(8,''help-desk''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(9,''help-desk-voice''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(10,''results''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(11,''staff''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0,
+  'Publication provisions all eleven required tournament channels in their specified order'
+);
+select extensions.ok(
+  position('''tags''' in lower(pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) = 0,
+  'No Tags channel is provisioned'
+);
+select extensions.ok(
+  position('(11,''staff'',''Private tournament staff coordination.'',''text'',true,false)' in
+    pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('a.scope_type = ''event''' in
+    pg_get_functiondef('app_private.can_access_event_channel_scope(uuid,uuid,uuid,uuid,uuid)'::regprocedure)) > 0,
+  'Staff channel is private and visibility is restricted to event-scoped staff authority'
+);
+select extensions.ok(
+  position('registration_opened'',false' in
+    pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('UPDATE public.events SET status=''published''' in
+    pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0,
+  'Publishing does not open registration'
+);
+select extensions.ok(
+  position('app_private.resolve_permission(''event.manage'',''event''' in
+    pg_get_functiondef('app_private.guard_batch3_channel_message()'::regprocedure)) > 0,
+  'Root event announcement channels remain restricted to event organisers for publishing'
 );
 
 select * from extensions.finish();
