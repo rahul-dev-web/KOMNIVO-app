@@ -199,7 +199,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
           key: 'unknown:' + entry.key.toString() + ':' + candidate,
           title: 'Possible unrecognised lobby name',
           detail: '"' + line + '" was read under Slot ' + entry.key.toString() +
-              ', but is not in this Match roster snapshot. It may be an unexpected player or OCR noise; inspect the game before deciding.',
+              ', but is not in this Match’s verified identity snapshot. It could be an unverified roster member, OCR noise or an unexpected player; inspect the actual lobby before deciding.',
           icon: Icons.person_search_rounded,
         ));
       }
