@@ -29,6 +29,9 @@ jobs:
       - name: Resolve packages
         run: flutter pub get
 
+      - name: Run LiveOps OCR roster matcher regression tests
+        run: flutter test test/features/liveops/liveops_roster_matcher_test.dart
+
       - name: Analyze Dart (warnings and errors are fatal)
         run: flutter analyze --no-fatal-infos
 
