@@ -52,7 +52,7 @@ BEGIN
 
   v_expected := COALESCE(NULLIF(v_event.event_config #>> '{roadmap,direct_invites}','')::integer,0);
   IF v_expected < 0 THEN RAISE EXCEPTION 'Saved direct-entry count is invalid'; END IF;
-  IF COALESCE(v_event.event_config->>'stage_count','')::integer < 2 AND v_expected > 0 THEN
+  IF COALESCE(NULLIF(v_event.event_config->>'stage_count','')::integer,0) < 2 AND v_expected > 0 THEN
     RAISE EXCEPTION 'Direct-entry teams require at least two tournament stages';
   END IF;
 
@@ -95,7 +95,7 @@ BEGIN
   INSERT INTO public.audit_logs(
     actor_id,event_id,entity_type,entity_id,action,reason,metadata
   ) VALUES (
-    auth.uid(),p_event_id,'event','00000000-0000-0000-0000-000000000000'::uuid,
+    auth.uid(),p_event_id,'event',p_event_id,
     'roadmap_direct_entry_teams_assigned',
     'Organiser explicitly selected registered teams to bypass stage one',
     jsonb_build_object('target_round',2,'team_ids',COALESCE(to_jsonb(p_team_ids),'[]'::jsonb),
