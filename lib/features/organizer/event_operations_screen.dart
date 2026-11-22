@@ -58,6 +58,9 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
         .select('id,match_id,team_id,candidate_placement,candidate_kills,reviewed_placement,reviewed_kills,review_status,review_note,created_at,teams(name,tag),matches!inner(id,event_id,match_number),result_candidate_evidence(id,reported_placement,reported_kills,liveops_captures(sequence_no,evidence_path,content_type))')
         .eq('matches.event_id', eventId)
         .order('created_at', ascending: false),
+      _client.from('event_test_registrations')
+        .select('*, teams(name,tag), event_test_registration_players(user_id)')
+        .eq('event_id', eventId).order('created_at', ascending: false),
     ]);
     final matches = List<Map<String, dynamic>>.from(results[1] as List);
     const eventKeys = [
@@ -101,6 +104,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
       disputedConfirmations: List<Map<String, dynamic>>.from(results[4] as List),
       lobbies: List<Map<String, dynamic>>.from(results[5] as List),
       ocrCandidates: List<Map<String, dynamic>>.from(results[6] as List),
+      testRegistrations: List<Map<String, dynamic>>.from(results[7] as List),
       eventPermissions: eventPermissions,
       matchPermissions: Map<String, Map<String, bool>>.fromEntries(matchPermissionEntries),
     );
@@ -126,6 +130,49 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     } catch (error) {
       if (mounted) showMessage(context, error.toString());
     } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _reviewTestRegistration(String id, String status) async {
+    final note = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Mark test registration $status?'),
+        content: TextField(
+          controller: note,
+          maxLength: 500,
+          minLines: 2,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Review note (optional)',
+            hintText: 'Add a short note for the test submitter and audit trail.',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: Text('Mark $status')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      note.dispose();
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await _client.rpc('review_event_test_registration', params: {
+        'p_test_registration_id': id,
+        'p_status': status,
+        'p_review_note': note.text.trim(),
+      });
+      _reload();
+      if (mounted) showMessage(context, 'Test registration marked $status. No real slots or standings were changed.');
+    } catch (error) {
+      if (mounted) showMessage(context, error.toString());
+    } finally {
+      note.dispose();
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -793,6 +840,62 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
               );
             }),
             const SizedBox(height: 22),
+            if (_canEvent(data, 'event.registrations.manage')) ...[
+              SectionTitle(
+                'Test-registration review',
+                subtitle: 'Isolated test submissions only. These records never consume real slots or enter match scoring.',
+                trailing: Text(
+                  '${data.testRegistrations.where((row) => row['status'] == 'submitted').length} pending',
+                  style: const TextStyle(color: KomnivoTheme.cyan, fontWeight: FontWeight.w800),
+                ),
+              ),
+              const SizedBox(height: 10),
+              if (data.testRegistrations.isEmpty)
+                const EmptyState(
+                  title: 'No test submissions',
+                  message: 'Player test-registration entries will appear here separately from real registrations.',
+                  icon: Icons.science_outlined,
+                )
+              else
+                ...data.testRegistrations.map((row) {
+                  final team = row['teams'] is Map
+                      ? Map<String, dynamic>.from(row['teams'] as Map)
+                      : <String, dynamic>{};
+                  final players = row['event_test_registration_players'] as List? ?? [];
+                  final status = row['status']?.toString() ?? 'submitted';
+                  final submitter = (row['submitted_by'] ?? '').toString();
+                  final canReview = status == 'submitted' &&
+                      _canEvent(data, 'event.registrations.manage');
+                  return _OperationCard(
+                    title: team['name']?.toString() ?? 'Solo test submission',
+                    subtitle: '${status.replaceAll('_', ' ').toUpperCase()} · ${players.length} roster member(s) · Submitted by ${submitter.length >= 8 ? submitter.substring(0, 8) : submitter}',
+                    badge: 'TEST ONLY',
+                    trailing: canReview
+                        ? Wrap(spacing: 0, children: [
+                            IconButton(
+                              tooltip: 'Mark test passed',
+                              onPressed: _busy ? null : () => _reviewTestRegistration(row['id'] as String, 'passed'),
+                              icon: const Icon(Icons.check_circle_outline, color: KomnivoTheme.cyan),
+                            ),
+                            IconButton(
+                              tooltip: 'Mark test failed',
+                              onPressed: _busy ? null : () => _reviewTestRegistration(row['id'] as String, 'failed'),
+                              icon: const Icon(Icons.cancel_outlined, color: Color(0xFFFF8193)),
+                            ),
+                            IconButton(
+                              tooltip: 'Cancel test submission',
+                              onPressed: _busy ? null : () => _reviewTestRegistration(row['id'] as String, 'cancelled'),
+                              icon: const Icon(Icons.block_outlined, color: KomnivoTheme.muted),
+                            ),
+                          ])
+                        : null,
+                    footer: (row['review_note']?.toString().isNotEmpty == true)
+                        ? row['review_note'].toString()
+                        : 'Isolated test record · excluded from real registration capacity, participant roster and standings',
+                  );
+                }),
+            ],
+            const SizedBox(height: 22),
             if (_canEvent(data, 'event.roster.lock') || _canEvent(data, 'event.manage'))
               SectionTitle('Roster control', subtitle: 'Snapshot accepted team members before group allocation'),
             const SizedBox(height: 10),
@@ -1060,6 +1163,7 @@ class _EventData {
     required this.disputedConfirmations,
     required this.lobbies,
     required this.ocrCandidates,
+    required this.testRegistrations,
     required this.eventPermissions,
     required this.matchPermissions,
   });
@@ -1070,6 +1174,7 @@ class _EventData {
   final List<Map<String, dynamic>> disputedConfirmations;
   final List<Map<String, dynamic>> lobbies;
   final List<Map<String, dynamic>> ocrCandidates;
+  final List<Map<String, dynamic>> testRegistrations;
   final Map<String, bool> eventPermissions;
   final Map<String, Map<String, bool>> matchPermissions;
 }
