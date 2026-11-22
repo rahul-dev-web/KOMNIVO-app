@@ -56,6 +56,10 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
       unawaited(_loadSnapshot());
       return;
     }
+    if (oldWidget.lobbyConfirmed && !widget.lobbyConfirmed && _alerts.isNotEmpty) {
+      setState(_alerts.clear);
+      return;
+    }
     if (oldWidget.ocrText != widget.ocrText ||
         oldWidget.lobbyConfirmed != widget.lobbyConfirmed) {
       _evaluateLobby();
