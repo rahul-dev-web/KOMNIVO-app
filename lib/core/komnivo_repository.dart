@@ -941,6 +941,23 @@ class KomnivoRepository {
     return data;
   }
 
+  Future<Map<String, dynamic>> refreshFreeFireProfile() async {
+    final response = await client.functions.invoke('sync-freefire-profile', body: {
+      'action': 'refresh',
+    });
+    final data = response.data is Map
+        ? Map<String, dynamic>.from(response.data as Map)
+        : <String, dynamic>{};
+
+    // A 429 is an expected refresh cooldown response, not an ownership failure.
+    if (response.status == 429) return data;
+    if (response.status < 200 || response.status >= 300) {
+      throw Exception(data['error']?.toString() ??
+          'Could not refresh Free Fire profile (' + response.status.toString() + ').');
+    }
+    return data;
+  }
+
   Future<Map<String, dynamic>> verifyFreeFireOwnership({
     required String accountId,
     required bool bioConfirmed,
