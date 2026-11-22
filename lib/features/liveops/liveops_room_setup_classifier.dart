@@ -44,7 +44,7 @@ class LiveOpsRoomSetupClassifier {
     final normalized = rawOcrText
         .toUpperCase()
         .replaceAll(RegExp(r'[^A-Z0-9]+'), ' ')
-        .replaceAll(RegExp(r'\\s+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
     bool containsPhrase(String phrase) {
