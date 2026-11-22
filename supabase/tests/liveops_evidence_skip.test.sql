@@ -92,13 +92,10 @@ select extensions.ok(
   'Neither reviewed nor legacy result submission can bypass a recorded skip'
 );
 select extensions.ok(
-  position('official_result_rows_created' in pg_get_functiondef(
+  position('insert into public.match_results' in lower(pg_get_functiondef(
     'app_private.skip_liveops_match_evidence(uuid,text)'::regprocedure
-  )) > 0
-  and position('official_result_rows_created' in pg_get_functiondef(
-    'app_private.skip_liveops_match_evidence(uuid,text)'::regprocedure
-  )) > 0,
-  'Skip audit metadata explicitly records that no official result rows were created'
+  ))) = 0,
+  'The skip RPC creates no match_results rows or scores'
 );
 
 select * from extensions.finish();
