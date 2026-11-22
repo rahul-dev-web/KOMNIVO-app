@@ -199,7 +199,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
             uidOccurrenceCount > 1) {
           final slotLabel = foundSlots.join(', ');
           generated.add(_TimedRosterAlert(
-            key: 'duplicate:' + player.userId + ':' + slotLabel + ':' + occurrenceCount.toString(),
+            key: 'duplicate:' + player.userId + ':' + slotLabel + ':' + (nameOccurrenceCount + uidOccurrenceCount).toString(),
             title: 'Possible duplicate player entry',
             detail: player.nickname + ' was read more than once in slot(s) ' + slotLabel +
                 ' by exact IGN or UID text. This may be overlapping OCR or a duplicate lobby entry; inspect the game before acting.',
