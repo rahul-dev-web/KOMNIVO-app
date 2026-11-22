@@ -195,9 +195,8 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
   }
 
   Future<List<String>?> _selectDirectInviteTeams({
-    required int requiredCount,
+    required int targetRoundNumber,
   }) async {
-    if (requiredCount == 0) return <String>[];
     final eventId = widget.event['id'].toString();
     final rows = await _client
         .from('event_registrations')
@@ -216,81 +215,56 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
           ? Map<String, dynamic>.from(row['teams'] as Map)
           : <String, dynamic>{};
       final id = row['team_id']?.toString() ?? '';
-      if (id.isEmpty || (gameId != null && team['game_id']?.toString() != gameId)) {
-        continue;
-      }
+      if (id.isEmpty || (gameId != null && team['game_id']?.toString() != gameId)) continue;
       candidatesById[id] = {'id': id, ...team};
     }
     final candidates = candidatesById.values.toList()
-      ..sort((a, b) => (a['name']?.toString() ?? '')
-          .compareTo(b['name']?.toString() ?? ''));
-    if (candidates.length < requiredCount) {
-      throw StateError(
-        'Roadmap needs $requiredCount direct-entry teams, but only '
-        '${candidates.length} approved, roster-locked teams for this game are available.',
-      );
+      ..sort((a, b) => (a['name']?.toString() ?? '').compareTo(b['name']?.toString() ?? ''));
+    if (candidates.isEmpty) {
+      throw StateError('No approved, roster-locked teams for this event and game are available.');
     }
 
-    final current = await _client
-        .from('event_stage_direct_invites')
+    final current = await _client.from('event_stage_direct_invites')
         .select('team_id')
         .eq('event_id', eventId)
-        .eq('target_round_number', 2);
-    final candidateIds = candidates.map((team) => team['id'].toString()).toSet();
-    final selected = <String>{
-      for (final row in current as List)
-        if (candidateIds.contains(row['team_id']?.toString()))
-          row['team_id'].toString(),
-    };
+        .eq('target_round_number', targetRoundNumber);
+    final assigned = <String>{for (final row in current as List) row['team_id'].toString()};
+    final selected = <String>{};
 
     return showDialog<List<String>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text('Select $requiredCount direct-entry teams'),
+          title: Text('Add direct-entry teams · Stage $targetRoundNumber'),
           content: SizedBox(
             width: 480,
             child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'These already-approved teams skip Stage 1 and enter Stage 2. '
-                    'KOMNIVO will not choose teams automatically.',
-                  ),
-                  const SizedBox(height: 8),
-                  ...candidates.map((team) {
-                    final id = team['id'].toString();
-                    return CheckboxListTile(
-                      value: selected.contains(id),
-                      onChanged: (value) => setDialogState(() {
-                        if (value == true) {
-                          if (selected.length < requiredCount) selected.add(id);
-                        } else {
-                          selected.remove(id);
-                        }
-                      }),
-                      title: Text(team['name']?.toString() ?? 'Team'),
-                      subtitle: Text(team['tag']?.toString() ?? ''),
-                      controlAffinity: ListTileControlAffinity.leading,
-                    );
-                  }),
-                  const SizedBox(height: 8),
-                  Text('${selected.length} / $requiredCount selected'),
-                ],
-              ),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Text('Selected teams enter this stage directly. They will not be counted as qualifiers from the previous stage. Existing assignments are shown separately.'),
+                const SizedBox(height: 8),
+                ...candidates.map((team) {
+                  final id = team['id'].toString();
+                  final alreadyAssigned = assigned.contains(id);
+                  return CheckboxListTile(
+                    value: selected.contains(id),
+                    onChanged: alreadyAssigned ? null : (value) => setDialogState(() {
+                      if (value == true) selected.add(id); else selected.remove(id);
+                    }),
+                    title: Text(team['name']?.toString() ?? 'Team'),
+                    subtitle: Text('${team['tag'] ?? ''}${alreadyAssigned ? ' · Already assigned to this stage' : ''}'),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  );
+                }),
+                const SizedBox(height: 8),
+                Text('${selected.length} teams selected'),
+              ]),
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
             FilledButton(
-              onPressed: selected.length == requiredCount
-                  ? () => Navigator.pop(dialogContext, selected.toList())
-                  : null,
-              child: const Text('Confirm direct-entry teams'),
+              onPressed: selected.isNotEmpty ? () => Navigator.pop(dialogContext, selected.toList()) : null,
+              child: const Text('Add to selected stage'),
             ),
           ],
         ),
@@ -298,96 +272,220 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     );
   }
 
-  Future<void> _generateRoadmap() async {
+  Future<void> _assignDirectEntryTeams() async {
     final config = widget.event['event_config'] is Map
         ? Map<String, dynamic>.from(widget.event['event_config'] as Map)
         : <String, dynamic>{};
-    final roadmap = config['roadmap'] is Map
-        ? Map<String, dynamic>.from(config['roadmap'] as Map)
-        : <String, dynamic>{};
-    if (roadmap.isEmpty) {
-      showMessage(context, 'This tournament has no saved roadmap. Update the tournament draft first.');
+    final stageCount = int.tryParse(config['stage_count']?.toString() ?? '') ?? 0;
+    if (stageCount < 1) {
+      showMessage(context, 'Set the tournament stage count before assigning direct-entry teams.');
       return;
     }
-    final directInviteCount = int.tryParse(
-      roadmap['direct_invites']?.toString() ?? '0',
-    ) ?? 0;
-    if (directInviteCount < 0) {
-      showMessage(context, 'Saved direct-entry count is invalid.');
-      return;
-    }
-
-    final matches = TextEditingController();
-    final interval = TextEditingController();
-    final ok = await showDialog<bool>(
+    final stageNames = config['stage_names'] is List ? config['stage_names'] as List : const [];
+    final selectedRound = await showDialog<int>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Generate approved tournament roadmap'),
-        content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Saved roadmap · Group size ${roadmap['group_size']} · ${roadmap['qualifiers_per_group']} qualify per group'),
-          if (directInviteCount > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text('$directInviteCount registered teams will bypass Stage 1 and enter Stage 2.'),
-            ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: matches,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Matches per group', helperText: 'Required · 1–20. This value is not stored in the tournament form.'),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: interval,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Minutes between matches', helperText: 'Required · 1–240. Matches in different groups run in parallel.'),
-          ),
-        ])),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Generate groups + matches')),
-        ],
+        title: const Text('Choose direct-entry stage'),
+        content: SizedBox(
+          width: 360,
+          child: Column(mainAxisSize: MainAxisSize.min, children: List.generate(stageCount, (index) {
+            final label = index < stageNames.length && stageNames[index].toString().trim().isNotEmpty
+                ? stageNames[index].toString()
+                : 'Stage ${index + 1}';
+            return ListTile(
+              title: Text(label),
+              subtitle: Text('Direct entry into stage ${index + 1}'),
+              onTap: () => Navigator.pop(dialogContext, index + 1),
+            );
+          })),
+        ),
       ),
     );
-    final matchesPerGroup = int.tryParse(matches.text.trim());
-    final intervalMinutes = int.tryParse(interval.text.trim());
-    matches.dispose();
-    interval.dispose();
-    if (ok != true) return;
-    if (matchesPerGroup == null || matchesPerGroup < 1 || matchesPerGroup > 20 ||
-        intervalMinutes == null || intervalMinutes < 1 || intervalMinutes > 240) {
-      if (mounted) showMessage(context, 'Enter 1–20 matches and a 1–240 minute interval.');
-      return;
-    }
-
+    if (selectedRound == null || !mounted) return;
     setState(() => _busy = true);
     try {
-      final eventId = widget.event['id'].toString();
-      final firstStage = await _client
-          .from('event_rounds')
-          .select('id')
-          .eq('event_id', eventId)
-          .eq('round_number', 1)
-          .limit(1);
-      if ((firstStage as List).isEmpty) {
-        final directTeamIds = await _selectDirectInviteTeams(
-          requiredCount: directInviteCount,
-        );
-        if (directTeamIds == null || !mounted) return;
-        await _client.rpc('set_event_stage_direct_invites', params: {
-          'p_event_id': eventId,
-          'p_team_ids': directTeamIds,
-        });
-      }
-
-      final result = await _client.rpc('generate_event_roadmap', params: {
-        'p_event_id': eventId,
-        'p_matches_per_group': matchesPerGroup,
-        'p_interval_minutes': intervalMinutes,
+      final selected = await _selectDirectInviteTeams(targetRoundNumber: selectedRound);
+      if (selected == null || selected.isEmpty || !mounted) return;
+      final result = await _client.rpc('set_event_stage_direct_invites', params: {
+        'p_event_id': widget.event['id'],
+        'p_target_round_number': selectedRound,
+        'p_team_ids': selected,
       });
       _reload();
       if (mounted) showMessage(context,
-        'Roadmap generated: ${result['group_count']} groups · ${result['matches_created']} matches · $directInviteCount direct-entry teams saved. Publish the schedule separately when ready.');
+        '${result['assigned_count']} team(s) added to Stage $selectedRound. Republish the complete tournament roadmap before progression.');
+    } catch (error) {
+      if (mounted) showMessage(context, error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _publishCompleteRoadmap() async {
+    final event = widget.event;
+    final config = event['event_config'] is Map
+        ? Map<String, dynamic>.from(event['event_config'] as Map)
+        : <String, dynamic>{};
+    final stageCount = int.tryParse(config['stage_count']?.toString() ?? '') ?? 0;
+    if (stageCount < 1 || stageCount > 16) {
+      showMessage(context, 'The tournament must have 1–16 configured stages before publication.');
+      return;
+    }
+    final oldRoadmap = config['roadmap'] is Map
+        ? Map<String, dynamic>.from(config['roadmap'] as Map)
+        : <String, dynamic>{};
+    final stageNames = config['stage_names'] is List ? config['stage_names'] as List : const [];
+    final directCounts = <int, int>{};
+    final mapped = await _client.from('event_stage_direct_invites')
+        .select('target_round_number').eq('event_id', event['id']);
+    for (final row in mapped as List) {
+      final round = int.tryParse(row['target_round_number'].toString()) ?? 0;
+      directCounts[round] = (directCounts[round] ?? 0) + 1;
+    }
+
+    final fields = <Map<String, TextEditingController>>[];
+    for (var index = 0; index < stageCount; index++) {
+      final round = index + 1;
+      final isFinal = round == stageCount;
+      final oldName = index < stageNames.length ? stageNames[index].toString() : '';
+      fields.add({
+        'stage_name': TextEditingController(text: oldName),
+        'stage_type': TextEditingController(text: isFinal ? 'final' : (round == 1 ? 'qualifier' : 'custom')),
+        'group_size': TextEditingController(text: round == 1 ? oldRoadmap['group_size']?.toString() ?? '' : ''),
+        'qualifiers_per_group': TextEditingController(text: isFinal ? '0' : (round == 1 ? oldRoadmap['qualifiers_per_group']?.toString() ?? '' : '')),
+        'qualified_team_count': TextEditingController(text: round == 1 ? oldRoadmap['qualified_team_count']?.toString() ?? '' : (isFinal ? '0' : '')),
+        'matches_per_group': TextEditingController(),
+        'interval_minutes': TextEditingController(),
+        'first_match_at': TextEditingController(text: round == 1 ? event['starts_at']?.toString() ?? '' : ''),
+      });
+    }
+
+    final payload = await showDialog<List<Map<String, dynamic>>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Publish complete tournament roadmap'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Configure every stage below. One publish action stores the complete stage-to-stage plan. Dates must be future ISO-8601 timestamps with an explicit timezone, for example 2026-12-01T18:00:00+05:30.'),
+                const SizedBox(height: 12),
+                ...List.generate(stageCount, (index) {
+                  final round = index + 1;
+                  final item = fields[index];
+                  Widget field(String key, String label, String hint) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: TextField(controller: item[key],
+                      decoration: InputDecoration(labelText: label, hintText: hint, isDense: true)),
+                  );
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Stage $round · ${directCounts[round] ?? 0} direct-entry teams',
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
+                        field('stage_name', 'Stage name', 'e.g. Qualifier / Semi Final / Final'),
+                        field('stage_type', 'Stage type', 'qualifier / quarter_final / semi_final / final / grand_final / custom'),
+                        field('group_size', 'Teams per group', '2–24'),
+                        field('qualifiers_per_group', 'Qualifiers per group', round == stageCount ? '0 for final' : '1–group size'),
+                        field('qualified_team_count', 'Expected qualified team count', round == stageCount ? '0' : 'Total advancing from this stage'),
+                        field('matches_per_group', 'Matches per group', '1–20'),
+                        field('interval_minutes', 'Minutes between matches', '1–240'),
+                        field('first_match_at', 'First match timestamp (ISO-8601)', 'YYYY-MM-DDTHH:mm:ss+05:30'),
+                        const Divider(),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              try {
+                final rows = <Map<String, dynamic>>[];
+                for (var i = 0; i < fields.length; i++) {
+                  final item = fields[i];
+                  final round = i + 1;
+                  int parse(String key) {
+                    final value = int.tryParse(item[key]!.text.trim());
+                    if (value == null) throw FormatException('Complete Stage $round: ${key.replaceAll('_', ' ')}.');
+                    return value;
+                  }
+                  final name = item['stage_name']!.text.trim();
+                  final type = item['stage_type']!.text.trim();
+                  final firstAt = item['first_match_at']!.text.trim();
+                  if (name.isEmpty || type.isEmpty || DateTime.tryParse(firstAt) == null) {
+                    throw FormatException('Complete Stage $round name, type and first-match timestamp.');
+                  }
+                  rows.add({
+                    'round_number': round, 'stage_name': name, 'stage_type': type,
+                    'group_size': parse('group_size'),
+                    'qualifiers_per_group': parse('qualifiers_per_group'),
+                    'qualified_team_count': parse('qualified_team_count'),
+                    'direct_entry_count': directCounts[round] ?? 0,
+                    'matches_per_group': parse('matches_per_group'),
+                    'interval_minutes': parse('interval_minutes'),
+                    'first_match_at': firstAt,
+                  });
+                }
+                Navigator.pop(dialogContext, rows);
+              } catch (error) {
+                showMessage(context, error.toString());
+              }
+            },
+            child: const Text('Publish all stages'),
+          ),
+        ],
+      ),
+    );
+
+    for (final item in fields) {
+      for (final controller in item.values) {
+        controller.dispose();
+      }
+    }
+    if (payload == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final result = await _client.rpc('publish_event_roadmap', params: {
+        'p_event_id': event['id'],
+        'p_stage_configs': payload,
+      });
+      _reload();
+      if (mounted) showMessage(context,
+        'Complete roadmap v${result['roadmap_version']} published across ${result['stage_count']} stages.');
+    } catch (error) {
+      if (mounted) showMessage(context, error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _generateRoadmap() async {
+    setState(() => _busy = true);
+    try {
+      final eventId = widget.event['id'].toString();
+      final row = await _client.from('event_stage_roadmaps')
+          .select('configuration').eq('event_id', eventId).eq('round_number', 1).maybeSingle();
+      if (row == null) throw StateError('Publish the complete roadmap before generating Stage 1.');
+      final cfg = Map<String, dynamic>.from(row['configuration'] as Map);
+      final result = await _client.rpc('generate_event_roadmap', params: {
+        'p_event_id': eventId,
+        'p_matches_per_group': cfg['matches_per_group'],
+        'p_interval_minutes': cfg['interval_minutes'],
+      });
+      _reload();
+      if (mounted) showMessage(context,
+        'Stage 1 generated: ${result['group_count']} groups · ${result['matches_created']} matches. Its schedule is published from the full roadmap.');
     } catch (error) {
       if (mounted) showMessage(context, error.toString());
     } finally {
@@ -396,60 +494,22 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
   }
 
   Future<void> _advanceRoadmapStage(Map<String, dynamic> stage) async {
-    final matches = TextEditingController();
-    final interval = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('Advance from ${stage['name']}'),
-        content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('Only approved match results can advance teams under the saved qualification rules.'),
-          const SizedBox(height: 12),
-          TextField(controller: matches, keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Matches per group · 1–20')),
-          const SizedBox(height: 10),
-          TextField(controller: interval, keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Minutes between matches · 1–240')),
-        ])),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Review next-stage time')),
-        ],
-      ),
-    );
-    final matchesPerGroup = int.tryParse(matches.text.trim());
-    final intervalMinutes = int.tryParse(interval.text.trim());
-    matches.dispose();
-    interval.dispose();
-    if (ok != true) return;
-    if (matchesPerGroup == null || matchesPerGroup < 1 || matchesPerGroup > 20 ||
-        intervalMinutes == null || intervalMinutes < 1 || intervalMinutes > 240) {
-      if (mounted) showMessage(context, 'Enter 1–20 matches and a 1–240 minute interval.');
-      return;
-    }
-    final initial = DateTime.now().add(const Duration(days: 1));
-    final date = await showDatePicker(
-      context: context,
-      initialDate: DateTime(initial.year, initial.month, initial.day),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-    if (date == null || !mounted) return;
-    final time = await showTimePicker(context: context, initialTime: const TimeOfDay(hour: 18, minute: 0));
-    if (time == null || !mounted) return;
-    final firstMatch = DateTime(date.year,date.month,date.day,time.hour,time.minute).toUtc().toIso8601String();
-
+    final nextRound = (stage['round_number'] as int? ?? 1) + 1;
     setState(() => _busy = true);
     try {
+      final target = await _client.from('event_stage_roadmaps')
+          .select('configuration').eq('event_id', widget.event['id']).eq('round_number', nextRound).maybeSingle();
+      if (target == null) throw StateError('Stage $nextRound roadmap is missing. Publish the complete stage-to-stage roadmap before qualifying.');
+      final cfg = Map<String, dynamic>.from(target['configuration'] as Map);
       final result = await _client.rpc('advance_event_stage_from_roadmap', params: {
         'p_source_stage_id': stage['id'],
-        'p_matches_per_group': matchesPerGroup,
-        'p_interval_minutes': intervalMinutes,
-        'p_first_match_at': firstMatch,
+        'p_matches_per_group': cfg['matches_per_group'],
+        'p_interval_minutes': cfg['interval_minutes'],
+        'p_first_match_at': cfg['first_match_at'],
       });
       _reload();
       if (mounted) showMessage(context,
-        'Next stage generated: ${result['stage_name']} · ${result['group_count']} groups · ${result['matches_created']} matches. Publish its schedule separately.');
+        'Stage $nextRound generated: ${result['group_count']} groups · ${result['matches_created']} matches. Schedule published automatically.');
     } catch (error) {
       if (mounted) showMessage(context, error.toString());
     } finally {
