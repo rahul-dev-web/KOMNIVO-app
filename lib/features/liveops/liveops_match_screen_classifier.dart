@@ -127,6 +127,15 @@ class LiveOpsStableScreenObserver {
     LiveOpsMatchScreenKind candidate,
     DateTime observedAt,
   ) {
+    final previousAt = _previousAt;
+    final gap = previousAt == null ? null : observedAt.difference(previousAt);
+    if (gap != null && (gap.isNegative || gap > maximumGap)) {
+      // A stale observation window cannot keep an old state alive.
+      _stableKind = LiveOpsMatchScreenKind.unknown;
+      _pendingKind = LiveOpsMatchScreenKind.unknown;
+      _pendingCount = 0;
+    }
+
     if (candidate == _stableKind) {
       _pendingKind = LiveOpsMatchScreenKind.unknown;
       _pendingCount = 0;
@@ -134,13 +143,7 @@ class LiveOpsStableScreenObserver {
       return _stableKind;
     }
 
-    final previousAt = _previousAt;
-    final gap = previousAt == null ? null : observedAt.difference(previousAt);
-    final startsNewStreak = _pendingKind != candidate ||
-        gap == null ||
-        gap.isNegative ||
-        gap > maximumGap;
-
+    final startsNewStreak = _pendingKind != candidate || gap == null;
     if (startsNewStreak) {
       _pendingKind = candidate;
       _pendingCount = 1;
