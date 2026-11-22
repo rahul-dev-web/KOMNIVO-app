@@ -137,6 +137,12 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
         .map((player) => _normalise(player.nickname))
         .where((name) => name.isNotEmpty)
         .toSet();
+    final knownUids = knownPlayers
+        .map((player) => player.uid)
+        .where((uid) => uid.isNotEmpty)
+        .toSet();
+    final namesPairedWithUids =
+        LiveOpsRosterOcrParser.readNamesPairedWithUids(widget.ocrText);
     final generated = <_TimedRosterAlert>[];
     final ambiguousOcrNames = <String>{};
 
@@ -249,9 +255,11 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
     for (final entry in slotLines.entries) {
       for (final line in entry.value) {
           final candidate = _normalise(line);
+        final pairedUid = namesPairedWithUids[entry.key]?[candidate];
         if (candidate.isEmpty ||
             ambiguousOcrNames.contains(candidate) ||
-            allKnownNames.contains(candidate)) {
+            allKnownNames.contains(candidate) ||
+            (pairedUid != null && knownUids.contains(pairedUid))) {
           continue;
         }
         generated.add(_TimedRosterAlert(
