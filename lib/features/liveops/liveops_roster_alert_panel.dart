@@ -42,6 +42,7 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
   List<_ExpectedTeamSlot> _teams = <_ExpectedTeamSlot>[];
   Timer? _expiryTimer;
   bool _loading = true;
+  bool _ocrLayoutSupported = true;
   bool _rosterLocked = false;
   String? _rosterFingerprint;
   String? _loadError;
@@ -133,7 +134,11 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
 
     final slotLines = _readSlotLines(widget.ocrText);
     final slotUids = _readSlotUids(widget.ocrText);
-    if (slotLines.isEmpty && slotUids.isEmpty) return;
+    final layoutSupported = slotLines.isNotEmpty || slotUids.isNotEmpty;
+    if (_ocrLayoutSupported != layoutSupported && mounted) {
+      setState(() => _ocrLayoutSupported = layoutSupported);
+    }
+    if (!layoutSupported) return;
 
     final knownPlayers = _teams
         .expand((team) => team.players)
@@ -513,6 +518,10 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
                   fontWeight: FontWeight.w900, letterSpacing: 0.5)),
               const SizedBox(height: 8),
               ..._alerts.map(_buildAlert),
+            ] else if (widget.lobbyConfirmed && !_ocrLayoutSupported) ...[
+              const SizedBox(height: 10),
+              const Text('This Lobby text does not match the supported TEAM-slot OCR layout. No player has been marked matched, missing or unexpected; review the screen manually.',
+                style: TextStyle(color: Color(0xFFFFC078), fontSize: 10, height: 1.4)),
             ] else if (widget.lobbyConfirmed) ...[
               const SizedBox(height: 10),
               const Text('No current slot mismatch or unrecognised-name alert. OCR remains provisional.',
