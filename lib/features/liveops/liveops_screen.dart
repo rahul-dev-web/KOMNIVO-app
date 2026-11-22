@@ -39,10 +39,13 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
   bool _voice = true;
   String _lastObservation = '';
 
+  String get _selectedLobbyId => widget.initialLobbyId?.trim() ?? '';
+  bool get _hasSelectedLobbyContext => _selectedLobbyId.isNotEmpty;
+
   @override
   void initState() {
     super.initState();
-    _lobbyId.text = widget.initialLobbyId ?? '';
+    _lobbyId.text = _selectedLobbyId;
   }
 
   Future<void> _speak(String text) async {
@@ -78,7 +81,13 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
       return;
     }
 
-    final lobbyId = _lobbyId.text.trim();
+    // Event Operations supplies the selected Lobby ID. Treat that route
+    // context as immutable and never let an editable field redirect the host
+    // to a different Lobby. Manual entry is only a recovery path when this
+    // screen was opened without a selected Lobby.
+    final lobbyId = _hasSelectedLobbyContext
+        ? _selectedLobbyId
+        : _lobbyId.text.trim();
     final uuidPattern = RegExp(
       r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
     );
@@ -354,11 +363,21 @@ class _LiveOpsScreenState extends State<LiveOpsScreen> {
           TextField(
             controller: _lobbyId,
             enabled: !_capturing,
+            readOnly: _hasSelectedLobbyContext,
             autocorrect: false,
-            decoration: const InputDecoration(
-              labelText: 'Platform Lobby ID (required)',
-              hintText: 'Paste the KOMNIVO Lobby UUID',
-              helperText: 'Lobby ID starts LiveOps. Match ID is returned separately for scoring and results.',
+            decoration: InputDecoration(
+              labelText: _hasSelectedLobbyContext
+                  ? 'Selected platform Lobby ID'
+                  : 'Platform Lobby ID (required)',
+              hintText: _hasSelectedLobbyContext
+                  ? 'Bound from Event Operations'
+                  : 'Paste the KOMNIVO Lobby UUID',
+              helperText: _hasSelectedLobbyContext
+                  ? 'This Lobby was selected in Event Operations and is locked for this session. The server selects the active Match ID.'
+                  : 'Manual recovery entry. The server selects the active Match ID; it is never supplied by the client.',
+              prefixIcon: _hasSelectedLobbyContext
+                  ? const Icon(Icons.lock_outline)
+                  : null,
             ),
           ),
           if (_activeMatchId != null) ...[
