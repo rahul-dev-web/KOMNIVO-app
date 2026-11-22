@@ -1,6 +1,6 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
-SELECT extensions.plan(14);
+SELECT extensions.plan(15);
 
 SELECT extensions.ok(
   to_regclass('public.liveops_match_roster_snapshots') IS NOT NULL,
@@ -78,6 +78,11 @@ SELECT extensions.ok(
   AND position('roster_locked' IN pg_get_functiondef('public.publish_event_stage_roadmap(uuid,jsonb)'::regprocedure)) = 0
   AND position('roster_locked' IN pg_get_functiondef('public.set_event_stage_direct_invites(uuid,integer,uuid[])'::regprocedure)) = 0,
   'Manual Match creation, manual group generation, direct-entry roadmap validation and direct-entry selection do not require Organizer roster locks'
+);
+
+SELECT extensions.ok(
+  position('roster_locked' IN pg_get_functiondef('app_private.register_for_event(uuid,uuid)'::regprocedure)) = 0,
+  'Team registration response no longer exposes a roster-lock state'
 );
 
 SELECT * FROM extensions.finish();
