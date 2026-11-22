@@ -111,7 +111,7 @@ select extensions.ok(
   'Publication provisions all eleven required tournament channels in their specified order'
 );
 select extensions.ok(
-  position('''tags''' in lower(pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) = 0,
+  position('''tags''' in lower(pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure))) = 0,
   'No Tags channel is provisioned'
 );
 select extensions.ok(
