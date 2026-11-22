@@ -181,19 +181,6 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     }
   }
 
-  Future<void> _lockRosters() async {
-    setState(() => _busy = true);
-    try {
-      final result = await _client.rpc('lock_event_rosters', params: {'p_event_id': widget.event['id']});
-      _reload();
-      if (mounted) showMessage(context, 'Roster lock complete. Newly locked registrations: ${result['locked'] ?? 0}.');
-    } catch (error) {
-      if (mounted) showMessage(context, error.toString());
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
   Future<List<String>?> _selectDirectInviteTeams({
     required int targetRoundNumber,
   }) async {
@@ -203,8 +190,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
         .select('team_id, teams!inner(name,tag,game_id)')
         .eq('event_id', eventId)
         .inFilter('status', ['approved', 'checked_in'])
-        .eq('roster_locked', true)
-        .not('team_id', 'is', null)
+                .not('team_id', 'is', null)
         .order('registered_at');
     final gameId = widget.event['game_id']?.toString();
     final candidatesById = <String, Map<String, dynamic>>{};
@@ -221,7 +207,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     final candidates = candidatesById.values.toList()
       ..sort((a, b) => (a['name']?.toString() ?? '').compareTo(b['name']?.toString() ?? ''));
     if (candidates.isEmpty) {
-      throw StateError('No approved, roster-locked teams for this event and game are available.');
+      throw StateError('No approved teams for this event and game are available.');
     }
 
     final current = await _client.from('event_stage_direct_invites')
@@ -1160,8 +1146,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
           final data = snapshot.data!;
           final pending = data.registrations.where((row) => row['status'] == 'pending' || row['status'] == 'waitlisted').toList();
           final approved = data.registrations.where((row) => row['status'] == 'approved').toList();
-          final locked = approved.where((row) => row['roster_locked'] == true).toList();
-          final eligible = locked.where((row) => row['team_id'] != null).toList();
+          final eligible = approved.where((row) => row['team_id'] != null).toList();
           final needsReview = data.results.where((row) => row['status'] != 'approved').toList();
           final groups = data.rounds.isEmpty ? <Map<String, dynamic>>[] : List<Map<String, dynamic>>.from(data.rounds.first['event_groups'] as List? ?? []);
 
@@ -1259,22 +1244,16 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
             if (_canEvent(data, 'event.roster.lock') || _canEvent(data, 'event.manage'))
               SectionTitle('Roster control', subtitle: 'Snapshot accepted team members before group allocation'),
             const SizedBox(height: 10),
-            if (_canEvent(data, 'event.roster.lock') || _canEvent(data, 'event.manage'))
-              Row(children: [
-                if (_canEvent(data, 'event.roster.lock'))
-                  Expanded(child: OutlinedButton.icon(
-                    onPressed: _busy || approved.isEmpty ? null : _lockRosters,
-                    icon: const Icon(Icons.lock_outline),
-                    label: Text('Lock rosters (${approved.length - locked.length} remaining)'),
-                  )),
-                if (_canEvent(data, 'event.roster.lock') && _canEvent(data, 'event.manage')) const SizedBox(width: 8),
-                if (_canEvent(data, 'event.manage'))
-                  Expanded(child: FilledButton.icon(
-                    onPressed: _busy || locked.length < 2 || data.rounds.isNotEmpty ? null : _generateRoadmap,
-                    icon: const Icon(Icons.account_tree_outlined),
-                    label: const Text('Generate Stage 1'),
-                  )),
-              ]),
+            if (_canEvent(data, 'event.manage'))
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: _busy || eligible.length < 2 || data.rounds.isNotEmpty
+                      ? null : _generateRoadmap,
+                  icon: const Icon(Icons.account_tree_outlined),
+                  label: const Text('Generate Stage 1'),
+                ),
+              ),
             const SizedBox(height: 10),
             if (groups.isNotEmpty)
               ...groups.map((group) {
@@ -1286,7 +1265,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                 );
               })
             else
-              const Text('Approve registrations and lock rosters. Generate groups and matches from the saved tournament roadmap in one transaction.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
+              const Text('Approve team registrations. Approved teams enter the roadmap; LiveOps automatically snapshots every current Team member and matches only verified game accounts.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
             if (data.rounds.isNotEmpty) ...[
               const SizedBox(height: 18),
               SectionTitle('Roadmap stages', subtitle: 'Groups, generated matches, private IDP rooms and explicit schedule publication'),
@@ -2320,8 +2299,7 @@ class _OperationCard extends StatelessWidget {
           final data = snapshot.data!;
           final pending = data.registrations.where((row) => row['status'] == 'pending' || row['status'] == 'waitlisted').toList();
           final approved = data.registrations.where((row) => row['status'] == 'approved').toList();
-          final locked = approved.where((row) => row['roster_locked'] == true).toList();
-          final eligible = locked.where((row) => row['team_id'] != null).toList();
+          final eligible = approved.where((row) => row['team_id'] != null).toList();
           final needsReview = data.results.where((row) => row['status'] != 'approved').toList();
           final groups = data.rounds.isEmpty ? <Map<String, dynamic>>[] : List<Map<String, dynamic>>.from(data.rounds.first['event_groups'] as List? ?? []);
 
@@ -2419,22 +2397,16 @@ class _OperationCard extends StatelessWidget {
             if (_canEvent(data, 'event.roster.lock') || _canEvent(data, 'event.manage'))
               SectionTitle('Roster control', subtitle: 'Snapshot accepted team members before group allocation'),
             const SizedBox(height: 10),
-            if (_canEvent(data, 'event.roster.lock') || _canEvent(data, 'event.manage'))
-              Row(children: [
-                if (_canEvent(data, 'event.roster.lock'))
-                  Expanded(child: OutlinedButton.icon(
-                    onPressed: _busy || approved.isEmpty ? null : _lockRosters,
-                    icon: const Icon(Icons.lock_outline),
-                    label: Text('Lock rosters (${approved.length - locked.length} remaining)'),
-                  )),
-                if (_canEvent(data, 'event.roster.lock') && _canEvent(data, 'event.manage')) const SizedBox(width: 8),
-                if (_canEvent(data, 'event.manage'))
-                  Expanded(child: FilledButton.icon(
-                    onPressed: _busy || locked.length < 2 || data.rounds.isNotEmpty ? null : _generateRoadmap,
-                    icon: const Icon(Icons.account_tree_outlined),
-                    label: const Text('Generate Stage 1'),
-                  )),
-              ]),
+            if (_canEvent(data, 'event.manage'))
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: _busy || eligible.length < 2 || data.rounds.isNotEmpty
+                      ? null : _generateRoadmap,
+                  icon: const Icon(Icons.account_tree_outlined),
+                  label: const Text('Generate Stage 1'),
+                ),
+              ),
             const SizedBox(height: 10),
             if (groups.isNotEmpty)
               ...groups.map((group) {
@@ -2446,7 +2418,7 @@ class _OperationCard extends StatelessWidget {
                 );
               })
             else
-              const Text('Approve registrations and lock rosters. Generate groups and matches from the saved tournament roadmap in one transaction.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
+              const Text('Approve team registrations. Approved teams enter the roadmap; LiveOps automatically snapshots every current Team member and matches only verified game accounts.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
             if (data.rounds.isNotEmpty) ...[
               const SizedBox(height: 18),
               SectionTitle('Roadmap stages', subtitle: 'Groups, generated matches, private IDP rooms and explicit schedule publication'),
