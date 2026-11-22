@@ -5,6 +5,7 @@ enum LiveOpsMatchScreenKind {
   unknown,
   lobby,
   matchInProgress,
+  resultScreen,
 }
 
 class LiveOpsMatchScreenClassification {
@@ -34,6 +35,23 @@ class LiveOpsMatchScreenClassifier {
   static final RegExp _hpValue = RegExp(r'\bHP\s*\d{1,4}\s*/\s*\d{1,4}\b');
   static final RegExp _epValue = RegExp(r'\bEP\s*\d{1,4}\s*/\s*\d{1,4}\b');
 
+  // Supported post-match summaries expose an outcome heading and a player
+  // table. Require NAME plus at least two distinct stat headers; outcome text
+  // alone (including the Booyah animation) is deliberately insufficient.
+  static const List<String> _resultOutcomes = <String>['BOOYAH', 'DEFEAT'];
+  static const List<String> _resultStatMarkers = <String>[
+    'KILLS',
+    'K',
+    'DAMAGE',
+    'DMG',
+    'ASSISTS',
+    'KNOCKDOWNS',
+    'REVIVES',
+    'HEAL',
+    'RANK',
+    'PLACEMENT',
+  ];
+
   static LiveOpsMatchScreenClassification classify(String rawOcrText) {
     final normalized = rawOcrText
         .toUpperCase()
@@ -60,11 +78,32 @@ class LiveOpsMatchScreenClassifier {
 
     final hasGameplaySignature = hasSafeZone && hasHp && hasEp;
 
+    final resultOutcomes = _resultOutcomes.where(containsPhrase).toList(growable: false);
+    final resultStatSignals = _resultStatMarkers.where(containsPhrase).toSet();
+    final hasResultSignature = resultOutcomes.length == 1 &&
+        containsPhrase('NAME') && resultStatSignals.length >= 2;
+
     if (hasLobbySignature && hasGameplaySignature) {
       return const LiveOpsMatchScreenClassification(
         kind: LiveOpsMatchScreenKind.unknown,
         matchedSignals: <String>[],
         reason: 'Conflicting Lobby and Gameplay markers',
+      );
+    }
+
+    if (hasResultSignature && (hasLobbySignature || hasGameplaySignature)) {
+      return LiveOpsMatchScreenClassification(
+        kind: LiveOpsMatchScreenKind.unknown,
+        matchedSignals: <String>[...resultOutcomes, 'NAME', ...resultStatSignals],
+        reason: 'Conflicting Result and active-screen markers',
+      );
+    }
+
+    if (hasResultSignature) {
+      return LiveOpsMatchScreenClassification(
+        kind: LiveOpsMatchScreenKind.resultScreen,
+        matchedSignals: <String>[...resultOutcomes, 'NAME', ...resultStatSignals],
+        reason: 'Strict post-match outcome and player-stat summary signature',
       );
     }
 
@@ -89,6 +128,9 @@ class LiveOpsMatchScreenClassifier {
       matchedSignals: <String>[
         ...lobbySignals,
         ...gameplaySignals,
+        ...resultOutcomes,
+        if (containsPhrase('NAME')) 'NAME',
+        ...resultStatSignals,
       ],
       reason: 'Minimum supported screen markers are absent',
     );
