@@ -129,9 +129,11 @@ select extensions.ok(
   'Publishing does not open registration'
 );
 select extensions.ok(
-  position('app_private.resolve_permission(''event.manage'',''event''' in
-    pg_get_functiondef('app_private.guard_batch3_channel_message()'::regprocedure)) > 0,
-  'Root event announcement channels remain restricted to event organisers for publishing'
+  position('false,false,true,p_user_id' in
+    pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('announcement_publishers_only' in
+    pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0,
+  'Tournament announcements disable broad mentions and use publisher-only controls'
 );
 
 select * from extensions.finish();
