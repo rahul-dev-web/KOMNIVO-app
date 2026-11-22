@@ -22,12 +22,11 @@ BEGIN
   v_def := pg_get_functiondef(
     'public.set_event_stage_direct_invites(uuid,integer,uuid[])'::regprocedure
   );
-  v_old := $old$  UPDATE public.event_rounds SET schedule_published_at=NULL,schedule_published_by=NULL,status='draft'
-  WHERE event_id=p_event_id AND round_number=p_target_round_number;$old$;
+  v_old := $old$UPDATE public.event_rounds SET schedule_published_at=NULL,schedule_published_by=NULL,status='draft'$old$;
   IF position(v_old in v_def) = 0 THEN
     RAISE EXCEPTION 'Could not locate the direct-entry schedule invalidation block';
   END IF;
-  v_def := replace(v_def,v_old,$new$  IF EXISTS (
+  v_def := replace(v_def,v_old,$new$IF EXISTS (
     SELECT 1 FROM public.event_rounds
     WHERE event_id=p_event_id AND round_number=p_target_round_number
   ) THEN
@@ -50,8 +49,7 @@ BEGIN
     WHERE event_id=p_event_id AND round_number=p_target_round_number;
   END IF;
 
-  UPDATE public.event_rounds SET schedule_published_at=NULL,schedule_published_by=NULL,status='draft'
-  WHERE event_id=p_event_id AND round_number=p_target_round_number;$new$);
+  UPDATE public.event_rounds SET schedule_published_at=NULL,schedule_published_by=NULL,status='draft'$new$);
   EXECUTE v_def;
 END;
 $migration$;
