@@ -15,6 +15,8 @@ class LiveOpsRosterAlertPanel extends StatefulWidget {
     required this.matchId,
     required this.ocrText,
     required this.lobbyConfirmed,
+    this.observedAt,
+    this.observationSource = 'On-device OCR',
     this.preview = false,
   });
 
@@ -22,6 +24,8 @@ class LiveOpsRosterAlertPanel extends StatefulWidget {
   final String matchId;
   final String ocrText;
   final bool lobbyConfirmed;
+  final DateTime? observedAt;
+  final String observationSource;
   final bool preview;
 
   @override
@@ -434,6 +438,14 @@ class _LiveOpsRosterAlertPanelState extends State<LiveOpsRosterAlertPanel> {
           const Text(
             'Expected identities come from this Match’s registration snapshot. A later IGN refresh does not rename this locked roster.',
             style: TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.4),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'Source: ' + widget.observationSource +
+                ' · Observed: ' +
+                (widget.observedAt?.toLocal().toString().split('.').first ?? '—') +
+                '. Screen stability is based on 3 consecutive Lobby observations; OCR name confidence is not statistically calibrated.',
+            style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.35),
           ),
           if (widget.preview) ...[
             const SizedBox(height: 10),
