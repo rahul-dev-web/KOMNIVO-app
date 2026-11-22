@@ -89,9 +89,11 @@ BEGIN
               ga.id IS NOT NULL AND ga.ownership_status = 'verified'
             ),
             'game_account_id', CASE
-              WHEN ga.ownership_status = 'verified' THEN ga.id ELSE NULL END,
+              WHEN v_roster_locked AND ga.ownership_status = 'verified'
+                THEN ga.id ELSE NULL END,
             'uid', CASE
-              WHEN ga.ownership_status = 'verified' THEN ga.uid ELSE NULL END,
+              WHEN v_roster_locked AND ga.ownership_status = 'verified'
+                THEN ga.uid ELSE NULL END,
             'region', CASE
               WHEN ga.ownership_status = 'verified' AND v_roster_locked THEN
                 COALESCE(
