@@ -62,6 +62,55 @@ class LiveOpsRosterOcrParser {
     return result;
   }
 
+  static Map<int, List<String>> readSlotUids(String rawText) {
+    final result = <int, List<String>>{};
+    int? activeSlot;
+    final uidPattern = RegExp(r'\b\d{5,15}\b');
+
+    for (final rawLine in rawText.split(RegExp(r'[\r\n]+'))) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue;
+      final marker = _slotMarker.firstMatch(line);
+      if (marker != null) {
+        activeSlot = int.tryParse(marker.group(1) ?? '');
+        if (activeSlot != null) result.putIfAbsent(activeSlot, () => <String>[]);
+        final remainder = line.substring(marker.end);
+        if (activeSlot != null) {
+          final rows = result[activeSlot]!;
+          for (final match in uidPattern.allMatches(remainder)) {
+            final value = match.group(0)!;
+            if (!rows.contains(value)) rows.add(value);
+          }
+        }
+        continue;
+      }
+      if (_boundaries.contains(normalise(line))) {
+        activeSlot = null;
+        continue;
+      }
+      if (activeSlot != null) {
+        final rows = result.putIfAbsent(activeSlot, () => <String>[]);
+        for (final match in uidPattern.allMatches(line)) {
+          final value = match.group(0)!;
+          if (!rows.contains(value)) rows.add(value);
+        }
+      }
+    }
+    return result;
+  }
+
+  static List<int> slotsForExactUid(
+    Map<int, List<String>> slots,
+    String expectedUid,
+  ) {
+    final expected = expectedUid.trim();
+    if (expected.isEmpty) return const <int>[];
+    return slots.entries
+        .where((entry) => entry.value.contains(expected))
+        .map((entry) => entry.key)
+        .toList(growable: false);
+  }
+
   static String normalise(String value) =>
       value.toLowerCase().replaceAll(RegExp(r'\s+'), '').trim();
 
