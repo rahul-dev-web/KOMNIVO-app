@@ -61,6 +61,9 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
       _client.from('event_test_registrations')
         .select('*, teams(name,tag), event_test_registration_players(user_id)')
         .eq('event_id', eventId).order('created_at', ascending: false),
+      _client.from('channels')
+        .select('id,name,group_id,stage_id')
+        .eq('event_id', eventId).like('name', '%-idp'),
     ]);
     final matches = List<Map<String, dynamic>>.from(results[1] as List);
     const eventKeys = [
@@ -105,6 +108,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
       lobbies: List<Map<String, dynamic>>.from(results[5] as List),
       ocrCandidates: List<Map<String, dynamic>>.from(results[6] as List),
       testRegistrations: List<Map<String, dynamic>>.from(results[7] as List),
+      groupIdpChannels: List<Map<String, dynamic>>.from(results[8] as List),
       eventPermissions: eventPermissions,
       matchPermissions: Map<String, Map<String, bool>>.fromEntries(matchPermissionEntries),
     );
@@ -190,43 +194,140 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
     }
   }
 
-  Future<void> _generateGroups() async {
-    final size = TextEditingController();
+  Future<void> _generateRoadmap() async {
+    final config = widget.event['event_config'] is Map
+        ? Map<String, dynamic>.from(widget.event['event_config'] as Map)
+        : <String, dynamic>{};
+    final roadmap = config['roadmap'] is Map
+        ? Map<String, dynamic>.from(config['roadmap'] as Map)
+        : <String, dynamic>{};
+    if (roadmap.isEmpty) {
+      showMessage(context, 'This tournament has no saved roadmap. Update the tournament draft first.');
+      return;
+    }
+    final matches = TextEditingController();
+    final interval = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Generate balanced groups'),
-        content: TextField(
-          controller: size,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Target team count per group',
-            helperText: 'Enter the value approved for this stage in the event roadmap.',
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Generate approved tournament roadmap'),
+        content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Saved roadmap · Group size ${roadmap['group_size']} · ${roadmap['qualifiers_per_group']} qualify per group'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: matches,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Matches per group', helperText: 'Required · 1–20. This value is not stored in the tournament form.'),
           ),
-        ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: interval,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Minutes between matches', helperText: 'Required · 1–240. Matches in different groups run in parallel.'),
+          ),
+        ])),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Generate')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Generate groups + matches')),
         ],
       ),
     );
-    final groupSize = int.tryParse(size.text.trim());
-    size.dispose();
+    final matchesPerGroup = int.tryParse(matches.text.trim());
+    final intervalMinutes = int.tryParse(interval.text.trim());
+    matches.dispose();
+    interval.dispose();
     if (ok != true) return;
-    if (groupSize == null || groupSize < 2 || groupSize > 24) {
-      if (mounted) showMessage(context, 'Enter a group size from 2 to 24 as defined by the event rules.');
+    if (matchesPerGroup == null || matchesPerGroup < 1 || matchesPerGroup > 20 ||
+        intervalMinutes == null || intervalMinutes < 1 || intervalMinutes > 240) {
+      if (mounted) showMessage(context, 'Enter 1–20 matches and a 1–240 minute interval.');
       return;
     }
+    setState(() => _busy = true);
+    try {
+      final result = await _client.rpc('generate_event_roadmap', params: {
+        'p_event_id': widget.event['id'],
+        'p_matches_per_group': matchesPerGroup,
+        'p_interval_minutes': intervalMinutes,
+      });
+      _reload();
+      if (mounted) showMessage(context,
+        'Roadmap generated: ${result['group_count']} groups · ${result['matches_created']} matches. Publish the schedule separately when ready.');
+    } catch (error) {
+      if (mounted) showMessage(context, error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _advanceRoadmapStage(Map<String, dynamic> stage) async {
+    final matches = TextEditingController();
+    final interval = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Advance from ${stage['name']}'),
+        content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Only approved match results can advance teams under the saved qualification rules.'),
+          const SizedBox(height: 12),
+          TextField(controller: matches, keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Matches per group · 1–20')),
+          const SizedBox(height: 10),
+          TextField(controller: interval, keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Minutes between matches · 1–240')),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Review next-stage time')),
+        ],
+      ),
+    );
+    final matchesPerGroup = int.tryParse(matches.text.trim());
+    final intervalMinutes = int.tryParse(interval.text.trim());
+    matches.dispose();
+    interval.dispose();
+    if (ok != true) return;
+    if (matchesPerGroup == null || matchesPerGroup < 1 || matchesPerGroup > 20 ||
+        intervalMinutes == null || intervalMinutes < 1 || intervalMinutes > 240) {
+      if (mounted) showMessage(context, 'Enter 1–20 matches and a 1–240 minute interval.');
+      return;
+    }
+    final initial = DateTime.now().add(const Duration(days: 1));
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime(initial.year, initial.month, initial.day),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(context: context, initialTime: const TimeOfDay(hour: 18, minute: 0));
+    if (time == null || !mounted) return;
+    final firstMatch = DateTime(date.year,date.month,date.day,time.hour,time.minute).toUtc().toIso8601String();
 
     setState(() => _busy = true);
     try {
-      final result = await _client.rpc('generate_event_groups', params: {
-        'p_event_id': widget.event['id'],
-        'p_round_number': 1,
-        'p_group_size': groupSize,
+      final result = await _client.rpc('advance_event_stage_from_roadmap', params: {
+        'p_source_stage_id': stage['id'],
+        'p_matches_per_group': matchesPerGroup,
+        'p_interval_minutes': intervalMinutes,
+        'p_first_match_at': firstMatch,
       });
       _reload();
-      if (mounted) showMessage(context, 'Generated ${result['group_count']} balanced groups for ${result['team_count']} teams.');
+      if (mounted) showMessage(context,
+        'Next stage generated: ${result['stage_name']} · ${result['group_count']} groups · ${result['matches_created']} matches. Publish its schedule separately.');
+    } catch (error) {
+      if (mounted) showMessage(context, error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _publishStageSchedule(String stageId) async {
+    setState(() => _busy = true);
+    try {
+      final result = await _client.rpc('publish_event_stage_schedule', params: {'p_stage_id': stageId});
+      _reload();
+      if (mounted) showMessage(context,
+        'Schedule version ${result['schedule_version']} published. Only affected group/team participants were notified.');
     } catch (error) {
       if (mounted) showMessage(context, error.toString());
     } finally {
@@ -910,9 +1011,9 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                 if (_canEvent(data, 'event.roster.lock') && _canEvent(data, 'event.manage')) const SizedBox(width: 8),
                 if (_canEvent(data, 'event.manage'))
                   Expanded(child: FilledButton.icon(
-                    onPressed: _busy || locked.length < 2 ? null : _generateGroups,
+                    onPressed: _busy || locked.length < 2 || data.rounds.isNotEmpty ? null : _generateRoadmap,
                     icon: const Icon(Icons.account_tree_outlined),
-                    label: const Text('Generate groups'),
+                    label: const Text('Generate roadmap'),
                   )),
               ]),
             const SizedBox(height: 10),
@@ -926,7 +1027,53 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                 );
               })
             else
-              const Text('Approve registrations, lock rosters, then generate balanced groups.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
+              const Text('Approve registrations and lock rosters. Generate groups and matches from the saved tournament roadmap in one transaction.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
+            if (data.rounds.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              SectionTitle('Roadmap stages', subtitle: 'Groups, generated matches, private IDP rooms and explicit schedule publication'),
+              const SizedBox(height: 10),
+              ...data.rounds.map((stage) {
+                final stageGroups = List<Map<String, dynamic>>.from(stage['event_groups'] as List? ?? []);
+                final stageMatches = data.matches.where((match) => match['stage_id'] == stage['id']).length;
+                final roundNumber = int.tryParse(stage['round_number']?.toString() ?? '') ?? 0;
+                final stageCount = int.tryParse((widget.event['event_config'] is Map
+                    ? (widget.event['event_config'] as Map)['stage_count']
+                    : null)?.toString() ?? '') ?? 1;
+                final isLastGenerated = roundNumber == (int.tryParse(data.rounds.last['round_number']?.toString() ?? '') ?? 0);
+                return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _OperationCard(
+                    title: stage['name']?.toString() ?? 'Stage $roundNumber',
+                    subtitle: '${stageGroups.length} groups · $stageMatches generated matches · ${stage['schedule_published_at'] == null ? 'schedule not published' : 'schedule v${stage['schedule_version'] ?? 1} published'}',
+                    badge: (stage['status'] ?? 'draft').toString().toUpperCase(),
+                    trailing: _canEvent(data, 'event.matches.manage') && stageMatches > 0
+                        ? TextButton.icon(
+                            onPressed: _busy ? null : () => _publishStageSchedule(stage['id'].toString()),
+                            icon: const Icon(Icons.campaign_outlined),
+                            label: Text(stage['schedule_published_at'] == null ? 'Publish' : 'Republish'),
+                          )
+                        : null,
+                  ),
+                  ...stageGroups.map((group) {
+                    final idpReady = data.groupIdpChannels.any((channel) => channel['group_id'] == group['id']);
+                    final assigned = group['event_group_teams'] as List? ?? [];
+                    return _OperationCard(
+                      title: group['label']?.toString() ?? 'Group',
+                      subtitle: '${assigned.length} teams · ${idpReady ? 'private IDP channel ready' : 'IDP channel pending read-back'}',
+                      badge: 'GROUP',
+                    );
+                  }),
+                  if (isLastGenerated && roundNumber < stageCount && _canEvent(data, 'event.matches.manage'))
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: OutlinedButton.icon(
+                        onPressed: _busy ? null : () => _advanceRoadmapStage(stage),
+                        icon: const Icon(Icons.skip_next),
+                        label: const Text('Generate next stage from approved results'),
+                      ),
+                    ),
+                ]);
+              }),
+            ],
             const SizedBox(height: 22),
             SectionTitle(
               'Match operations',
@@ -941,7 +1088,7 @@ class _EventOperationsScreenState extends State<EventOperationsScreen> {
                       FilledButton.icon(
                         onPressed: _busy || eligible.length < 2 ? null : () => _createMatch(eligible, groups),
                         icon: const Icon(Icons.add),
-                        label: const Text('Create match'),
+                        label: const Text('Manual match fallback'),
                       ),
                     ])
                   : null,
@@ -1164,6 +1311,7 @@ class _EventData {
     required this.lobbies,
     required this.ocrCandidates,
     required this.testRegistrations,
+    required this.groupIdpChannels,
     required this.eventPermissions,
     required this.matchPermissions,
   });
@@ -1175,6 +1323,7 @@ class _EventData {
   final List<Map<String, dynamic>> lobbies;
   final List<Map<String, dynamic>> ocrCandidates;
   final List<Map<String, dynamic>> testRegistrations;
+  final List<Map<String, dynamic>> groupIdpChannels;
   final Map<String, bool> eventPermissions;
   final Map<String, Map<String, bool>> matchPermissions;
 }
