@@ -246,6 +246,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _refreshGameProfile() async {
+    if (!_isVerified) {
+      showMessage(context, 'Verify your Free Fire UID before refreshing its profile.');
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _syncMessage = 'Refreshing your verified Free Fire profile and in-game name…';
+    });
+
+    try {
+      final result = await KomnivoRepository.instance.refreshFreeFireProfile();
+      if (!mounted) return;
+
+      final status = result['status']?.toString() ?? '';
+      if (status == 'throttled') {
+        final message = result['error']?.toString() ??
+            'Please wait a few seconds before refreshing again.';
+        setState(() => _syncMessage = message);
+        showMessage(context, message);
+        return;
+      }
+
+      final profileData = result['profile'];
+      if (status != 'verified' || profileData is! Map) {
+        throw Exception(result['error']?.toString() ??
+            'The Free Fire profile could not be refreshed.');
+      }
+
+      final updatedProfile = Map<String, dynamic>.from(profileData);
+      setState(() {
+        _gameProfile = updatedProfile;
+        _verification = {
+          ...?_verification,
+          'status': 'verified',
+          'ownership_status': 'verified',
+          'nickname': result['nickname'] ?? updatedProfile['nickname'],
+          'level': updatedProfile['level'],
+          'rank_label': updatedProfile['rank'],
+          'last_synced_at': result['last_synced_at'],
+          'message': result['message'],
+        };
+        _syncMessage = result['message']?.toString() ??
+            'Your Free Fire profile and in-game name have been refreshed.';
+      });
+      showMessage(context, 'Free Fire profile refreshed.');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _syncMessage = error.toString());
+      showMessage(context, error.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   bool get _isVerified =>
       _verification?['status'] == 'verified' ||
       _verification?['ownership_status'] == 'verified';
@@ -530,6 +586,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(
             lines.join(' · '),
             style: const TextStyle(color: KomnivoTheme.muted, fontSize: 12),
+          ),
+        ],
+        if (_isVerified) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: widget.preview || _loading ? null : _refreshGameProfile,
+              icon: _loading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh_rounded),
+              label: Text(_loading ? 'Refreshing…' : 'Refresh game profile'),
+            ),
           ),
         ],
       ]),
