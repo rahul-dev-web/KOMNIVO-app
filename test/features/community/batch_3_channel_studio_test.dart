@@ -423,11 +423,15 @@ void main() {
       of: general,
       matching: find.byType(ListTile),
     ).first;
+    await tester.ensureVisible(generalRow);
+    await tester.pumpAndSettle();
     final moveDown = find.descendant(
       of: generalRow,
       matching: find.byTooltip('Move channel down'),
     );
     await tester.tap(moveDown);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(help);
     await tester.pumpAndSettle();
 
     expect(
