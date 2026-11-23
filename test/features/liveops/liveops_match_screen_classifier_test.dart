@@ -45,7 +45,7 @@ void main() {
 
     test('recognises a Booyah result summary with a player-stat table', () {
       final result = LiveOpsMatchScreenClassifier.classify(
-        'BOOYAH\\nNAME\\nK\\nDMG\\nPLAY AGAIN',
+        'BOOYAH\nNAME\nK\nDMG\nPLAY AGAIN',
       );
 
       expect(result.kind, LiveOpsMatchScreenKind.resultScreen);
@@ -54,7 +54,7 @@ void main() {
 
     test('recognises a defeat result summary with explicit result metrics', () {
       final result = LiveOpsMatchScreenClassifier.classify(
-        'DEFEAT\\nRESULTS\\nNAME\\nKILLS\\nDAMAGE',
+        'DEFEAT\nRESULTS\nNAME\nKILLS\nDAMAGE',
       );
 
       expect(result.kind, LiveOpsMatchScreenKind.resultScreen);
@@ -63,7 +63,7 @@ void main() {
     test('keeps outcome animation and partial result OCR Unknown', () {
       final outcomeOnly = LiveOpsMatchScreenClassifier.classify('BOOYAH');
       final oneMetric = LiveOpsMatchScreenClassifier.classify(
-        'DEFEAT\\nNAME\\nKILLS',
+        'DEFEAT\nNAME\nKILLS',
       );
 
       expect(outcomeOnly.kind, LiveOpsMatchScreenKind.unknown);
@@ -72,8 +72,8 @@ void main() {
 
     test('does not classify conflicting active-screen and result markers', () {
       final result = LiveOpsMatchScreenClassifier.classify(
-        'BOOYAH\\nNAME\\nK\\nDMG\\n'
-        'SAFE ZONE WILL SHRINK IN 01:21\\nEP 70/220\\nHP 200/200',
+        'BOOYAH\nNAME\nK\nDMG\n'
+        'SAFE ZONE WILL SHRINK IN 01:21\nEP 70/220\nHP 200/200',
       );
 
       expect(result.kind, LiveOpsMatchScreenKind.unknown);

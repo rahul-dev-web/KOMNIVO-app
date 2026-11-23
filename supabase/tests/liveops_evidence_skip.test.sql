@@ -88,10 +88,13 @@ select extensions.ok(
   position('v_session.evidence_skipped_at' in pg_get_functiondef(
     'app_private.submit_reviewed_liveops_match_results(uuid,uuid)'::regprocedure
   )) > 0
-  and position('v_session.evidence_skipped_at' in pg_get_functiondef(
-    'app_private.submit_liveops_match_results(uuid,uuid,text[],jsonb)'::regprocedure
-  )) > 0,
-  'Neither reviewed nor legacy result submission can bypass a recorded skip'
+  AND CASE
+    WHEN to_regprocedure('app_private.submit_liveops_match_results(uuid,uuid,text[],jsonb)') IS NULL THEN true
+    ELSE position('v_session.evidence_skipped_at' in pg_get_functiondef(
+      to_regprocedure('app_private.submit_liveops_match_results(uuid,uuid,text[],jsonb)')
+    )) > 0
+  END,
+  'Reviewed results block skipped sessions; any installed legacy endpoint is also guarded'
 );
 select extensions.ok(
   position('insert into public.match_results' in lower(pg_get_functiondef(

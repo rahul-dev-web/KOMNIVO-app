@@ -9,6 +9,7 @@ DECLARE
 BEGIN
   -- A skipped evidence step is a terminal state for this LiveOps session.
   -- Prevent the legacy result submit endpoint from bypassing the skip decision.
+  IF to_regprocedure('app_private.submit_liveops_match_results(uuid,uuid,text[],jsonb)') IS NOT NULL THEN
   v_def := pg_get_functiondef(
     'app_private.submit_liveops_match_results(uuid,uuid,text[],jsonb)'::regprocedure
   );
@@ -20,6 +21,24 @@ BEGIN
   if v_session.evidence_skipped_at is not null then
     raise exception 'This Match evidence step was skipped; result submission is blocked';
   end if;$new$);
+  EXECUTE v_def;
+  END IF;
+
+  v_def := pg_get_functiondef(
+    'app_private.submit_reviewed_liveops_match_results(uuid,uuid)'::regprocedure
+  );
+  v_old := $old$  IF v_session.state <> 'paused' THEN
+    RAISE EXCEPTION 'Pause LiveOps observation before submitting reviewed results';
+  END IF;$old$;
+  IF position(v_old in v_def)=0 THEN
+    RAISE EXCEPTION 'Could not locate reviewed result submit session guard';
+  END IF;
+  v_def := replace(v_def,v_old,$new$  IF v_session.state <> 'paused' THEN
+    RAISE EXCEPTION 'Pause LiveOps observation before submitting reviewed results';
+  END IF;
+  IF v_session.evidence_skipped_at IS NOT NULL THEN
+    RAISE EXCEPTION 'This Match evidence step was skipped; result submission is blocked';
+  END IF;$new$);
   EXECUTE v_def;
 
   -- A skipped Match is labelled awaiting_result, never completed or scored.
