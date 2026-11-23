@@ -32,6 +32,8 @@ void main() {
     final channels = const [
       {'id': 'a-text', 'name': 'registration', 'description': 'Sign up', 'kind': 'text', 'category_id': 'event-a'},
       {'id': 'a-voice', 'name': 'support-voice', 'description': 'Talk to support', 'kind': 'voice', 'category_id': 'event-a'},
+      {'id': 'b-text', 'name': 'announcements', 'description': 'Tournament updates', 'kind': 'announcement', 'category_id': 'event-b'},
+      {'id': 'b-voice', 'name': 'match-voice', 'description': 'Tournament voice room', 'kind': 'voice', 'category_id': 'event-b'},
       {'id': 'general', 'name': 'general', 'description': 'Community chat', 'kind': 'text', 'category_id': null},
       {'id': 'unknown', 'name': 'misc', 'description': '', 'kind': 'text', 'category_id': 'missing-category'},
       {'id': 'archived', 'name': 'old-room', 'description': '', 'kind': 'text', 'category_id': 'archived-category'},
