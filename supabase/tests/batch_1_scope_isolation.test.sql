@@ -97,7 +97,7 @@ values ('20000000-0000-4000-8000-000000000301','20000000-0000-4000-8000-00000000
 -- A normal community member receives a base role grant, then category/channel
 -- overrides prove inheritance and explicit Deny behaviour independently.
 insert into public.communities(id,name,slug,description,visibility,owner_user_id)
-values ('40000000-0000-4000-8000-000000000001','Batch One Permissions','batch-one-permissions-test','RLS fixture only','private','10000000-0000-4000-8000-000000000001');
+values ('40000000-0000-4000-8000-000000000001','Batch One Permissions','batch-one-permissions-test','RLS fixture only','public','10000000-0000-4000-8000-000000000001');
 
 insert into public.community_members(community_id,user_id,role) values
  ('40000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','owner'),
