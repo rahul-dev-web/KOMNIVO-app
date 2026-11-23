@@ -82,10 +82,10 @@ begin
   if v_definition is null
     or position('community_member_restrictions' in v_definition)=0
     or position('restriction_type' in v_definition)=0
-    or position('r.restriction_type = ''ban''' in v_definition)=0
-    or position('r.starts_at <= now()' in v_definition)=0
-    or position('r.revoked_at is null' in v_definition)=0
-    or position('r.expires_at is null or r.expires_at > now()' in v_definition)=0
+    or position('r.restriction_type = ''ban''' in lower(v_definition))=0
+    or position('r.starts_at <= now()' in lower(v_definition))=0
+    or position('r.revoked_at is null' in lower(v_definition))=0
+    or position('r.expires_at is null or r.expires_at > now()' in lower(v_definition))=0
   then
     raise exception 'Batch 4: active, non-revoked, unexpired bans do not deny canonical community permissions';
   end if;
