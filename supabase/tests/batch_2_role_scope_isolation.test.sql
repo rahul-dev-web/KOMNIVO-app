@@ -35,8 +35,18 @@ insert into public.events(
 insert into public.event_stage_roadmaps(
  event_id,round_number,configuration,version,published_at,published_by
 ) values
- ('53000000-0000-4000-8000-000000000001',1,'{}'::jsonb,1,now(),'51000000-0000-4000-8000-000000000001'),
- ('53000000-0000-4000-8000-000000000002',1,'{}'::jsonb,1,now(),'51000000-0000-4000-8000-000000000001');
+ ('53000000-0000-4000-8000-000000000001',1,jsonb_build_object(
+   'round_number',1,'stage_name','B2 Stage A','stage_type','qualifier',
+   'group_size',2,'qualifiers_per_group',1,'qualified_team_count',2,
+   'direct_entry_count',0,'matches_per_group',1,'interval_minutes',10,
+   'first_match_at',now()+interval '1 day'
+ ),1,now(),'51000000-0000-4000-8000-000000000001'),
+ ('53000000-0000-4000-8000-000000000002',1,jsonb_build_object(
+   'round_number',1,'stage_name','B2 Stage B','stage_type','qualifier',
+   'group_size',2,'qualifiers_per_group',1,'qualified_team_count',1,
+   'direct_entry_count',0,'matches_per_group',1,'interval_minutes',10,
+   'first_match_at',now()+interval '1 day'
+ ),1,now(),'51000000-0000-4000-8000-000000000001');
 
 insert into public.event_rounds(
  id,event_id,round_number,name,status,configuration,stage_type,group_size,matches_per_group,advancement_rules,room_release_minutes_before
