@@ -428,9 +428,34 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     final proposal = result['proposal'] is Map
         ? Map<String, dynamic>.from(result['proposal'] as Map)
         : <String, dynamic>{};
+    final linkedConversationId = result['conversation_id']?.toString();
+    final proposalCommunityId = proposal['community_id']?.toString();
+
+    // The global Home AI is a Player-mode conversation. Tournament drafts,
+    // however, are stored in a separate Organizer-mode conversation. Hand the
+    // user directly to that exact Organizer chat so the saved preview card and
+    // its publish action are restored instead of leaving the draft in a
+    // temporary Player chat that cannot restore Organizer proposals.
+    if (!_organizer &&
+        linkedConversationId != null &&
+        linkedConversationId.isNotEmpty &&
+        proposalCommunityId != null &&
+        proposalCommunityId.isNotEmpty) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => AiAssistantScreen(
+            mode: 'organizer',
+            communityId: proposalCommunityId,
+            initialConversationId: linkedConversationId,
+          ),
+        ),
+      );
+      return;
+    }
+
     if (_organizer) {
-      _conversationId = result['conversation_id']?.toString() ?? _conversationId;
-      _activeCommunityId = proposal['community_id']?.toString() ?? _activeCommunityId;
+      _conversationId = linkedConversationId ?? _conversationId;
+      _activeCommunityId = proposalCommunityId ?? _activeCommunityId;
     }
     final config = proposal['event_config'] is Map
         ? Map<String, dynamic>.from(proposal['event_config'] as Map)
