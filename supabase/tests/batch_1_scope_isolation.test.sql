@@ -36,6 +36,13 @@ insert into public.events(
  'Batch One Scope Test','RLS fixture only','squad','published',now(),2,'{}','{"kill_point":1,"placement_points":{}}'
 );
 
+-- Fixture includes the stage's published roadmap prerequisite.
+insert into public.event_stage_roadmaps(
+ event_id,round_number,configuration,version,published_at,published_by
+) values (
+ '20000000-0000-4000-8000-000000000001',1,'{}'::jsonb,1,now(),'10000000-0000-4000-8000-000000000001'
+);
+
 insert into public.event_rounds(
  id,event_id,round_number,name,status,configuration,stage_type,group_size,matches_per_group,advancement_rules,room_release_minutes_before
 ) values (
@@ -149,6 +156,13 @@ insert into public.events(
  '30000000-0000-4000-8000-000000000001',
  '10000000-0000-4000-8000-000000000001',
  'Batch One Cross-Event Test','RLS fixture only','squad','published',now(),2,'{}','{"kill_point":1,"placement_points":{}}'
+);
+
+-- Fixture includes the stage's published roadmap prerequisite.
+insert into public.event_stage_roadmaps(
+ event_id,round_number,configuration,version,published_at,published_by
+) values (
+ '20000000-0000-4000-8000-000000000010',1,'{}'::jsonb,1,now(),'10000000-0000-4000-8000-000000000001'
 );
 
 insert into public.event_rounds(

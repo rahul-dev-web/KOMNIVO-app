@@ -156,7 +156,7 @@ begin
       and t.tgname='create_event_match_channel' and not t.tgisinternal
   ) then raise exception 'Batch 3: event group-room creation trigger is missing'; end if;
 
-  if not exists(select 1 from pg_indexes where schemaname='public' and tablename='channels' and indexname='channels_one_event_group_room')
+  if not exists(select 1 from pg_indexes where schemaname='public' and tablename='channels' and indexname='channels_one_event_group_match_room')
     or not exists(select 1 from pg_indexes where schemaname='public' and tablename='channel_categories' and indexname='channel_categories_one_event_group')
   then raise exception 'Batch 3: one-room-per-group uniqueness indexes are missing'; end if;
 
