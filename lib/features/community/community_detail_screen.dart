@@ -44,13 +44,24 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   String get _communityId => _community['id'] as String;
 
   Future<_CommunityChannelStructure> _loadChannelStructure() async {
-    final results = await Future.wait([
-      KomnivoRepository.instance.channels(communityId: _communityId),
-      KomnivoRepository.instance.channelCategories(_communityId),
-    ]);
+    final channelsFuture =
+        KomnivoRepository.instance.channels(communityId: _communityId);
+    final categoriesFuture =
+        KomnivoRepository.instance.channelCategories(_communityId);
+
+    final channels = await channelsFuture;
+    var categories = <Map<String, dynamic>>[];
+    try {
+      categories = await categoriesFuture;
+    } catch (_) {
+      // Some public viewers can read a channel but not its category metadata.
+      // Keep the channel list available and present these channels as
+      // uncategorized rather than failing the entire community screen.
+    }
+
     return _CommunityChannelStructure(
-      channels: results[0],
-      categories: results[1],
+      channels: channels,
+      categories: categories,
     );
   }
 

@@ -42,11 +42,6 @@ List<CommunityChannelGroup> buildCommunityChannelGroups({
       .map((category) => category['id']?.toString() ?? '')
       .where((id) => id.isNotEmpty)
       .toSet();
-  final activeCategoryIds = activeCategories
-      .map((category) => category['id']?.toString() ?? '')
-      .where((id) => id.isNotEmpty)
-      .toSet();
-
   final groups = <CommunityChannelGroup>[];
   for (final category in activeCategories) {
     final categoryId = category['id']?.toString() ?? '';
@@ -75,11 +70,7 @@ List<CommunityChannelGroup> buildCommunityChannelGroups({
     final categoryId = channel['category_id']?.toString() ?? '';
     final belongsToKnownCategory =
         categoryId.isNotEmpty && allCategoryIds.contains(categoryId);
-    final belongsToArchivedCategory = belongsToKnownCategory &&
-        !activeCategoryIds.contains(categoryId);
-    return !belongsToKnownCategory &&
-        !belongsToArchivedCategory &&
-        channelMatches(channel);
+    return !belongsToKnownCategory && channelMatches(channel);
   }).toList();
 
   if (uncategorized.isNotEmpty) {
