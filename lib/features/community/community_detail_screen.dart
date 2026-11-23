@@ -12,6 +12,7 @@ import '../inbox/voice_room_screen.dart';
 import 'role_management_screen.dart';
 import 'channel_studio_screen.dart';
 import 'community_operations_screen.dart';
+import 'community_channel_grouping.dart';
 import '../inbox/forum_channel_screen.dart';
 
 class CommunityDetailScreen extends StatefulWidget {
@@ -32,7 +33,7 @@ class CommunityDetailScreen extends StatefulWidget {
 
 class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   late Map<String, dynamic> _community;
-  late Future<List<Map<String, dynamic>>> _channelsFuture;
+  late Future<_CommunityChannelStructure> _channelsFuture;
   String _channelQuery = '';
   bool _canManageSettings = false;
   bool _canManageStructure = false;
@@ -41,6 +42,17 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   bool _permissionsLoading = true;
 
   String get _communityId => _community['id'] as String;
+
+  Future<_CommunityChannelStructure> _loadChannelStructure() async {
+    final results = await Future.wait([
+      KomnivoRepository.instance.channels(communityId: _communityId),
+      KomnivoRepository.instance.channelCategories(_communityId),
+    ]);
+    return _CommunityChannelStructure(
+      channels: results[0],
+      categories: results[1],
+    );
+  }
 
   Future<void> _loadPermissions() async {
     final communityId = _communityId;
@@ -103,7 +115,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   void initState() {
     super.initState();
     _community = Map<String, dynamic>.from(widget.community);
-    _channelsFuture = KomnivoRepository.instance.channels(communityId: _communityId);
+    _channelsFuture = _loadChannelStructure();
     _loadPermissions();
   }
 
@@ -112,7 +124,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.community['id'] != widget.community['id']) {
       _community = Map<String, dynamic>.from(widget.community);
-      _channelsFuture = KomnivoRepository.instance.channels(communityId: _communityId);
+      _channelsFuture = _loadChannelStructure();
       _permissionsLoading = true;
       _canManageSettings = false;
       _canManageStructure = false;
@@ -125,7 +137,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
 
   void _reloadChannels() {
     setState(() {
-      _channelsFuture = KomnivoRepository.instance.channels(communityId: _communityId);
+      _channelsFuture = _loadChannelStructure();
     });
   }
 
@@ -158,8 +170,8 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
               await _loadPermissions();
               return;
             }
-            final rows = await _channelsFuture;
-            if (mounted) await _openChannelStudio(rows);
+            final structure = await _channelsFuture;
+            if (mounted) await _openChannelStudio(structure.channels);
           },
         ),
       ),
@@ -557,8 +569,8 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
             IconButton(
               tooltip: 'Channel Studio',
               onPressed: () async {
-                final rows = await _channelsFuture;
-                if (mounted) await _openChannelStudio(rows);
+                final structure = await _channelsFuture;
+                if (mounted) await _openChannelStudio(structure.channels);
               },
               icon: const Icon(Icons.dashboard_customize_outlined),
               constraints: compact ? const BoxConstraints.tightFor(width: 34, height: 48) : const BoxConstraints(),
@@ -586,50 +598,22 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
             ),
         ],
       ),
-      body: FutureBuilder<List<Map<String, dynamic>>>(
+      body: FutureBuilder<_CommunityChannelStructure>(
         future: _channelsFuture,
         builder: (context, snapshot) {
-          final channels = snapshot.data ?? const <Map<String, dynamic>>[];
+          final structure = snapshot.data;
+          final channels = structure?.channels ?? const <Map<String, dynamic>>[];
+          final categories = structure?.categories ?? const <Map<String, dynamic>>[];
           final query = _channelQuery.trim().toLowerCase();
-          final filteredChannels = channels.where((channel) {
-            final name = channel['name']?.toString().toLowerCase() ?? '';
-            final detail =
-                channel['description']?.toString().toLowerCase() ?? '';
-            return query.isEmpty ||
-                name.contains(query) ||
-                detail.contains(query);
-          }).toList();
-
-          final voiceChannels = filteredChannels
-              .where((channel) => channel['kind'] == 'voice')
-              .toList();
-          final textChannels = filteredChannels
-              .where((channel) => channel['kind'] != 'voice')
-              .toList();
-          final announcements = textChannels.where((channel) {
-            final name = channel['name']?.toString().toLowerCase() ?? '';
-            return channel['kind'] == 'announcement' ||
-                name == 'announcements';
-          }).toList();
-          const competitiveTerms = [
-            'looking-for-team',
-            'team',
-            'scrim',
-            'tournament',
-            'strategy',
-            'tryout',
-            'lfg',
-            'match',
-          ];
-          final competitive = textChannels.where((channel) {
-            final name = channel['name']?.toString().toLowerCase() ?? '';
-            return !announcements.contains(channel) &&
-                competitiveTerms.any(name.contains);
-          }).toList();
-          final communityChannels = textChannels.where((channel) {
-            return !announcements.contains(channel) &&
-                !competitive.contains(channel);
-          }).toList();
+          final channelGroups = buildCommunityChannelGroups(
+            categories: categories,
+            channels: channels,
+            query: query,
+          );
+          final visibleChannelCount = channelGroups.fold<int>(
+            0,
+            (total, group) => total + group.channels.length,
+          );
 
           return ListView(
             padding: EdgeInsets.fromLTRB(
@@ -655,7 +639,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '${filteredChannels.length}',
+                      '${visibleChannelCount}',
                       style: const TextStyle(
                         color: KomnivoTheme.muted,
                         fontSize: 10,
@@ -688,7 +672,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                   message: snapshot.error.toString(),
                   icon: Icons.error_outline,
                 )
-              else if (filteredChannels.isEmpty)
+              else if (channelGroups.isEmpty)
                 EmptyState(
                   title: query.isEmpty
                       ? 'No channels yet'
@@ -699,11 +683,11 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                   icon: Icons.tag,
                 )
               else ...[
-                // Grouping is a presentation rule; no channel records or roles are changed.
-                _channelGroup('ANNOUNCEMENTS', announcements),
-                _channelGroup('COMMUNITY', communityChannels),
-                _channelGroup('COMPETITIVE', competitive),
-                _channelGroup('VOICE CHANNELS', voiceChannels),
+                // Display the saved Channel Studio category/channel relationships.
+                // Text, announcement, forum and voice channels stay under their event category.
+                ...channelGroups.map(
+                  (group) => _channelGroup(group.title, group.channels),
+                ),
               ],
               if (!_canManageStructure)
                 const Padding(
@@ -724,6 +708,16 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
       ),
     );
   }
+}
+
+class _CommunityChannelStructure {
+  const _CommunityChannelStructure({
+    required this.channels,
+    required this.categories,
+  });
+
+  final List<Map<String, dynamic>> channels;
+  final List<Map<String, dynamic>> categories;
 }
 
 class _CommunityDraft {
