@@ -1,3 +1,29 @@
+const Map<String, int> _defaultCommunityChannelOrder = <String, int>{
+  'info': 0, 'updates': 1, 'roadmap': 2, 'schedule': 3, 'results': 4,
+  'registration': 5, 'test-registration': 6,
+  'registration-confirmation': 7, 'help-desk': 8,
+  'help-desk-voice': 9, 'staff': 10,
+};
+
+/// Sort channels by persisted organizer position, using tournament priority as fallback.
+List<Map<String, dynamic>> sortCommunityChannels(Iterable<Map<String, dynamic>> channels) {
+  final indexed = <({Map<String, dynamic> channel, int originalIndex})>[];
+  var originalIndex = 0;
+  for (final channel in channels) {
+    indexed.add((channel: channel, originalIndex: originalIndex++));
+  }
+  indexed.sort((left, right) {
+    final lp = int.tryParse(left.channel['position']?.toString() ?? '');
+    final rp = int.tryParse(right.channel['position']?.toString() ?? '');
+    if (lp != null && rp != null && lp != rp) return lp.compareTo(rp);
+    final ln = left.channel['name']?.toString().toLowerCase() ?? '';
+    final rn = right.channel['name']?.toString().toLowerCase() ?? '';
+    final priority = (_defaultCommunityChannelOrder[ln] ?? 1000)
+        .compareTo(_defaultCommunityChannelOrder[rn] ?? 1000);
+    return priority != 0 ? priority : left.originalIndex.compareTo(right.originalIndex);
+  });
+  return indexed.map((entry) => entry.channel).toList();
+}
 class CommunityChannelGroup {
   const CommunityChannelGroup({
     required this.categoryId,
@@ -48,9 +74,9 @@ List<CommunityChannelGroup> buildCommunityChannelGroups({
     final categoryName = category['name']?.toString().trim() ?? '';
     if (categoryId.isEmpty || categoryName.isEmpty) continue;
 
-    final categoryChannels = channels
-        .where((channel) => channel['category_id']?.toString() == categoryId)
-        .toList();
+    final categoryChannels = sortCommunityChannels(
+      channels.where((channel) => channel['category_id']?.toString() == categoryId),
+    );
     final categoryMatches = normalizedQuery.isNotEmpty &&
         categoryName.toLowerCase().contains(normalizedQuery);
     final visibleChannels = categoryMatches
@@ -66,12 +92,12 @@ List<CommunityChannelGroup> buildCommunityChannelGroups({
     }
   }
 
-  final uncategorized = channels.where((channel) {
+  final uncategorized = sortCommunityChannels(channels.where((channel) {
     final categoryId = channel['category_id']?.toString() ?? '';
     final belongsToKnownCategory =
         categoryId.isNotEmpty && allCategoryIds.contains(categoryId);
     return !belongsToKnownCategory && channelMatches(channel);
-  }).toList();
+  }));
 
   if (uncategorized.isNotEmpty) {
     groups.add(CommunityChannelGroup(
