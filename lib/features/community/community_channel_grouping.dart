@@ -7,10 +7,13 @@ const Map<String, int> _defaultCommunityChannelOrder = <String, int>{
 
 /// Sort channels by persisted organizer position, using tournament priority as fallback.
 List<Map<String, dynamic>> sortCommunityChannels(Iterable<Map<String, dynamic>> channels) {
+  final rows = channels.toList();
+  final applyDefaultPriority = rows.any(
+    (channel) => channel['name']?.toString().toLowerCase() == 'info',
+  );
   final indexed = <({Map<String, dynamic> channel, int originalIndex})>[];
-  var originalIndex = 0;
-  for (final channel in channels) {
-    indexed.add((channel: channel, originalIndex: originalIndex++));
+  for (var originalIndex = 0; originalIndex < rows.length; originalIndex++) {
+    indexed.add((channel: rows[originalIndex], originalIndex: originalIndex));
   }
   indexed.sort((left, right) {
     final lp = int.tryParse(left.channel['position']?.toString() ?? '');
@@ -18,8 +21,13 @@ List<Map<String, dynamic>> sortCommunityChannels(Iterable<Map<String, dynamic>> 
     if (lp != null && rp != null && lp != rp) return lp.compareTo(rp);
     final ln = left.channel['name']?.toString().toLowerCase() ?? '';
     final rn = right.channel['name']?.toString().toLowerCase() ?? '';
-    final priority = (_defaultCommunityChannelOrder[ln] ?? 1000)
-        .compareTo(_defaultCommunityChannelOrder[rn] ?? 1000);
+    final leftPriority = applyDefaultPriority
+        ? (_defaultCommunityChannelOrder[ln] ?? 1000)
+        : 1000;
+    final rightPriority = applyDefaultPriority
+        ? (_defaultCommunityChannelOrder[rn] ?? 1000)
+        : 1000;
+    final priority = leftPriority.compareTo(rightPriority);
     return priority != 0 ? priority : left.originalIndex.compareTo(right.originalIndex);
   });
   return indexed.map((entry) => entry.channel).toList();
