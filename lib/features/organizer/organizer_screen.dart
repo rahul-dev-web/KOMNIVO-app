@@ -52,6 +52,40 @@ class _OrganizerScreenState extends State<OrganizerScreen> {
     if (mounted) _reloadEvents();
   }
 
+
+  Future<void> _openEventAI(Map<String, dynamic> event) async {
+    final eventId = event['id']?.toString();
+    final communityId = event['community_id']?.toString();
+    String? linkedConversationId;
+    if (event['status']?.toString() == 'draft' && eventId != null) {
+      try {
+        final proposals = await Supabase.instance.client
+            .from('tournament_proposals')
+            .select('conversation_id')
+            .eq('event_id', eventId)
+            .order('created_at', ascending: false)
+            .limit(1);
+        if (proposals.isNotEmpty) {
+          linkedConversationId = proposals.first['conversation_id']?.toString();
+        }
+      } catch (_) {
+        // Fall back to an event-scoped AI conversation for older drafts.
+      }
+    }
+
+    if (!mounted) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => AiAssistantScreen(
+        mode: 'organizer',
+        communityId: communityId,
+        eventId: linkedConversationId == null ? eventId : null,
+        initialConversationId: linkedConversationId,
+      )),
+    );
+    if (mounted) _reloadEvents();
+  }
+
   Future<void> _editTournament(Map<String, dynamic> event) async {
     final community = event['communities'] is Map
         ? Map<String, dynamic>.from(event['communities'] as Map)
@@ -157,17 +191,7 @@ class _OrganizerScreenState extends State<OrganizerScreen> {
                   ),
                 IconButton(
                   tooltip: 'Ask Organizer AI',
-                  onPressed: widget.preview ? null : () async {
-                    await Navigator.push<void>(
-                      context,
-                      MaterialPageRoute(builder: (_) => AiAssistantScreen(
-                        mode: 'organizer',
-                        eventId: event['id']?.toString(),
-                        communityId: event['community_id']?.toString(),
-                      )),
-                    );
-                    if (mounted) _reloadEvents();
-                  },
+                  onPressed: widget.preview ? null : () => _openEventAI(event),
                   icon: const Icon(Icons.auto_awesome, color: KomnivoTheme.accent),
                 ),
                 IconButton(

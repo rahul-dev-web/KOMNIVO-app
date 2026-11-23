@@ -13,11 +13,13 @@ class AiAssistantScreen extends StatefulWidget {
     required this.mode,
     this.communityId,
     this.eventId,
+    this.initialConversationId,
   });
 
   final String mode;
   final String? communityId;
   final String? eventId;
+  final String? initialConversationId;
 
   @override
   State<AiAssistantScreen> createState() => _AiAssistantScreenState();
@@ -34,6 +36,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   String? _communityLoadError;
   bool _sending = false;
   bool _restoring = true;
+  bool _loadingDrafts = false;
   String? _resolvingProposalId;
 
   bool get _organizer => widget.mode == 'organizer';
@@ -108,12 +111,15 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           .eq('mode', widget.mode)
           .eq('status', 'active');
 
-      // Global Player AI can continue the most recent chat even after
-      // the user selects and binds that chat to an owned community.
+      // An event draft's creation conversation is community-scoped (event_id
+      // is intentionally null). When opening that draft from the events list,
+      // restore its exact linked conversation instead of filtering by event_id.
       if (widget.communityId != null) {
         query = query.eq('community_id', widget.communityId!);
       }
-      if (widget.eventId == null) {
+      if (widget.initialConversationId != null) {
+        query = query.eq('id', widget.initialConversationId!);
+      } else if (widget.eventId == null) {
         query = query.isFilter('event_id', null);
       } else {
         query = query.eq('event_id', widget.eventId!);
@@ -460,6 +466,111 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     _scrollToBottom();
   }
 
+
+  Future<void> _openTournamentDrafts() async {
+    if (!_showOrganizerActions || _loadingDrafts || _sending || _restoring) return;
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) {
+      _showActionMessage('Sign in again to load your tournament drafts.');
+      return;
+    }
+    final communityIds = _managedCommunities
+        .map((community) => community['id'] ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+    if (communityIds.isEmpty) {
+      _showActionMessage(_communityLoadError ?? 'No managed community was found.');
+      return;
+    }
+
+    setState(() => _loadingDrafts = true);
+    try {
+      final rows = await client.from('tournament_proposals')
+          .select('id,payload,source_refs,status,expires_at,event_id,community_id,conversation_id')
+          .eq('owner_user_id', user.id)
+          .inFilter('community_id', communityIds)
+          .order('created_at', ascending: false)
+          .limit(50);
+
+      final eventIds = rows
+          .map((row) => row['event_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+      final eventStatuses = <String, String>{};
+      if (eventIds.isNotEmpty) {
+        try {
+          final events = await client.from('events')
+              .select('id,status')
+              .inFilter('id', eventIds);
+          for (final event in events) {
+            eventStatuses[event['id'].toString()] = event['status'].toString();
+          }
+        } catch (_) {
+          // Proposal status still identifies approved drafts if event-level
+          // visibility does not return a status row to this organiser.
+        }
+      }
+
+      final existingIds = _items
+          .map((item) => item.proposal?['id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      final cards = <_ChatItem>[];
+      for (final row in rows) {
+        final id = row['id']?.toString() ?? '';
+        final eventId = row['event_id']?.toString() ?? '';
+        final storedStatus = row['status']?.toString() ?? '';
+        if (id.isEmpty || eventId.isEmpty || existingIds.contains(id)) continue;
+        if (!['approved', 'draft'].contains(storedStatus)) continue;
+
+        final eventStatus = eventStatuses[eventId];
+        if (eventStatus == 'published') continue;
+        if (eventStatus != null && eventStatus != 'draft') continue;
+
+        final payload = row['payload'] is Map
+            ? Map<String, dynamic>.from(row['payload'] as Map)
+            : <String, dynamic>{};
+        cards.add(_ChatItem(
+          false,
+          'Saved tournament draft',
+          proposal: {
+            ...payload,
+            'id': id,
+            'workflow_type': 'tournament',
+            'status': eventStatus ?? 'draft',
+            'event_id': eventId,
+            'community_id': row['community_id'],
+            'conversation_id': row['conversation_id'],
+            'expires_at': row['expires_at'],
+            'source_refs': row['source_refs'] ?? [],
+            'game_name': payload['game_name'] ?? 'Free Fire MAX',
+          },
+        ));
+        existingIds.add(id);
+      }
+
+      if (!mounted) return;
+      if (cards.isEmpty) {
+        _showActionMessage('No unpublished tournament drafts found in the communities you manage. Drafts already shown in this chat are not duplicated.');
+      } else {
+        setState(() {
+          _items.add(_ChatItem(false, 'Found ${cards.length} saved tournament draft(s). Review the preview cards below and publish the one you are ready to release.'));
+          _items.addAll(cards);
+        });
+        _scrollToBottom();
+      }
+    } catch (error) {
+      if (mounted) {
+        _showActionMessage('Could not load saved tournament drafts. ${error.toString().replaceFirst('Exception: ', '')}');
+      }
+    } finally {
+      if (mounted) setState(() => _loadingDrafts = false);
+    }
+  }
+
   void _showPaidScrimComingSoon() {
     if (!_showOrganizerActions || _sending || _restoring) return;
     _showActionMessage(
@@ -727,7 +838,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
             child: OrganizerChatActions(
               tournamentEnabled: !_sending && !_restoring && !_loadingManagedCommunities,
               paidScrimEnabled: !_sending && !_restoring,
+              draftsEnabled: !_sending && !_restoring && !_loadingDrafts,
               onCreateTournament: _openTournamentForm,
+              onViewDrafts: _openTournamentDrafts,
               onCreatePaidScrim: _showPaidScrimComingSoon,
             ),
           ),
@@ -832,13 +945,17 @@ class OrganizerChatActions extends StatelessWidget {
     super.key,
     required this.tournamentEnabled,
     required this.paidScrimEnabled,
+    required this.draftsEnabled,
     required this.onCreateTournament,
+    required this.onViewDrafts,
     required this.onCreatePaidScrim,
   });
 
   final bool tournamentEnabled;
   final bool paidScrimEnabled;
+  final bool draftsEnabled;
   final VoidCallback onCreateTournament;
+  final VoidCallback onViewDrafts;
   final VoidCallback onCreatePaidScrim;
 
   @override
@@ -874,6 +991,17 @@ class OrganizerChatActions extends StatelessWidget {
                 onPressed: tournamentEnabled ? onCreateTournament : null,
                 icon: const Icon(Icons.emoji_events_outlined, size: 17),
                 label: const Text('Create Tournament'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: KomnivoTheme.cyan,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+                ),
+              ),
+              OutlinedButton.icon(
+                key: const Key('organizer-view-tournament-drafts'),
+                onPressed: draftsEnabled ? onViewDrafts : null,
+                icon: const Icon(Icons.folder_open_outlined, size: 17),
+                label: const Text('View Drafts'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: KomnivoTheme.cyan,
                   visualDensity: VisualDensity.compact,
