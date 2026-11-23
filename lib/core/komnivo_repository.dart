@@ -394,7 +394,7 @@ class KomnivoRepository {
     if (communityId != null) query = query.eq('community_id', communityId);
     if (!includeArchivedChannels) query = query.isFilter('archived_at', null);
     final rows = List<Map<String, dynamic>>.from(
-      await query.order('created_at').limit(100),
+      await query.order('position').order('created_at').limit(100),
     );
     if (communityId == null || includeArchivedCategories) return rows;
     final archivedRows = await client.from('channel_categories').select('id')
@@ -737,6 +737,13 @@ class KomnivoRepository {
 
   Future<void> assignChannelCategory(String channelId, String? categoryId) async {
     await client.from('channels').update({'category_id': categoryId}).eq('id', channelId);
+  }
+
+  Future<void> reorderCommunityChannels(List<String> channelIds) async {
+    if (channelIds.isEmpty) return;
+    await client.rpc('reorder_community_channels', params: {
+      'p_channel_ids': channelIds,
+    });
   }
 
   Future<List<Map<String, dynamic>>> forumPosts(
