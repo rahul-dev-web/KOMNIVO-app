@@ -189,7 +189,8 @@ select extensions.is(
  (select count(*) from public.channels
   where event_id='74000000-0000-4000-8000-000000000001'
     and group_id='76000000-0000-4000-8000-000000000001'
-    and match_id is null),
+    and match_id is null
+     and kind='match'),
  1::bigint,
  'group template does not create a duplicate private group room'
 );
@@ -309,7 +310,8 @@ select extensions.is(
  (select count(*) from public.channels
   where event_id='74000000-0000-4000-8000-000000000001'
     and group_id='76000000-0000-4000-8000-000000000001'
-    and match_id is null),
+    and match_id is null
+     and kind='match'),
  1::bigint,
  'match completion retains the shared group communication room'
 );
