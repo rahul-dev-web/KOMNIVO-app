@@ -1182,7 +1182,9 @@ class _EventProposalCard extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           isTournament
-              ? 'Keep as Draft creates a private, editable event. Publish creates the tournament category and channels. Registration remains closed until you open it separately.'
+              ? draft
+                  ? 'This is a private, editable tournament draft. Publishing creates its tournament category and channels; registration stays closed until you open it separately.'
+                  : 'Keep as Draft saves a private, editable event. Publishing creates its tournament category and channels; registration stays closed until you open it separately.'
               : 'Approving creates a DRAFT event only. It will not open registration or publish automatically.',
           style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35),
         ),
@@ -1190,7 +1192,7 @@ class _EventProposalCard extends StatelessWidget {
           const SizedBox(height: 14),
           Row(children: [
             Expanded(
-              child: proposal['draft_kept'] == true
+              child: draft
                   ? const Text('PRIVATE DRAFT SAVED', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 10, fontWeight: FontWeight.w900))
                   : OutlinedButton(
                       onPressed: busy ? null : onKeepDraft,
