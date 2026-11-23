@@ -103,6 +103,7 @@ void main() {
   testWidgets('Organizer AI quick actions are visible and open their actions',
       (tester) async {
     var tournamentTapped = false;
+    var draftsTapped = false;
     var paidScrimTapped = false;
 
     await tester.pumpWidget(
@@ -112,7 +113,9 @@ void main() {
           body: OrganizerChatActions(
             tournamentEnabled: true,
             paidScrimEnabled: true,
+            draftsEnabled: true,
             onCreateTournament: () => tournamentTapped = true,
+            onViewDrafts: () => draftsTapped = true,
             onCreatePaidScrim: () => paidScrimTapped = true,
           ),
         ),
@@ -121,12 +124,15 @@ void main() {
 
     expect(find.byKey(const Key('organizer-chat-actions-panel')), findsOneWidget);
     expect(find.text('Create Tournament'), findsOneWidget);
+    expect(find.text('View Drafts'), findsOneWidget);
     expect(find.text('Create Paid Scrim'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('organizer-create-tournament')));
+    await tester.tap(find.byKey(const Key('organizer-view-tournament-drafts')));
     await tester.tap(find.byKey(const Key('organizer-create-paid-scrim')));
 
     expect(tournamentTapped, isTrue);
+    expect(draftsTapped, isTrue);
     expect(paidScrimTapped, isTrue);
     expect(tester.takeException(), isNull);
   });
