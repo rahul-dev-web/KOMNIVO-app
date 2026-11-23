@@ -405,4 +405,36 @@ void main() {
     expect(find.text('Event context'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('Structure lets organisers move channels up and down', (tester) async {
+    addTearDown(() => resetView(tester));
+    await pumpStudio(tester);
+
+    final general = find.text('general');
+    final help = find.text('help-and-support');
+    expect(general, findsOneWidget);
+    expect(help, findsOneWidget);
+    expect(
+      tester.getTopLeft(general).dy,
+      lessThan(tester.getTopLeft(help).dy),
+    );
+
+    final generalRow = find.ancestor(
+      of: general,
+      matching: find.byType(ListTile),
+    ).first;
+    final moveDown = find.descendant(
+      of: generalRow,
+      matching: find.byTooltip('Move channel down'),
+    );
+    await tester.tap(moveDown);
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(help).dy,
+      lessThan(tester.getTopLeft(general).dy),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
 }
