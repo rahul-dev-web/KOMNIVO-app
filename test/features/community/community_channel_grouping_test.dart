@@ -67,4 +67,56 @@ void main() {
     expect(allGroups.map((group) => group.title).toList(), ['Free Fire Cup', 'BGMI Open', 'Uncategorized']);
     expect(allGroups.last.channels.map((row) => row['id']).toList(), ['general', 'unknown']);
   });
+
+  test('uses the tournament channel priority as the initial fallback order', () {
+    final groups = buildCommunityChannelGroups(
+      categories: const [
+        {'id': 'event', 'name': 'Tournament', 'position': 1},
+      ],
+      channels: const [
+        {'id': 'staff', 'name': 'staff', 'category_id': 'event'},
+        {'id': 'help-voice', 'name': 'help-desk-voice', 'category_id': 'event'},
+        {'id': 'register-confirm', 'name': 'registration-confirmation', 'category_id': 'event'},
+        {'id': 'results', 'name': 'results', 'category_id': 'event'},
+        {'id': 'info', 'name': 'info', 'category_id': 'event'},
+        {'id': 'updates', 'name': 'updates', 'category_id': 'event'},
+        {'id': 'roadmap', 'name': 'roadmap', 'category_id': 'event'},
+        {'id': 'schedule', 'name': 'schedule', 'category_id': 'event'},
+        {'id': 'registration', 'name': 'registration', 'category_id': 'event'},
+        {'id': 'test-registration', 'name': 'test-registration', 'category_id': 'event'},
+        {'id': 'help-chat', 'name': 'help-desk', 'category_id': 'event'},
+      ],
+    );
+
+    expect(
+      groups.single.channels.map((row) => row['name']).toList(),
+      [
+        'info',
+        'updates',
+        'roadmap',
+        'schedule',
+        'results',
+        'registration',
+        'test-registration',
+        'registration-confirmation',
+        'help-desk',
+        'help-desk-voice',
+        'staff',
+      ],
+    );
+  });
+
+  test('respects saved organizer position before the default name order', () {
+    final sorted = sortCommunityChannels(const [
+      {'id': 'info', 'name': 'info', 'position': 2},
+      {'id': 'updates', 'name': 'updates', 'position': 0},
+      {'id': 'help', 'name': 'help-desk', 'position': 1},
+    ]);
+    expect(sorted.map((row) => row['name']).toList(), [
+      'updates',
+      'help-desk',
+      'info',
+    ]);
+  });
+
 }
