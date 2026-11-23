@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/komnivo_repository.dart';
 import '../../core/ui.dart';
+import 'community_channel_grouping.dart';
 
 class ChannelStudioScreen extends StatefulWidget {
   const ChannelStudioScreen({
@@ -183,6 +184,7 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
           'stage_id': row['stage_id'],
           'group_id': row['group_id'],
           'match_id': row['match_id'],
+          'position': row['position'],
         }));
     }
   }
@@ -465,14 +467,14 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         (channel['name'].toString().toLowerCase().contains(query) ||
          channel['description'].toString().toLowerCase().contains(query)));
     }).toList();
-    final uncategorized = _channels.where((channel) {
+    final uncategorized = sortCommunityChannels(_channels.where((channel) {
       final categoryId = channel['category']?.toString() ?? '';
       final known = _categories.any((category) => category['id'].toString() == categoryId);
       final matchesQuery = query.isEmpty ||
         channel['name'].toString().toLowerCase().contains(query) ||
         channel['description'].toString().toLowerCase().contains(query);
       return (!known || categoryId.isEmpty) && matchesQuery;
-    }).toList();
+    }));
     return ListView(key: const ValueKey('batch3-structure-list'), padding: const EdgeInsets.only(bottom: 28), children: [
       _section('Channel structure', 'Arrange categories, choose channel types and keep temporary spaces separate.',
         trailing: Wrap(spacing: 6, children: [
@@ -522,7 +524,9 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
         _section('Uncategorized channels', 'These channels are not assigned to a category.'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: _surface(child: Column(children: uncategorized.map(_channelRow).toList())),
+          child: _surface(child: Column(children: uncategorized.map(
+            (channel) => _channelRow(channel, allowReorder: query.isEmpty),
+          ).toList())),
         ),
       ],
       _section('Channel types', 'Each surface has a different purpose and permission model.'),
@@ -552,11 +556,12 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     final id = category['id'].toString();
     final archived = _archived.contains(id);
     final collapsed = _collapsed.contains(id);
-    final channelRows = _channels.where((row) =>
-      row['category'] == id &&
-      (query.isEmpty ||
-       row['name'].toString().toLowerCase().contains(query) ||
-       row['description'].toString().toLowerCase().contains(query))).toList();
+    final channelRows = sortCommunityChannels(
+      _channels.where((row) => row['category'] == id),
+    ).where((row) =>
+      query.isEmpty ||
+      row['name'].toString().toLowerCase().contains(query) ||
+      row['description'].toString().toLowerCase().contains(query)).toList();
     final index = _categories.indexOf(category);
     return Container(
       key: ValueKey(id),
@@ -601,7 +606,9 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
               TextButton.icon(onPressed: () => _createChannel(categoryId: id), icon: const Icon(Icons.add, size: 15), label: const Text('Add channel')),
             ]))
           else
-            ...channelRows.map(_channelRow),
+            ...channelRows.map(
+              (channel) => _channelRow(channel, allowReorder: query.isEmpty),
+            ),
         ],
         if (archived)
           const Padding(padding: EdgeInsets.fromLTRB(12, 0, 12, 10), child: Align(alignment: Alignment.centerLeft, child: Text('ARCHIVED · hidden from the active channel list', style: TextStyle(color: KomnivoTheme.muted, fontSize: 8, letterSpacing: .6)))),
@@ -609,18 +616,100 @@ class _ChannelStudioScreenState extends State<ChannelStudioScreen> {
     );
   }
 
-  Widget _channelRow(Map<String, dynamic> channel) {
+  List<Map<String, dynamic>> _channelSiblings(Map<String, dynamic> channel) {
+    return sortCommunityChannels(_channels.where((candidate) =>
+      (candidate['category']?.toString() ?? '') ==
+          (channel['category']?.toString() ?? '') &&
+      candidate['event_id']?.toString() == channel['event_id']?.toString() &&
+      candidate['stage_id']?.toString() == channel['stage_id']?.toString() &&
+      candidate['group_id']?.toString() == channel['group_id']?.toString() &&
+      candidate['match_id']?.toString() == channel['match_id']?.toString()));
+  }
+
+  Future<void> _moveChannel(Map<String, dynamic> channel, int offset) async {
+    final siblings = _channelSiblings(channel);
+    final channelId = channel['id']?.toString() ?? '';
+    final from = siblings.indexWhere((row) => row['id']?.toString() == channelId);
+    final to = from + offset;
+    if (from < 0 || to < 0 || to >= siblings.length) return;
+
+    final previousPositions = <String, dynamic>{
+      for (final row in siblings) row['id'].toString(): row['position'],
+    };
+    final moved = siblings.removeAt(from);
+    siblings.insert(to, moved);
+
+    setState(() {
+      for (var index = 0; index < siblings.length; index++) {
+        siblings[index]['position'] = index;
+      }
+    });
+
+    if (widget.communityId.contains('ui-test')) {
+      _previewNotice();
+      return;
+    }
+
+    try {
+      await KomnivoRepository.instance.reorderCommunityChannels(
+        siblings.map((row) => row['id'].toString()).toList(),
+      );
+      if (mounted) _previewNotice();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        for (final row in siblings) {
+          final oldPosition = previousPositions[row['id'].toString()];
+          if (oldPosition == null) {
+            row.remove('position');
+          } else {
+            row['position'] = oldPosition;
+          }
+        }
+      });
+      showMessage(context, 'Channel order could not be saved: $error');
+    }
+  }
+
+  Widget _channelRow(
+    Map<String, dynamic> channel, {
+    bool allowReorder = true,
+  }) {
     final type = channel['kind']?.toString() ?? 'text';
+    final siblings = _channelSiblings(channel);
+    final index = siblings.indexWhere(
+      (row) => row['id']?.toString() == channel['id']?.toString(),
+    );
     return Material(
       color: KomnivoTheme.surface,
       borderRadius: BorderRadius.circular(14),
       child: ListTile(
         dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 1),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
         leading: Icon(_typeIcon(type), size: 17, color: _typeColor(type)),
         title: Text(channel['name'].toString(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
         subtitle: Text(channel['description'].toString(), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: KomnivoTheme.muted)),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(
+            tooltip: 'Move channel up',
+            onPressed: !allowReorder || index <= 0
+                ? null
+                : () => _moveChannel(channel, -1),
+            constraints: const BoxConstraints.tightFor(width: 28, height: 30),
+            padding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.keyboard_arrow_up, size: 18),
+          ),
+          IconButton(
+            tooltip: 'Move channel down',
+            onPressed: !allowReorder || index < 0 || index >= siblings.length - 1
+                ? null
+                : () => _moveChannel(channel, 1),
+            constraints: const BoxConstraints.tightFor(width: 28, height: 30),
+            padding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+          ),
           if (channel['private'] == true) const Icon(Icons.lock_outline, size: 14, color: KomnivoTheme.muted),
           if (channel['temporary'] == true) const Padding(padding: EdgeInsets.only(left: 5), child: Icon(Icons.timer_outlined, size: 14, color: KomnivoTheme.cyan)),
           IconButton(tooltip: 'Edit channel', onPressed: () => _editChannel(channel), icon: const Icon(Icons.tune, size: 17)),
