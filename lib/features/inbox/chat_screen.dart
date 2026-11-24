@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/komnivo_repository.dart';
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
+import '../profile/member_profile_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key, required this.channel});
@@ -54,6 +55,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<Map<String, dynamic>> _scheduledPreviews = <Map<String, dynamic>>[];
   final Map<String, List<Map<String, dynamic>>> _threadDraftReplies = <String, List<Map<String, dynamic>>>{};
   List<Map<String, dynamic>> _latestMessages = <Map<String, dynamic>>[];
+  final Map<String, Map<String, dynamic>> _senderProfiles = <String, Map<String, dynamic>>{};
+  final Set<String> _senderProfileRequests = <String>{};
 
   bool get _composerReadOnly => _sendPermissionLoading ||
       ((!_canSendMessages || _readOnly || _announcementPublishersOnly) && !_canPublishInChannel);
@@ -66,6 +69,41 @@ class _ChatScreenState extends State<ChatScreen> {
   bool get _isEventRegistrationChannel =>
       _eventId != null && (_normalizedChannelName == 'registration' || _normalizedChannelName == 'test-registration');
   bool get _isTestRegistrationChannel => _normalizedChannelName == 'test-registration';
+
+  Future<void> _ensureSenderProfiles(List<Map<String, dynamic>> messages) async {
+    final ids = messages
+        .map((message) => message['sender_id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty && !_senderProfiles.containsKey(id) && !_senderProfileRequests.contains(id))
+        .toSet()
+        .toList();
+    if (ids.isEmpty) return;
+    _senderProfileRequests.addAll(ids);
+    try {
+      final rows = await Supabase.instance.client
+          .from('profiles')
+          .select('id,display_name,username,avatar_url,bio,region,is_public')
+          .inFilter('id', ids);
+      if (!mounted) return;
+      final profiles = <String, Map<String, dynamic>>{};
+      for (final row in rows) {
+        final profile = Map<String, dynamic>.from(row);
+        final id = profile['id']?.toString();
+        if (id != null) profiles[id] = profile;
+      }
+      setState(() => _senderProfiles.addAll(profiles));
+    } catch (_) {
+      // A private profile stays private; the chat falls back to a neutral label.
+    } finally {
+      _senderProfileRequests.removeAll(ids);
+    }
+  }
+
+  Future<void> _openMemberProfile(String userId) async {
+    if (userId.isEmpty || !mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => MemberProfileScreen(userId: userId)),
+    );
+  }
 
   Future<void> _loadEventRegistrationChannel() async {
     if (!_isEventRegistrationChannel || _eventId == null) return;
@@ -1106,10 +1144,16 @@ class _ChatScreenState extends State<ChatScreen> {
     final channelName = widget.channel['name']?.toString() ?? 'chat';
     return Scaffold(
       appBar: AppBar(
-        title: Row(children: [
-          const Icon(Icons.tag, color: KomnivoTheme.cyan, size: 19),
-          const SizedBox(width: 6),
-          Expanded(child: Text(channelName, overflow: TextOverflow.ellipsis)),
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [
+            Icon(_isEventRegistrationChannel ? Icons.emoji_events_outlined : Icons.tag, color: KomnivoTheme.cyan, size: 18),
+            const SizedBox(width: 6),
+            Flexible(child: Text(channelName, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900))),
+          ]),
+          Text(
+            _isTestRegistrationChannel ? 'TEST ENTRY · ISOLATED' : _isEventRegistrationChannel ? 'TOURNAMENT REGISTRATION' : 'LIVE COMMUNITY CHAT',
+            style: const TextStyle(color: KomnivoTheme.muted, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1),
+          ),
         ]),
         actions: [
           if (!_isEventRegistrationChannel)
@@ -1180,6 +1224,7 @@ class _ChatScreenState extends State<ChatScreen> {
               // Supabase RLS applies the configured history window server-side.
               // Moderators are exempt; history remains stored for audit/evidence purposes.
               _latestMessages = List<Map<String, dynamic>>.from(allMessages);
+              if (allMessages.isNotEmpty) unawaited(_ensureSenderProfiles(allMessages));
               final messages = query.isEmpty
                   ? allMessages
                   : allMessages.where((message) => (message['body'] ?? '').toString().toLowerCase().contains(query)).toList();
@@ -1219,6 +1264,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   return _MessageBubble(
                     message: message,
                     mine: mine,
+                    profile: _senderProfiles[message['sender_id']?.toString()],
+                    onOpenProfile: () => _openMemberProfile(message['sender_id']?.toString() ?? ''),
                     isPinned: _pinnedMessageIds.contains(messageId),
                     replyCount: replyCount,
                     onReply: () => _reply(message),
@@ -1333,103 +1380,180 @@ class _MessageBubble extends StatelessWidget {
     required this.onReply,
     required this.onOpenThread,
     required this.onPin,
+    required this.onOpenProfile,
     required this.isPinned,
     required this.replyCount,
+    this.profile,
     this.allowThreads = true,
     this.allowPins = true,
   });
   final Map<String, dynamic> message;
   final bool mine;
+  final Map<String, dynamic>? profile;
   final VoidCallback onReply;
   final VoidCallback onOpenThread;
   final VoidCallback onPin;
+  final VoidCallback onOpenProfile;
   final bool isPinned;
   final int replyCount;
   final bool allowThreads;
   final bool allowPins;
 
+  String _clockLabel() {
+    final created = DateTime.tryParse(message['created_at']?.toString() ?? '')?.toLocal();
+    if (created == null) return '';
+    final hour = created.hour.toString().padLeft(2, '0');
+    final minute = created.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\\s+')).where((part) => part.isNotEmpty).toList();
+    if (parts.isEmpty) return '?';
+    return parts.take(2).map((part) => part.substring(0, 1).toUpperCase()).join();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final sender = mine ? 'You' : 'Community member';
+    final displayName = profile?['display_name']?.toString().trim().isNotEmpty == true
+        ? profile!['display_name'].toString().trim()
+        : profile?['username']?.toString().trim().isNotEmpty == true
+            ? profile!['username'].toString().trim()
+            : mine ? 'You' : 'Member';
+    final username = profile?['username']?.toString().trim() ?? '';
+    final avatarUrl = profile?['avatar_url']?.toString().trim() ?? '';
     final body = message['body']?.toString() ?? '';
-    return Align(
-      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 560),
-        margin: const EdgeInsets.only(bottom: 9),
-        padding: const EdgeInsets.fromLTRB(13, 10, 9, 9),
-        decoration: BoxDecoration(
-          color: mine ? const Color(0xFF302653) : KomnivoTheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: KomnivoTheme.line),
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            if (isPinned) const Padding(padding: EdgeInsets.only(right: 5), child: Icon(Icons.push_pin, size: 12, color: KomnivoTheme.cyan)),
-            Flexible(child: Text(sender, style: const TextStyle(color: KomnivoTheme.cyan, fontWeight: FontWeight.w800, fontSize: 11))),
-            const SizedBox(width: 8),
-            PopupMenuButton<String>(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 150),
-              tooltip: 'Message actions',
-              iconSize: 17,
-              icon: const Icon(Icons.more_horiz, color: KomnivoTheme.muted),
-              onSelected: (value) async {
-                if (value == 'reply') onReply();
-                if (value == 'thread') onOpenThread();
-                if (value == 'pin') onPin();
-                if (value == 'copy') {
-                  await Clipboard.setData(ClipboardData(text: body));
-                  if (context.mounted) showMessage(context, 'Message copied.');
-                }
-                if (value.startsWith('react:')) {
-                  try {
-                    await KomnivoRepository.instance.toggleMessageReaction(
-                      message['id'] as String,
-                      value.substring(6),
-                    );
-                  } catch (error) {
-                    if (context.mounted) showMessage(context, error.toString());
-                  }
-                }
-              },
-              itemBuilder: (_) => [
-                if (allowThreads) const PopupMenuItem(value: 'thread', child: Text('Open thread')),
-                if (allowThreads) const PopupMenuItem(value: 'reply', child: Text('Reply in composer')),
-                if (allowPins) PopupMenuItem(value: 'pin', child: Text(isPinned ? 'Unpin message' : 'Pin message')),
-                const PopupMenuItem(value: 'copy', child: Text('Copy text')),
-                const PopupMenuDivider(),
-                const PopupMenuItem(value: 'react:👍', child: Text('👍 React')),
-                const PopupMenuItem(value: 'react:❤️', child: Text('❤️ React')),
-                const PopupMenuItem(value: 'react:🔥', child: Text('🔥 React')),
-                const PopupMenuItem(value: 'react:😂', child: Text('😂 React')),
-              ],
-            ),
-          ]),
-          if (message['parent_message_id'] != null) ...[
-            const SizedBox(height: 3),
-            const Text('↳ Reply in this conversation', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
-          ],
-          const SizedBox(height: 3),
-          SelectableText(body, style: const TextStyle(height: 1.35)),
-          const SizedBox(height: 7),
-          _MessageAttachmentList(messageId: message['id'] as String),
-          _MessageReactionBar(messageId: message['id'] as String),
-          if (allowThreads) Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: onOpenThread,
-              icon: const Icon(Icons.forum_outlined, size: 13),
-              label: Text(replyCount == 0 ? 'Open thread' : replyCount.toString() + ' replies',
-                style: const TextStyle(fontSize: 9)),
-              style: TextButton.styleFrom(
-                foregroundColor: KomnivoTheme.muted,
-                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-                visualDensity: VisualDensity.compact,
+    final time = _clockLabel();
+    final avatar = InkWell(
+      onTap: onOpenProfile,
+      borderRadius: BorderRadius.circular(24),
+      child: CircleAvatar(
+        radius: 16,
+        backgroundColor: KomnivoTheme.surfaceRaised,
+        backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+        onBackgroundImageError: (_, __) {},
+        child: avatarUrl.isEmpty
+            ? Text(_initials(displayName), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900))
+            : null,
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!mine) ...[avatar, const SizedBox(width: 8)],
+          Flexible(
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 600),
+              padding: const EdgeInsets.fromLTRB(13, 10, 9, 8),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: mine
+                      ? [const Color(0xFF342C5E), const Color(0xFF282448)]
+                      : [KomnivoTheme.surfaceRaised, KomnivoTheme.surface],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(18),
+                  topRight: const Radius.circular(18),
+                  bottomLeft: Radius.circular(mine ? 18 : 5),
+                  bottomRight: Radius.circular(mine ? 5 : 18),
+                ),
+                border: Border.all(color: mine ? KomnivoTheme.accent.withValues(alpha: .35) : KomnivoTheme.line),
               ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (isPinned) const Padding(padding: EdgeInsets.only(right: 5), child: Icon(Icons.push_pin, size: 12, color: KomnivoTheme.cyan)),
+                  Flexible(
+                    child: InkWell(
+                      onTap: onOpenProfile,
+                      borderRadius: BorderRadius.circular(5),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text(displayName, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: KomnivoTheme.cyan, fontWeight: FontWeight.w900, fontSize: 11)),
+                      ),
+                    ),
+                  ),
+                  if (username.isNotEmpty && username.toLowerCase() != displayName.toLowerCase()) ...[
+                    const SizedBox(width: 6),
+                    Text('@$username', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+                  ],
+                  const SizedBox(width: 6),
+                  if (time.isNotEmpty) Text(time, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+                  const SizedBox(width: 2),
+                  PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 150),
+                    tooltip: 'Message actions',
+                    iconSize: 17,
+                    icon: const Icon(Icons.more_horiz, color: KomnivoTheme.muted),
+                    onSelected: (value) async {
+                      if (value == 'reply') onReply();
+                      if (value == 'thread') onOpenThread();
+                      if (value == 'pin') onPin();
+                      if (value == 'profile') onOpenProfile();
+                      if (value == 'copy') {
+                        await Clipboard.setData(ClipboardData(text: body));
+                        if (context.mounted) showMessage(context, 'Message copied.');
+                      }
+                      if (value.startsWith('react:')) {
+                        try {
+                          await KomnivoRepository.instance.toggleMessageReaction(
+                            message['id'] as String,
+                            value.substring(6),
+                          );
+                        } catch (error) {
+                          if (context.mounted) showMessage(context, error.toString());
+                        }
+                      }
+                    },
+                    itemBuilder: (_) => [
+                      const PopupMenuItem(value: 'profile', child: Text('View profile')),
+                      if (allowThreads) const PopupMenuItem(value: 'thread', child: Text('Open thread')),
+                      if (allowThreads) const PopupMenuItem(value: 'reply', child: Text('Reply in composer')),
+                      if (allowPins) PopupMenuItem(value: 'pin', child: Text(isPinned ? 'Unpin message' : 'Pin message')),
+                      const PopupMenuItem(value: 'copy', child: Text('Copy text')),
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(value: 'react:👍', child: Text('👍 React')),
+                      const PopupMenuItem(value: 'react:❤️', child: Text('❤️ React')),
+                      const PopupMenuItem(value: 'react:🔥', child: Text('🔥 React')),
+                      const PopupMenuItem(value: 'react:😂', child: Text('😂 React')),
+                    ],
+                  ),
+                ]),
+                if (message['parent_message_id'] != null) ...[
+                  const SizedBox(height: 3),
+                  const Text('↳ Reply in this conversation', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
+                ],
+                const SizedBox(height: 3),
+                SelectableText(body, style: const TextStyle(height: 1.42, fontSize: 13)),
+                const SizedBox(height: 7),
+                _MessageAttachmentList(messageId: message['id'] as String),
+                _MessageReactionBar(messageId: message['id'] as String),
+                if (allowThreads) Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: onOpenThread,
+                    icon: const Icon(Icons.forum_outlined, size: 13),
+                    label: Text(replyCount == 0 ? 'Open thread' : '$replyCount replies',
+                      style: const TextStyle(fontSize: 9)),
+                    style: TextButton.styleFrom(
+                      foregroundColor: KomnivoTheme.muted,
+                      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ),
+              ]),
             ),
           ),
-        ]),
+          if (mine) ...[const SizedBox(width: 8), avatar],
+        ],
       ),
     );
   }
