@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/komnivo_theme.dart';
 import '../../core/ui.dart';
+import '../profile/member_profile_screen.dart';
 
 class VoiceRoomScreen extends StatefulWidget {
   const VoiceRoomScreen({super.key, required this.channelId, required this.channelName});
@@ -25,6 +26,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   bool _muted = false;
   bool _permissionPermanentlyDenied = false;
   String? _error;
+  StreamSubscription<RoomEvent>? _roomEventsSubscription;
+  List<Map<String, dynamic>> _participants = <Map<String, dynamic>>[];
+  Set<String> _activeSpeakerIds = <String>{};
 
   @override
   void initState() {
@@ -37,6 +41,64 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     final message = error.toString().replaceFirst('Exception: ', '').trim();
     if (message.isEmpty) return 'Could not join this voice room. Please try again.';
     return message;
+  }
+
+  void _syncRoomParticipants(Room room, {bool notify = true}) {
+    final participants = <Map<String, dynamic>>[];
+    final local = room.localParticipant;
+    if (local != null) {
+      participants.add({
+        'identity': local.identity,
+        'name': local.name,
+        'isLocal': true,
+        'isSpeaking': _activeSpeakerIds.contains(local.identity),
+      });
+    }
+    for (final participant in room.remoteParticipants.values) {
+      participants.add({
+        'identity': participant.identity,
+        'name': participant.name,
+        'isLocal': false,
+        'isSpeaking': _activeSpeakerIds.contains(participant.identity),
+      });
+    }
+    participants.sort((a, b) {
+      if (a['isLocal'] == true) return -1;
+      if (b['isLocal'] == true) return 1;
+      return (a['name']?.toString() ?? '').toLowerCase()
+          .compareTo((b['name']?.toString() ?? '').toLowerCase());
+    });
+    if (notify && mounted) {
+      setState(() => _participants = participants);
+    } else {
+      _participants = participants;
+    }
+  }
+
+  void _watchRoom(Room room) {
+    _roomEventsSubscription?.cancel();
+    _roomEventsSubscription = room.events.listen((event) {
+      if (event is ActiveSpeakersChangedEvent) {
+        _activeSpeakerIds = event.speakers.map((participant) => participant.identity).toSet();
+        _syncRoomParticipants(room);
+      } else if (event is ParticipantConnectedEvent || event is ParticipantDisconnectedEvent) {
+        _syncRoomParticipants(room);
+      }
+    });
+    _syncRoomParticipants(room, notify: false);
+  }
+
+  String _participantInitials(String name) {
+    final parts = name.trim().split(RegExp(r'\\s+')).where((part) => part.isNotEmpty).toList();
+    if (parts.isEmpty) return 'K';
+    return parts.take(2).map((part) => part.substring(0, 1).toUpperCase()).join();
+  }
+
+  Future<void> _openParticipantProfile(String identity) async {
+    if (identity.isEmpty || !mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => MemberProfileScreen(userId: identity)),
+    );
   }
 
   Future<void> _connect() async {
@@ -87,6 +149,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       );
       await pendingRoom.connect(url, token);
       await pendingRoom.localParticipant?.setMicrophoneEnabled(true);
+      _watchRoom(pendingRoom);
 
       if (!mounted) {
         await _releaseRoom(pendingRoom);
@@ -144,6 +207,9 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     final room = _room;
     _room = null;
     _connected = false;
+    await _roomEventsSubscription?.cancel();
+    _roomEventsSubscription = null;
+    _participants = <Map<String, dynamic>>[];
     if (room != null) await _releaseRoom(room);
     if (mounted) Navigator.of(context).pop();
   }
@@ -152,100 +218,251 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   void dispose() {
     final room = _room;
     _room = null;
+    final subscription = _roomEventsSubscription;
+    _roomEventsSubscription = null;
+    if (subscription != null) unawaited(subscription.cancel());
     if (room != null) unawaited(_releaseRoom(room));
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final joinedCount = _participants.length;
     return Scaffold(
-      appBar: AppBar(title: Text('Voice · ${widget.channelName}')),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      appBar: AppBar(
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text('Voice · ${widget.channelName}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900)),
+          const Text('LIVE VOICE ROOM', style: TextStyle(color: KomnivoTheme.muted, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1)),
+        ]),
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [KomnivoTheme.background, KomnivoTheme.surface.withValues(alpha: .55), KomnivoTheme.background],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+            children: [
               Container(
-                width: 108,
-                height: 108,
+                padding: const EdgeInsets.all(19),
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: KomnivoTheme.surfaceRaised,
-                  border: Border.all(color: KomnivoTheme.accent.withValues(alpha: .55), width: 2),
+                  gradient: LinearGradient(
+                    colors: [KomnivoTheme.surfaceRaised, const Color(0xFF25213D)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: KomnivoTheme.accent.withValues(alpha: .36)),
                 ),
-                child: Icon(
-                  _connected ? Icons.graphic_eq : Icons.headset_mic_outlined,
-                  size: 48,
-                  color: KomnivoTheme.accent,
-                ),
-              ),
-              const SizedBox(height: 22),
-              const Text('VOICE ROOM · TWO-WAY AUDIO', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
-              const SizedBox(height: 8),
-              Text(
-                widget.channelName,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _connecting
-                    ? 'Requesting microphone and connecting…'
-                    : _connected
-                        ? 'Connected · microphone is live'
-                        : _error ?? 'Ready to join · microphone permission is requested only after you tap Join',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: KomnivoTheme.muted),
+                child: Row(children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: KomnivoTheme.accent.withValues(alpha: .18),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Icon(_connected ? Icons.graphic_eq_rounded : Icons.headset_mic_rounded,
+                      size: 30, color: KomnivoTheme.cyan),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(widget.channelName, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 4),
+                    Text(
+                      _connecting
+                          ? 'Connecting to voice…'
+                          : _connected
+                              ? 'You are connected · microphone ${_muted ? 'muted' : 'live'}'
+                              : _error ?? 'Join the room to talk with your community.',
+                      style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35),
+                    ),
+                  ])),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _connected ? KomnivoTheme.cyan.withValues(alpha: .13) : KomnivoTheme.surface,
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: _connected ? KomnivoTheme.cyan.withValues(alpha: .45) : KomnivoTheme.line),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Container(width: 6, height: 6, decoration: BoxDecoration(
+                        color: _connected ? KomnivoTheme.cyan : KomnivoTheme.muted,
+                        shape: BoxShape.circle,
+                      )),
+                      const SizedBox(width: 5),
+                      Text(_connected ? 'LIVE' : 'IDLE',
+                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900,
+                          color: _connected ? KomnivoTheme.cyan : KomnivoTheme.muted)),
+                    ]),
+                  ),
+                ]),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Color(0xFFFF8193), fontSize: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFB83D58).withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFB83D58).withValues(alpha: .4)),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.error_outline, color: Color(0xFFFF8193), size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(_error!, style: const TextStyle(color: Color(0xFFFFB2BE), fontSize: 11))),
+                  ]),
                 ),
               ],
-              const SizedBox(height: 13),
-              const Text(
-                'Members with access can join and speak. This is a voice conversation, not a Stage broadcast. Your microphone stays off until you choose to join.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.45),
-              ),
-              const SizedBox(height: 28),
-              if (_connecting)
-                const CircularProgressIndicator()
-              else if (_connected)
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  FilledButton.tonalIcon(
-                    onPressed: _toggleMute,
-                    icon: Icon(_muted ? Icons.mic_off : Icons.mic),
-                    label: Text(_muted ? 'Unmute' : 'Mute'),
+              const SizedBox(height: 22),
+              Row(children: [
+                const Expanded(child: Text('IN THE ROOM', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(color: KomnivoTheme.surfaceRaised, borderRadius: BorderRadius.circular(20)),
+                  child: Text('${joinedCount} ${joinedCount == 1 ? 'member' : 'members'}',
+                    style: const TextStyle(color: KomnivoTheme.cyan, fontSize: 10, fontWeight: FontWeight.w900)),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              if (!_connected)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+                  decoration: BoxDecoration(
+                    color: KomnivoTheme.surface.withValues(alpha: .7),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: KomnivoTheme.line),
                   ),
-                  const SizedBox(width: 12),
+                  child: Column(children: [
+                    const Icon(Icons.hearing_outlined, size: 34, color: KomnivoTheme.muted),
+                    const SizedBox(height: 9),
+                    const Text('Join to see who is here', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 4),
+                    const Text('Members appear here as soon as you connect. New arrivals and departures update live.',
+                      textAlign: TextAlign.center, style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4)),
+                  ]),
+                )
+              else if (_participants.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: Text('Waiting for members…', style: TextStyle(color: KomnivoTheme.muted))),
+                )
+              else
+                Wrap(
+                  spacing: 9,
+                  runSpacing: 9,
+                  children: _participants.map((participant) {
+                    final identity = participant['identity']?.toString() ?? '';
+                    final name = participant['name']?.toString().trim().isNotEmpty == true
+                        ? participant['name'].toString().trim()
+                        : 'KOMNIVO member';
+                    final isLocal = participant['isLocal'] == true;
+                    final speaking = participant['isSpeaking'] == true;
+                    return InkWell(
+                      onTap: () => _openParticipantProfile(identity),
+                      borderRadius: BorderRadius.circular(17),
+                      child: Container(
+                        width: 148,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
+                        decoration: BoxDecoration(
+                          color: KomnivoTheme.surface,
+                          borderRadius: BorderRadius.circular(17),
+                          border: Border.all(
+                            color: speaking ? KomnivoTheme.cyan : KomnivoTheme.line,
+                            width: speaking ? 1.5 : 1,
+                          ),
+                          boxShadow: speaking ? [
+                            BoxShadow(color: KomnivoTheme.cyan.withValues(alpha: .12), blurRadius: 14, spreadRadius: 1),
+                          ] : null,
+                        ),
+                        child: Column(children: [
+                          Stack(alignment: Alignment.bottomRight, children: [
+                            CircleAvatar(
+                              radius: 25,
+                              backgroundColor: speaking ? KomnivoTheme.cyan.withValues(alpha: .18) : KomnivoTheme.surfaceRaised,
+                              child: Text(_participantInitials(name),
+                                style: TextStyle(color: speaking ? KomnivoTheme.cyan : null, fontWeight: FontWeight.w900, fontSize: 16)),
+                            ),
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: speaking ? KomnivoTheme.cyan : KomnivoTheme.muted,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: KomnivoTheme.surface, width: 2),
+                              ),
+                            ),
+                          ]),
+                          const SizedBox(height: 9),
+                          Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
+                          const SizedBox(height: 4),
+                          Text(
+                            isLocal ? 'YOU' : speaking ? 'SPEAKING NOW' : 'IN VOICE',
+                            style: TextStyle(fontSize: 8, letterSpacing: .7, fontWeight: FontWeight.w900,
+                              color: speaking ? KomnivoTheme.cyan : KomnivoTheme.muted),
+                          ),
+                        ]),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              const SizedBox(height: 22),
+              if (_connecting)
+                const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()))
+              else if (_connected)
+                Row(children: [
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: _toggleMute,
+                      icon: Icon(_muted ? Icons.mic_off_rounded : Icons.mic_rounded),
+                      label: Text(_muted ? 'Unmute microphone' : 'Mute microphone'),
+                      style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 15)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
                   FilledButton.icon(
                     onPressed: _leave,
-                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB83D58)),
-                    icon: const Icon(Icons.call_end),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFB83D58),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 15),
+                    ),
+                    icon: const Icon(Icons.call_end_rounded),
                     label: const Text('Leave'),
                   ),
                 ])
               else
-                Column(children: [
-                  FilledButton.icon(
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
                     onPressed: _connect,
-                    icon: const Icon(Icons.refresh),
+                    style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
+                    icon: const Icon(Icons.headset_mic_rounded),
                     label: Text(_error == null ? 'Join voice room' : 'Try again'),
                   ),
-                  if (_permissionPermanentlyDenied && !kIsWeb) ...[
-                    const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: openAppSettings,
-                      icon: const Icon(Icons.settings_outlined),
-                      label: const Text('Open app settings'),
-                    ),
-                  ],
-                ]),
-            ]),
+                ),
+              if (_permissionPermanentlyDenied && !kIsWeb) ...[
+                const SizedBox(height: 8),
+                Center(child: TextButton.icon(
+                  onPressed: openAppSettings,
+                  icon: const Icon(Icons.settings_outlined),
+                  label: const Text('Open app settings'),
+                )),
+              ],
+              const SizedBox(height: 8),
+              const Text(
+                'Tap a member card to open their profile. Your microphone only becomes active after you join.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.45),
+              ),
+            ],
           ),
         ),
       ),
