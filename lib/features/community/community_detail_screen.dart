@@ -365,106 +365,98 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     final isForum = kind == 'forum';
     final isAnnouncement = kind == 'announcement' || name == 'announcements';
     final icon = isVoice
-        ? Icons.volume_up_outlined
+        ? Icons.graphic_eq_rounded
         : isForum
-            ? Icons.forum_outlined
+            ? Icons.forum_rounded
             : isAnnouncement
-                ? Icons.campaign_outlined
-                : Icons.tag;
-    final tint = isVoice ? KomnivoTheme.cyan : isForum ? KomnivoTheme.accent : isAnnouncement ? KomnivoTheme.cyan : KomnivoTheme.muted;
+                ? Icons.campaign_rounded
+                : Icons.tag_rounded;
+    final tint = isVoice
+        ? KomnivoTheme.cyan
+        : isForum
+            ? KomnivoTheme.accent
+            : isAnnouncement
+                ? KomnivoTheme.cyan
+                : KomnivoTheme.muted;
+    final kindLabel = isVoice
+        ? 'VOICE ROOM'
+        : isForum
+            ? 'COMMUNITY FORUM'
+            : isAnnouncement
+                ? 'OFFICIAL UPDATES'
+                : 'TEXT CHAT';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 3),
+      margin: const EdgeInsets.only(bottom: 7),
       decoration: BoxDecoration(
-        color: KomnivoTheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: KomnivoTheme.line.withValues(alpha: .75)),
+        gradient: LinearGradient(
+          colors: [KomnivoTheme.surfaceRaised.withValues(alpha: .9), KomnivoTheme.surface],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: KomnivoTheme.line.withValues(alpha: .85)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .08), blurRadius: 10, offset: const Offset(0, 3))],
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: () => _openChannel(channel),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: compact ? 7 : 10,
-              vertical: compact ? 5 : 7,
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: compact ? 28 : 34,
-                  height: compact ? 28 : 34,
-                  decoration: BoxDecoration(
-                    color: KomnivoTheme.surfaceRaised,
-                    borderRadius: BorderRadius.circular(10),
+            padding: EdgeInsets.symmetric(horizontal: compact ? 9 : 12, vertical: compact ? 7 : 9),
+            child: Row(children: [
+              Container(
+                width: compact ? 34 : 42,
+                height: compact ? 34 : 42,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [tint.withValues(alpha: .18), tint.withValues(alpha: .07)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                  child: Icon(icon, color: tint, size: compact ? 15 : 18),
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(color: tint.withValues(alpha: .20)),
                 ),
-                SizedBox(width: compact ? 6 : 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: compact ? 12 : 13,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      if (!compact &&
-                          (channel['description'] ?? '').toString().isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          channel['description'].toString(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: KomnivoTheme.muted,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+                child: Icon(icon, color: tint, size: compact ? 17 : 20),
+              ),
+              SizedBox(width: compact ? 8 : 11),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: compact ? 12 : 13, fontWeight: FontWeight.w900))),
+                  if (channel['is_private'] == true) ...[
+                    const SizedBox(width: 5),
+                    const Icon(Icons.lock_rounded, color: KomnivoTheme.muted, size: 12),
+                  ],
+                ]),
+                const SizedBox(height: 3),
+                Row(children: [
+                  Container(width: 5, height: 5, decoration: BoxDecoration(color: tint, shape: BoxShape.circle)),
+                  const SizedBox(width: 5),
+                  Text(kindLabel, style: TextStyle(color: tint, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: .7)),
+                  if (!compact && (channel['description'] ?? '').toString().isNotEmpty) ...[
+                    const SizedBox(width: 7),
+                    const Text('·', style: TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
+                    const SizedBox(width: 5),
+                    Expanded(child: Text(channel['description'].toString(), maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9))),
+                  ],
+                ]),
+              ])),
+              if (!_permissionsLoading && _canManageStructure)
+                IconButton(
+                  tooltip: 'Edit channel',
+                  visualDensity: VisualDensity.compact,
+                  constraints: compact ? const BoxConstraints.tightFor(width: 30, height: 30) : const BoxConstraints(),
+                  padding: EdgeInsets.zero,
+                  onPressed: () => _editChannel(channel),
+                  icon: const Icon(Icons.tune_rounded, size: 16, color: KomnivoTheme.muted),
                 ),
-                if (channel['is_private'] == true)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 4),
-                    child: Icon(
-                      Icons.lock_outline,
-                      color: KomnivoTheme.muted,
-                      size: 14,
-                    ),
-                  ),
-                if (!_permissionsLoading && _canManageStructure)
-                  IconButton(
-                    tooltip: 'Edit channel',
-                    visualDensity: VisualDensity.compact,
-                    constraints: compact
-                        ? const BoxConstraints.tightFor(width: 28, height: 28)
-                        : const BoxConstraints(),
-                    padding: EdgeInsets.zero,
-                    onPressed: () => _editChannel(channel),
-                    icon: const Icon(
-                      Icons.edit_outlined,
-                      size: 16,
-                      color: KomnivoTheme.muted,
-                    ),
-                  ),
-                Icon(
-                  isVoice
-                      ? Icons.headset_mic_outlined
-                      : Icons.chevron_right_rounded,
-                  color: KomnivoTheme.muted,
-                  size: 19,
-                ),
-              ],
-            ),
+              Icon(isVoice ? Icons.arrow_forward_ios_rounded : Icons.chevron_right_rounded,
+                color: tint.withValues(alpha: .8), size: 17),
+            ]),
           ),
         ),
       ),
