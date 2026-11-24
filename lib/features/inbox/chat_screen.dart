@@ -57,6 +57,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Map<String, dynamic>> _latestMessages = <Map<String, dynamic>>[];
   final Map<String, Map<String, dynamic>> _senderProfiles = <String, Map<String, dynamic>>{};
   final Set<String> _senderProfileRequests = <String>{};
+  final Set<String> _senderProfileLookups = <String>{};
 
   bool get _composerReadOnly => _sendPermissionLoading ||
       ((!_canSendMessages || _readOnly || _announcementPublishersOnly) && !_canPublishInChannel);
@@ -73,11 +74,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _ensureSenderProfiles(List<Map<String, dynamic>> messages) async {
     final ids = messages
         .map((message) => message['sender_id']?.toString() ?? '')
-        .where((id) => id.isNotEmpty && !_senderProfiles.containsKey(id) && !_senderProfileRequests.contains(id))
+        .where((id) => id.isNotEmpty && !_senderProfiles.containsKey(id) && !_senderProfileRequests.contains(id) && !_senderProfileLookups.contains(id))
         .toSet()
         .toList();
     if (ids.isEmpty) return;
     _senderProfileRequests.addAll(ids);
+    _senderProfileLookups.addAll(ids);
     try {
       final rows = await Supabase.instance.client
           .from('profiles')
