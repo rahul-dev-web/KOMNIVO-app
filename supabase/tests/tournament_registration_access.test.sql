@@ -85,7 +85,7 @@ select extensions.ok(
 );
 
 select extensions.ok(
-  position('(5,''registration'',''Registration instructions and status.'',''announcement'',false,true)' in
+  position('(6,''registration'',''Registration instructions and status.'',''announcement'',false,true)' in
     pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0,
   'Registration channel defaults to public-to-event read-only'
 );
@@ -95,9 +95,9 @@ select extensions.ok(
   'Test-registration channel defaults to public-to-event read-only'
 );
 select extensions.ok(
-  position('(8,''help-desk'',''Participant questions and support.'',''text'',false,false)' in
+  position('(9,''help-desk'',''Participant questions and support.'',''text'',false,false)' in
     pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
-  and position('(9,''help-desk-voice'',''Voice support for tournament participants.'',''voice'',false,false)' in
+  and position('(10,''help-desk-voice'',''Voice support for tournament participants.'',''voice'',false,false)' in
     pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0,
   'Text and voice help-desk channels default to event-audience read/write'
 );
