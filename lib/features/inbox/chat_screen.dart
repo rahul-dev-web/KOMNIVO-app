@@ -30,7 +30,15 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _allowPins = true;
   bool _keepHistory = true;
   bool _canManageMessages = false;
+  bool _canSendMessages = false;
+  bool _sendPermissionLoading = true;
   bool _allowUserMentions = true;
+  bool _eventRegistrationLoading = false;
+  bool _eventRegistrationEligible = false;
+  bool _eventRegistrationSubmitting = false;
+  bool _eventRegistrationSubmitted = false;
+  Map<String, dynamic>? _eventRegistration;
+  String? _eventRegistrationError;
   bool _mentionLoading = false;
   Timer? _mentionDebounce;
   int _mentionRequest = 0;
@@ -46,11 +54,279 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, List<Map<String, dynamic>>> _threadDraftReplies = <String, List<Map<String, dynamic>>>{};
   List<Map<String, dynamic>> _latestMessages = <Map<String, dynamic>>[];
 
-  bool get _composerReadOnly => (_readOnly || _announcementPublishersOnly) && !_canManageMessages;
+  bool get _composerReadOnly => _sendPermissionLoading ||
+      ((!_canSendMessages || _readOnly || _announcementPublishersOnly) && !_canManageMessages);
 
   String get _channelId => widget.channel['id'] as String;
   String get _userId => Supabase.instance.client.auth.currentUser!.id;
+  String? get _eventId => widget.channel['event_id']?.toString();
+  String get _normalizedChannelName =>
+      (widget.channel['name']?.toString() ?? '').trim().toLowerCase().replaceAll('_', '-');
+  bool get _isEventRegistrationChannel =>
+      _eventId != null && (_normalizedChannelName == 'registration' || _normalizedChannelName == 'test-registration');
+  bool get _isTestRegistrationChannel => _normalizedChannelName == 'test-registration';
 
+  Future<void> _loadEventRegistrationChannel() async {
+    if (!_isEventRegistrationChannel || _eventId == null) return;
+    if (mounted) setState(() {
+      _eventRegistrationLoading = true;
+      _eventRegistrationError = null;
+    });
+    try {
+      final client = Supabase.instance.client;
+      final event = await client
+          .from('events')
+          .select('id,name,format,status,registration_opens_at,registration_closes_at,game_id,community_id,rules_json')
+          .eq('id', _eventId!)
+          .maybeSingle();
+      if (event == null) throw Exception('Tournament details are unavailable.');
+      final eligible = await client.rpc('can_write_event_registration_channel', params: {
+        'p_channel_id': _channelId,
+      }) == true;
+      if (!mounted) return;
+      setState(() {
+        _eventRegistration = Map<String, dynamic>.from(event);
+        _eventRegistrationEligible = eligible;
+        _eventRegistrationError = null;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _eventRegistrationError = error.toString());
+    } finally {
+      if (mounted) setState(() => _eventRegistrationLoading = false);
+    }
+  }
+
+  String _eventRegistrationUnavailableMessage() {
+    final event = _eventRegistration;
+    if (event == null) return _eventRegistrationError ?? 'Tournament details are unavailable.';
+    if (Supabase.instance.client.auth.currentUser == null) return 'Sign in to register for this tournament.';
+    final status = event['status']?.toString() ?? '';
+    if (status != 'published' && status != 'registration_open') {
+      return 'This tournament is not accepting registrations right now.';
+    }
+    final closeAt = DateTime.tryParse(event['registration_closes_at']?.toString() ?? '');
+    if (closeAt == null) return 'The registration deadline has not been configured.';
+    if (!DateTime.now().isBefore(closeAt)) return 'The registration window is closed.';
+    if (!_isTestRegistrationChannel) {
+      final openAt = DateTime.tryParse(event['registration_opens_at']?.toString() ?? '');
+      if (openAt == null) return 'The registration opening time has not been configured.';
+      if (DateTime.now().isBefore(openAt)) {
+        return 'Registration opens at ' + openAt.toLocal().toString() + '.';
+      }
+    }
+    return 'You are not eligible yet. Join the tournament community and make sure your team meets the roster requirements.';
+  }
+
+  Future<String?> _chooseRegistrationTeam() async {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) {
+      showMessage(context, 'Sign in before registering.');
+      return null;
+    }
+    final event = _eventRegistration;
+    if (event == null) return null;
+    final rows = await client
+        .from('team_members')
+        .select('team_id,teams(id,name,tag,game_id)')
+        .eq('user_id', userId);
+    final gameId = event['game_id']?.toString();
+    final teams = List<Map<String, dynamic>>.from(rows).where((row) {
+      final team = row['teams'];
+      return team is Map && team['game_id']?.toString() == gameId;
+    }).map((row) => Map<String, dynamic>.from(row['teams'] as Map)).toList();
+    if (teams.isEmpty) {
+      showMessage(context, 'You need an eligible team for this game before registering.');
+      return null;
+    }
+    if (teams.length == 1) return teams.first['id']?.toString();
+
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(_isTestRegistrationChannel ? 'Choose a team for test registration' : 'Choose a team'),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: teams.map((team) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.groups_2_outlined, color: KomnivoTheme.cyan),
+                title: Text(team['name']?.toString() ?? 'Team'),
+                subtitle: Text(team['tag']?.toString() ?? ''),
+                onTap: () => Navigator.pop(dialogContext, team['id']?.toString()),
+              )).toList(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _submitEventRegistrationFromChannel() async {
+    if (_eventRegistrationSubmitting || !_eventRegistrationEligible || _eventRegistration == null) return;
+    final event = _eventRegistration!;
+    final registrationType = _isTestRegistrationChannel ? 'test' : 'real';
+    String? teamId;
+    if (event['format']?.toString() != 'solo') {
+      try {
+        teamId = await _chooseRegistrationTeam();
+      } catch (error) {
+        if (mounted) showMessage(context, error.toString());
+        return;
+      }
+      if (teamId == null || !mounted) return;
+    }
+    setState(() => _eventRegistrationSubmitting = true);
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        'register-event',
+        body: {
+          'event_id': event['id'],
+          'team_id': teamId,
+          'registration_type': registrationType,
+        },
+      );
+      if (response.status < 200 || response.status >= 300) {
+        final details = response.data is Map ? (response.data as Map)['error'] : null;
+        throw Exception(details?.toString() ?? 'Registration could not be submitted.');
+      }
+      if (!mounted) return;
+      setState(() {
+        _eventRegistrationSubmitted = true;
+        _eventRegistrationEligible = false;
+      });
+      showMessage(
+        context,
+        registrationType == 'test'
+            ? 'Test registration submitted. It will not reserve a real tournament slot.'
+            : 'Tournament registration submitted.',
+      );
+    } catch (error) {
+      if (mounted) {
+        showMessage(context, error.toString());
+        await _loadEventRegistrationChannel();
+      }
+    } finally {
+      if (mounted) setState(() => _eventRegistrationSubmitting = false);
+    }
+  }
+
+  Widget _eventRegistrationChannelFooter() {
+    final eventName = _eventRegistration?['name']?.toString() ?? 'Tournament registration';
+    final actionLabel = _isTestRegistrationChannel ? 'Test register' : 'Register in tournament';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: KomnivoTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: KomnivoTheme.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(children: [
+            Icon(
+              _isTestRegistrationChannel ? Icons.science_outlined : Icons.how_to_reg_outlined,
+              color: KomnivoTheme.cyan,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(eventName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900))),
+            if (_isTestRegistrationChannel)
+              const Text('TEST ONLY', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 8, fontWeight: FontWeight.w900)),
+          ]),
+          const SizedBox(height: 6),
+          Text(
+            _isTestRegistrationChannel
+                ? 'Submit an isolated test entry. It will not use a real slot or affect standings.'
+                : 'Submit your team directly to this tournament.',
+            style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.35),
+          ),
+          const SizedBox(height: 10),
+          if (_eventRegistrationLoading)
+            const LinearProgressIndicator(minHeight: 2)
+          else if (_eventRegistrationSubmitted)
+            const Row(children: [
+              Icon(Icons.check_circle_outline, color: KomnivoTheme.cyan, size: 17),
+              SizedBox(width: 7),
+              Expanded(child: Text('Registration submitted successfully.', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800))),
+            ])
+          else if (_eventRegistrationEligible)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _eventRegistrationSubmitting ? null : _submitEventRegistrationFromChannel,
+                icon: _eventRegistrationSubmitting
+                    ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Icon(_isTestRegistrationChannel ? Icons.science_outlined : Icons.how_to_reg_outlined, size: 17),
+                label: Text(_eventRegistrationSubmitting ? 'Submitting…' : actionLabel),
+              ),
+            )
+          else
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Icon(Icons.lock_outline, color: KomnivoTheme.muted, size: 16),
+              const SizedBox(width: 7),
+              Expanded(child: Text(
+                _eventRegistrationUnavailableMessage(),
+                style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.35),
+              )),
+            ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _lockedChatFooter({bool compact = false}) {
+    final publishersOnly = _announcementPublishersOnly && !_canManageMessages;
+    final noPostingPermission = !_sendPermissionLoading &&
+        !_canSendMessages && !_canManageMessages && !_readOnly && !_announcementPublishersOnly;
+    final label = _sendPermissionLoading
+        ? 'CHECKING CHAT PERMISSIONS'
+        : publishersOnly
+            ? 'CHAT LOCKED · PUBLISHERS ONLY'
+            : noPostingPermission
+                ? 'CHAT LOCKED · NO POSTING PERMISSION'
+                : 'CHAT LOCKED · READ ONLY';
+    final explanation = _sendPermissionLoading
+        ? 'Checking whether you can send messages in this channel.'
+        : publishersOnly
+            ? 'Only authorised publishers can post here. You can still read the conversation.'
+            : noPostingPermission
+                ? 'Your role does not have permission to post in this channel.'
+                : 'You can view messages here, but posting is disabled for your account.';
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(compact ? 8 : 11),
+      decoration: BoxDecoration(
+        color: KomnivoTheme.surfaceRaised,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: KomnivoTheme.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: null,
+              icon: const Icon(Icons.lock_outline, size: 16),
+              label: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(explanation, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.35)),
+        ],
+      ),
+    );
+  }
 
   void _clearMentionSuggestions() {
     _mentionDebounce?.cancel();
@@ -276,6 +552,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _reply(Map<String, dynamic> message) {
+    if (_isEventRegistrationChannel) return;
     setState(() {
       _replyTo = message;
       _controller.selection = TextSelection.collapsed(offset: _controller.text.length);
@@ -294,7 +571,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     }
     final rootId = root['id']?.toString();
-    if (rootId == null) return;
+    if (rootId == null || _isEventRegistrationChannel) return;
     if (!_allowThreads) {
       showMessage(context, 'Message threads are disabled in this channel.');
       return;
@@ -364,8 +641,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     ],
                   ),
                 ),
-                _ThreadComposer(
-                  enabled: !_composerReadOnly,
+                if (_composerReadOnly)
+                  _lockedChatFooter(compact: true)
+                else
+                  _ThreadComposer(
+                  enabled: true,
                   onSend: (text) async {
                     try {
                       final messageId = await KomnivoRepository.instance.sendMessage(
@@ -558,6 +838,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showChannelTools() {
+    if (_isEventRegistrationChannel) return;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: KomnivoTheme.surface,
@@ -659,6 +940,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _readOnly = widget.channel['is_read_only'] == true;
     _loadPins();
     _loadChannelSettings();
+    _loadEventRegistrationChannel();
     _loadPolls();
     _loadScheduledAnnouncements();
   }
@@ -668,6 +950,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final results = await Future.wait([
         KomnivoRepository.instance.channelSettings(_channelId),
         _resolveCanManageMessages(),
+        _resolveCanSendMessages(),
       ]);
       final settings = Map<String, dynamic>.from(results[0] as Map);
       if (!mounted) return;
@@ -682,14 +965,38 @@ class _ChatScreenState extends State<ChatScreen> {
         _keepHistory = settings['keep_history'] != false;
         _allowUserMentions = settings['allow_user_mentions'] != false;
         _canManageMessages = results[1] == true;
+        _canSendMessages = results[2] == true;
+        _sendPermissionLoading = false;
       });
     } catch (error) {
-      if (mounted) showMessage(context, 'Could not load channel behaviour settings: $error');
+      if (mounted) {
+        setState(() {
+          _sendPermissionLoading = false;
+          _canSendMessages = false;
+        });
+        showMessage(context, 'Could not load channel behaviour settings: $error');
+      }
     }
   }
 
   Future<bool> _resolveCanManageMessages() {
     return KomnivoRepository.instance.canManageChannelMessages(_channelId);
+  }
+
+  Future<bool> _resolveCanSendMessages() async {
+    if (widget.channel['event_id'] != null) return true;
+    final communityId = widget.channel['community_id']?.toString();
+    if (communityId == null || communityId.isEmpty) return true;
+    try {
+      return await KomnivoRepository.instance.hasPermission(
+        permissionKey: 'channel.send_messages',
+        scopeType: 'community',
+        scopeId: communityId,
+        resourceId: _channelId,
+      );
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _loadPolls() async {
@@ -783,7 +1090,8 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(child: Text(channelName, overflow: TextOverflow.ellipsis)),
         ]),
         actions: [
-          IconButton(tooltip: 'Channel tools', onPressed: _showChannelTools, icon: const Icon(Icons.more_vert)),
+          if (!_isEventRegistrationChannel)
+            IconButton(tooltip: 'Channel tools', onPressed: _showChannelTools, icon: const Icon(Icons.more_vert)),
           IconButton(
             tooltip: _searching ? 'Close search' : 'Search messages',
             onPressed: () => setState(() {
@@ -795,7 +1103,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
       body: Column(children: [
-        if ((_readOnly && !_canManageMessages) || (_announcementPublishersOnly && !_canManageMessages) || !_allowAttachments || !_allowThreads || !_allowPins || !_keepHistory)
+        if (!_allowAttachments || !_allowThreads || !_allowPins || (!_keepHistory && !_canManageMessages))
           Container(
             width: double.infinity,
             margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -806,8 +1114,6 @@ class _ChatScreenState extends State<ChatScreen> {
               border: Border.all(color: KomnivoTheme.line),
             ),
             child: Wrap(spacing: 10, runSpacing: 5, children: [
-              if (_readOnly && !_canManageMessages) const Text('READ ONLY', style: TextStyle(color: KomnivoTheme.danger, fontSize: 9, fontWeight: FontWeight.w800)),
-              if (_announcementPublishersOnly && !_canManageMessages) const Text('PUBLISHERS ONLY', style: TextStyle(color: KomnivoTheme.danger, fontSize: 9, fontWeight: FontWeight.w800)),
               if (!_allowAttachments) const Text('Attachments off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
               if (!_allowThreads) const Text('Threads off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
               if (!_allowPins) const Text('Pins off', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
@@ -861,11 +1167,21 @@ class _ChatScreenState extends State<ChatScreen> {
               }
               if (messages.isEmpty) {
                 return EmptyState(
-                  title: query.isNotEmpty ? 'No matching messages' : 'Start the conversation',
+                  title: query.isNotEmpty
+                      ? 'No matching messages'
+                      : _isEventRegistrationChannel
+                          ? (_isTestRegistrationChannel ? 'Test registration' : 'Tournament registration')
+                          : 'Start the conversation',
                   message: query.isNotEmpty
                       ? 'Try another word or phrase.'
-                      : 'Coordinate matches, share updates and keep your community in one place.',
-                  icon: Icons.forum_outlined,
+                      : _isEventRegistrationChannel
+                          ? (_isTestRegistrationChannel
+                              ? 'Use the Test register button below to submit an isolated test entry.'
+                              : 'Use the Register in tournament button below to submit your team.')
+                          : 'Coordinate matches, share updates and keep your community in one place.',
+                  icon: _isEventRegistrationChannel
+                      ? (_isTestRegistrationChannel ? Icons.science_outlined : Icons.how_to_reg_outlined)
+                      : Icons.forum_outlined,
                 );
               }
               return ListView.builder(
@@ -886,8 +1202,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     onReply: () => _reply(message),
                     onOpenThread: () => _openThread(message),
                     onPin: () => _togglePin(message),
-                    allowThreads: _allowThreads,
-                    allowPins: _allowPins && _canManageMessages,
+                    allowThreads: _allowThreads && !_isEventRegistrationChannel,
+                    allowPins: _allowPins && _canManageMessages && !_isEventRegistrationChannel,
                   );
                 },
               );
@@ -902,7 +1218,11 @@ class _ChatScreenState extends State<ChatScreen> {
               color: KomnivoTheme.background,
               border: Border(top: BorderSide(color: KomnivoTheme.line)),
             ),
-            child: Column(children: [
+            child: _isEventRegistrationChannel
+                ? _eventRegistrationChannelFooter()
+                : _composerReadOnly
+                    ? _lockedChatFooter()
+                    : Column(children: [
               if (_replyTo != null)
                 Container(
                   width: double.infinity,
