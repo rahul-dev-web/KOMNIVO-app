@@ -30,6 +30,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _allowPins = true;
   bool _keepHistory = true;
   bool _canManageMessages = false;
+  bool _canPublishInChannel = false;
   bool _canSendMessages = false;
   bool _sendPermissionLoading = true;
   bool _allowUserMentions = true;
@@ -55,7 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Map<String, dynamic>> _latestMessages = <Map<String, dynamic>>[];
 
   bool get _composerReadOnly => _sendPermissionLoading ||
-      ((!_canSendMessages || _readOnly || _announcementPublishersOnly) && !_canManageMessages);
+      ((!_canSendMessages || _readOnly || _announcementPublishersOnly) && !_canPublishInChannel);
 
   String get _channelId => widget.channel['id'] as String;
   String get _userId => Supabase.instance.client.auth.currentUser!.id;
@@ -284,9 +285,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _lockedChatFooter({bool compact = false}) {
-    final publishersOnly = _announcementPublishersOnly && !_canManageMessages;
+    final publishersOnly = _announcementPublishersOnly && !_canPublishInChannel;
+    final readOnly = _readOnly && !_canPublishInChannel;
     final noPostingPermission = !_sendPermissionLoading &&
-        !_canSendMessages && !_canManageMessages && !_readOnly && !_announcementPublishersOnly;
+        !_canSendMessages && !_canPublishInChannel && !readOnly && !publishersOnly;
     final label = _sendPermissionLoading
         ? 'CHECKING CHAT PERMISSIONS'
         : publishersOnly
@@ -953,18 +955,37 @@ class _ChatScreenState extends State<ChatScreen> {
         _resolveCanSendMessages(),
       ]);
       final settings = Map<String, dynamic>.from(results[0] as Map);
-      if (!mounted) return;
-      setState(() {
-        _readOnly = settings['read_only'] == true || _readOnly;
-        _announcementPublishersOnly = settings.containsKey('announcement_publishers_only')
+      final canManage = results[1] == true;
+      final eventId = widget.channel['event_id']?.toString();
+      final isRootEventChannel = eventId != null && eventId.isNotEmpty &&
+          widget.channel['stage_id'] == null &&
+          widget.channel['group_id'] == null &&
+          widget.channel['match_id'] == null;
+      final publishersOnly = settings.containsKey('announcement_publishers_only')
           ? settings['announcement_publishers_only'] == true
           : widget.channel['kind'] == 'announcement';
+      final isReadOnly = settings['read_only'] == true;
+      var canPublish = canManage;
+      // Root event announcements have a stricter backend rule: only event.manage
+      // can publish, even where scoped staff can manage other channel operations.
+      if (isRootEventChannel && (isReadOnly || publishersOnly)) {
+        canPublish = await KomnivoRepository.instance.hasPermission(
+          permissionKey: 'event.manage',
+          scopeType: 'event',
+          scopeId: eventId,
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _readOnly = isReadOnly || _readOnly;
+        _announcementPublishersOnly = publishersOnly;
         _allowAttachments = settings['allow_attachments'] != false;
         _allowThreads = settings['allow_threads'] != false;
         _allowPins = settings['allow_pins'] != false;
         _keepHistory = settings['keep_history'] != false;
         _allowUserMentions = settings['allow_user_mentions'] != false;
-        _canManageMessages = results[1] == true;
+        _canManageMessages = canManage;
+        _canPublishInChannel = canPublish;
         _canSendMessages = results[2] == true;
         _sendPermissionLoading = false;
       });
@@ -972,6 +993,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         setState(() {
           _sendPermissionLoading = false;
+          _canPublishInChannel = false;
           _canSendMessages = false;
         });
         showMessage(context, 'Could not load channel behaviour settings: $error');
