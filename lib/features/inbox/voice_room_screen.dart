@@ -149,13 +149,13 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
       );
       await pendingRoom.connect(url, token);
       await pendingRoom.localParticipant?.setMicrophoneEnabled(true);
-      _watchRoom(pendingRoom);
 
       if (!mounted) {
         await _releaseRoom(pendingRoom);
         pendingRoom = null;
         return;
       }
+      _watchRoom(pendingRoom);
 
       setState(() {
         _room = pendingRoom;
