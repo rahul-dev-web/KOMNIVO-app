@@ -26,7 +26,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   bool _muted = false;
   bool _permissionPermanentlyDenied = false;
   String? _error;
-  StreamSubscription<RoomEvent>? _roomEventsSubscription;
+  CancelListenFunc? _roomEventsSubscription;
   List<Map<String, dynamic>> _participants = <Map<String, dynamic>>[];
   Set<String> _activeSpeakerIds = <String>{};
 
@@ -76,7 +76,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
   }
 
   void _watchRoom(Room room) {
-    _roomEventsSubscription?.cancel();
+    _roomEventsSubscription?.call();
     _roomEventsSubscription = room.events.listen((event) {
       if (event is ActiveSpeakersChangedEvent) {
         _activeSpeakerIds = event.speakers.map((participant) => participant.identity).toSet();
@@ -207,7 +207,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     final room = _room;
     _room = null;
     _connected = false;
-    await _roomEventsSubscription?.cancel();
+    await _roomEventsSubscription?.call();
     _roomEventsSubscription = null;
     _participants = <Map<String, dynamic>>[];
     if (room != null) await _releaseRoom(room);
@@ -220,7 +220,7 @@ class _VoiceRoomScreenState extends State<VoiceRoomScreen> {
     _room = null;
     final subscription = _roomEventsSubscription;
     _roomEventsSubscription = null;
-    if (subscription != null) unawaited(subscription.cancel());
+    if (subscription != null) unawaited(subscription());
     if (room != null) unawaited(_releaseRoom(room));
     super.dispose();
   }
