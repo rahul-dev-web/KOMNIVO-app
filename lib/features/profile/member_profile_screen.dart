@@ -30,7 +30,7 @@ class _MemberProfileScreenState extends State<MemberProfileScreen> {
   }
 
   String _initials(String name) {
-    final parts = name.trim().split(RegExp(r'\\s+')).where((e) => e.isNotEmpty).toList();
+    final parts = name.trim().split(RegExp(r'\s+')).where((e) => e.isNotEmpty).toList();
     if (parts.isEmpty) return 'K';
     return parts.take(2).map((e) => e.substring(0, 1).toUpperCase()).join();
   }
