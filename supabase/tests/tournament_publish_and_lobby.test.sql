@@ -101,12 +101,12 @@ select extensions.ok(
   and position('(2,''updates''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
   and position('(3,''roadmap''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
   and position('(4,''schedule''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
-  and position('(5,''registration''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
-  and position('(6,''registration-confirmation''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(6,''registration''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(8,''registration-confirmation''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
   and position('(7,''test-registration''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
-  and position('(8,''help-desk''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
-  and position('(9,''help-desk-voice''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
-  and position('(10,''results''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(9,''help-desk''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(10,''help-desk-voice''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
+  and position('(5,''results''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0
   and position('(11,''staff''' in pg_get_functiondef('public.publish_tournament_proposal(uuid,uuid)'::regprocedure)) > 0,
   'Publication provisions all eleven required tournament channels in their specified order'
 );
