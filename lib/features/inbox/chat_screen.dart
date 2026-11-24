@@ -257,68 +257,96 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _eventRegistrationChannelFooter() {
     final eventName = _eventRegistration?['name']?.toString() ?? 'Tournament registration';
-    final actionLabel = _isTestRegistrationChannel ? 'Test register' : 'Register in tournament';
+    final isTest = _isTestRegistrationChannel;
+    final actionLabel = isTest ? 'Submit test registration' : 'Register in tournament';
+    final accent = isTest ? KomnivoTheme.accent : KomnivoTheme.cyan;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: KomnivoTheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: KomnivoTheme.line),
+        gradient: LinearGradient(
+          colors: [KomnivoTheme.surfaceRaised, accent.withValues(alpha: .10)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accent.withValues(alpha: .35)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(children: [
-            Icon(
-              _isTestRegistrationChannel ? Icons.science_outlined : Icons.how_to_reg_outlined,
-              color: KomnivoTheme.cyan,
-              size: 18,
-            ),
-            const SizedBox(width: 8),
-            Expanded(child: Text(eventName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900))),
-            if (_isTestRegistrationChannel)
-              const Text('TEST ONLY', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 8, fontWeight: FontWeight.w900)),
-          ]),
-          const SizedBox(height: 6),
-          Text(
-            _isTestRegistrationChannel
-                ? 'Submit an isolated test entry. It will not use a real slot or affect standings.'
-                : 'Submit your team directly to this tournament.',
-            style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.35),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        Row(children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(color: accent.withValues(alpha: .15), borderRadius: BorderRadius.circular(14)),
+            child: Icon(isTest ? Icons.science_rounded : Icons.emoji_events_rounded, color: accent, size: 22),
           ),
-          const SizedBox(height: 10),
-          if (_eventRegistrationLoading)
-            const LinearProgressIndicator(minHeight: 2)
-          else if (_eventRegistrationSubmitted)
-            const Row(children: [
-              Icon(Icons.check_circle_outline, color: KomnivoTheme.cyan, size: 17),
-              SizedBox(width: 7),
-              Expanded(child: Text('Registration submitted successfully.', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800))),
-            ])
-          else if (_eventRegistrationEligible)
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _eventRegistrationSubmitting ? null : _submitEventRegistrationFromChannel,
-                icon: _eventRegistrationSubmitting
-                    ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(_isTestRegistrationChannel ? Icons.science_outlined : Icons.how_to_reg_outlined, size: 17),
-                label: Text(_eventRegistrationSubmitting ? 'Submitting…' : actionLabel),
-              ),
-            )
-          else
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Icon(Icons.lock_outline, color: KomnivoTheme.muted, size: 16),
-              const SizedBox(width: 7),
-              Expanded(child: Text(
-                _eventRegistrationUnavailableMessage(),
-                style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.35),
-              )),
+          const SizedBox(width: 11),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(isTest ? 'TEST REGISTRATION' : 'TOURNAMENT ENTRY',
+              style: TextStyle(color: accent, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
+            const SizedBox(height: 3),
+            Text(eventName, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900)),
+          ])),
+          if (isTest)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(color: accent.withValues(alpha: .14), borderRadius: BorderRadius.circular(20)),
+              child: Text('TEST ONLY', style: TextStyle(color: accent, fontSize: 8, fontWeight: FontWeight.w900)),
+            ),
+        ]),
+        const SizedBox(height: 11),
+        Text(
+          isTest
+              ? 'Run a safe test entry. It never consumes a real tournament slot or changes standings.'
+              : 'Choose your eligible team and send its entry directly to the tournament.',
+          style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4),
+        ),
+        const SizedBox(height: 13),
+        if (_eventRegistrationLoading)
+          const ClipRRect(borderRadius: BorderRadius.all(Radius.circular(8)), child: LinearProgressIndicator(minHeight: 4))
+        else if (_eventRegistrationSubmitted)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            decoration: BoxDecoration(color: KomnivoTheme.cyan.withValues(alpha: .12), borderRadius: BorderRadius.circular(13)),
+            child: const Row(children: [
+              Icon(Icons.check_circle_rounded, color: KomnivoTheme.cyan, size: 18),
+              SizedBox(width: 8),
+              Expanded(child: Text('Registration submitted successfully', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900))),
             ]),
-        ],
-      ),
+          )
+        else if (_eventRegistrationEligible)
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _eventRegistrationSubmitting ? null : _submitEventRegistrationFromChannel,
+              style: FilledButton.styleFrom(
+                backgroundColor: accent,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: _eventRegistrationSubmitting
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Icon(isTest ? Icons.science_rounded : Icons.login_rounded, size: 18),
+              label: Text(_eventRegistrationSubmitting ? 'Submitting…' : actionLabel,
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+            ),
+          )
+        else
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            decoration: BoxDecoration(color: KomnivoTheme.surface, borderRadius: BorderRadius.circular(13)),
+            child: Row(children: [
+              const Icon(Icons.info_outline_rounded, color: KomnivoTheme.muted, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text(_eventRegistrationUnavailableMessage(),
+                style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.35))),
+            ]),
+          ),
+      ]),
     );
   }
 
@@ -328,212 +356,51 @@ class _ChatScreenState extends State<ChatScreen> {
     final noPostingPermission = !_sendPermissionLoading &&
         !_canSendMessages && !_canPublishInChannel && !readOnly && !publishersOnly;
     final label = _sendPermissionLoading
-        ? 'CHECKING CHAT PERMISSIONS'
+        ? 'Checking permissions'
         : publishersOnly
-            ? 'CHAT LOCKED · PUBLISHERS ONLY'
+            ? 'Publishers only'
             : noPostingPermission
-                ? 'CHAT LOCKED · NO POSTING PERMISSION'
-                : 'CHAT LOCKED · READ ONLY';
+                ? 'Posting permission required'
+                : 'Read-only channel';
     final explanation = _sendPermissionLoading
-        ? 'Checking whether you can send messages in this channel.'
+        ? 'We are checking whether your role can post here.'
         : publishersOnly
-            ? 'Only authorised publishers can post here. You can still read the conversation.'
+            ? 'This is an announcement channel. Only authorised publishers can post.'
             : noPostingPermission
-                ? 'Your role does not have permission to post in this channel.'
-                : 'You can view messages here, but posting is disabled for your account.';
+                ? 'Your current role can read this conversation but cannot send messages.'
+                : 'You can read the full conversation. Message posting is turned off here.';
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(compact ? 8 : 11),
+      padding: EdgeInsets.all(compact ? 10 : 14),
       decoration: BoxDecoration(
-        color: KomnivoTheme.surfaceRaised,
-        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          colors: [KomnivoTheme.surfaceRaised, KomnivoTheme.surface],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: KomnivoTheme.line),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: null,
-              icon: const Icon(Icons.lock_outline, size: 16),
-              label: Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(explanation, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.35)),
-        ],
-      ),
-    );
-  }
-
-  void _clearMentionSuggestions() {
-    _mentionDebounce?.cancel();
-    if (!mounted) return;
-    if (_mentionStart == null &&
-        _mentionCandidates.isEmpty &&
-        !_mentionLoading) {
-      return;
-    }
-    setState(() {
-      _mentionStart = null;
-      _mentionEnd = null;
-      _mentionQuery = '';
-      _mentionCandidates = <Map<String, dynamic>>[];
-      _mentionLoading = false;
-      _mentionRequest += 1;
-    });
-  }
-
-  void _handleComposerChanged(String value) {
-    if (!_allowUserMentions || _composerReadOnly || value.isEmpty) {
-      _clearMentionSuggestions();
-      return;
-    }
-    final cursor = _controller.selection.baseOffset;
-    if (cursor < 0 || cursor > value.length) {
-      _clearMentionSuggestions();
-      return;
-    }
-
-    final beforeCursor = value.substring(0, cursor);
-    final match = RegExp(r'(^|[\s(])@([A-Za-z0-9_.-]{1,32})$')
-        .firstMatch(beforeCursor);
-    if (match == null) {
-      _clearMentionSuggestions();
-      return;
-    }
-
-    final query = match.group(2) ?? '';
-    final tokenStart = cursor - query.length - 1;
-    _mentionDebounce?.cancel();
-    final requestId = ++_mentionRequest;
-    setState(() {
-      _mentionStart = tokenStart;
-      _mentionEnd = cursor;
-      _mentionQuery = query;
-      _mentionCandidates = <Map<String, dynamic>>[];
-      _mentionLoading = true;
-    });
-
-    _mentionDebounce = Timer(const Duration(milliseconds: 220), () async {
-      try {
-        final candidates = await KomnivoRepository.instance
-            .channelMentionCandidates(_channelId, query);
-        if (!mounted || requestId != _mentionRequest) return;
-        setState(() {
-          _mentionCandidates = candidates;
-          _mentionLoading = false;
-        });
-      } catch (_) {
-        if (!mounted || requestId != _mentionRequest) return;
-        setState(() {
-          _mentionCandidates = <Map<String, dynamic>>[];
-          _mentionLoading = false;
-        });
-      }
-    });
-  }
-
-  void _insertMention(Map<String, dynamic> candidate) {
-    final username = candidate['username']?.toString().trim() ?? '';
-    final start = _mentionStart;
-    final end = _mentionEnd;
-    final current = _controller.text;
-    if (username.isEmpty || start == null || end == null ||
-        start < 0 || end > current.length || start > end) {
-      _clearMentionSuggestions();
-      return;
-    }
-
-    final insertion = '@$username ';
-    final nextText = current.replaceRange(start, end, insertion);
-    _controller.value = TextEditingValue(
-      text: nextText,
-      selection: TextSelection.collapsed(offset: start + insertion.length),
-    );
-    _clearMentionSuggestions();
-  }
-
-  Widget _mentionSuggestionPanel() {
-    if (_mentionStart == null) return const SizedBox.shrink();
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxHeight: 210),
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      decoration: BoxDecoration(
-        color: KomnivoTheme.surface,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: KomnivoTheme.line),
-      ),
-      child: _mentionLoading
-          ? const Padding(
-              padding: EdgeInsets.all(13),
-              child: Row(children: [
-                SizedBox(width: 15, height: 15,
-                  child: CircularProgressIndicator(strokeWidth: 1.7)),
-                SizedBox(width: 9),
-                Text('Checking who can access this channel…',
-                  style: TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
-              ]),
-            )
-          : _mentionCandidates.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.all(13),
-                  child: Text(
-                    'No eligible user found for @$_mentionQuery.',
-                    style: const TextStyle(
-                      color: KomnivoTheme.muted,
-                      fontSize: 10,
-                    ),
-                  ),
-                )
-              : ListView.separated(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.zero,
-                  itemCount: _mentionCandidates.length,
-                  separatorBuilder: (_, __) =>
-                      const Divider(height: 1, color: KomnivoTheme.line),
-                  itemBuilder: (context, index) {
-                    final candidate = _mentionCandidates[index];
-                    final username = candidate['username']?.toString() ?? '';
-                    final displayName =
-                        candidate['display_name']?.toString() ?? '';
-                    final avatar = candidate['avatar_url']?.toString();
-                    final initials = displayName.isNotEmpty
-                        ? displayName.substring(0, 1).toUpperCase()
-                        : username.substring(0, 1).toUpperCase();
-                    return ListTile(
-                      dense: true,
-                      visualDensity: VisualDensity.compact,
-                      leading: CircleAvatar(
-                        radius: 15,
-                        backgroundImage: avatar != null && avatar.isNotEmpty
-                            ? NetworkImage(avatar)
-                            : null,
-                        child: avatar == null || avatar.isEmpty
-                            ? Text(initials,
-                                style: const TextStyle(fontSize: 10))
-                            : null,
-                      ),
-                      title: Text('@$username',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          )),
-                      subtitle: displayName.isEmpty
-                          ? null
-                          : Text(displayName,
-                              style: const TextStyle(
-                                fontSize: 9,
-                                color: KomnivoTheme.muted,
-                              )),
-                      onTap: () => _insertMention(candidate),
-                    );
-                  },
-                ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        Container(
+          width: compact ? 34 : 40,
+          height: compact ? 34 : 40,
+          decoration: BoxDecoration(color: KomnivoTheme.muted.withValues(alpha: .12), borderRadius: BorderRadius.circular(13)),
+          child: const Icon(Icons.lock_rounded, color: KomnivoTheme.muted, size: 19),
+        ),
+        const SizedBox(width: 11),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: .8)),
+          const SizedBox(height: 3),
+          Text(explanation, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.35)),
+        ])),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(color: KomnivoTheme.background, borderRadius: BorderRadius.circular(30)),
+          child: const Icon(Icons.visibility_outlined, size: 15, color: KomnivoTheme.muted),
+        ),
+      ]),
     );
   }
 
@@ -1329,42 +1196,69 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               if (_allowUserMentions && _mentionStart != null)
                 _mentionSuggestionPanel(),
-              Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                IconButton(
-                  tooltip: 'Attach image or PDF',
-                  onPressed: _sending || _composerReadOnly || !_allowAttachments ? null : _pickAttachment,
-                  icon: const Icon(Icons.attach_file, color: KomnivoTheme.cyan),
+              Container(
+                padding: const EdgeInsets.fromLTRB(7, 6, 7, 6),
+                decoration: BoxDecoration(
+                  color: KomnivoTheme.surfaceRaised,
+                  borderRadius: BorderRadius.circular(21),
+                  border: Border.all(color: KomnivoTheme.line),
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .12), blurRadius: 15, offset: const Offset(0, 5))],
                 ),
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    enabled: !_composerReadOnly,
-                    minLines: 1,
-                    maxLines: 5,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: InputDecoration(
-                      hintText: 'Message #$channelName',
-                      filled: true,
-                      fillColor: KomnivoTheme.surfaceRaised,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: KomnivoTheme.accent)),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  IconButton(
+                    tooltip: 'Attach image or PDF',
+                    onPressed: _sending || _composerReadOnly || !_allowAttachments ? null : _pickAttachment,
+                    style: IconButton.styleFrom(
+                      backgroundColor: KomnivoTheme.surface,
+                      foregroundColor: KomnivoTheme.cyan,
+                      fixedSize: const Size(40, 40),
                     ),
-                    onChanged: _handleComposerChanged,
-                    onSubmitted: (_) => _send(),
+                    icon: const Icon(Icons.add_rounded),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  onPressed: _sending || _composerReadOnly ? null : _send,
-                  icon: _sending
-                      ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.send_rounded),
-                ),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      enabled: !_composerReadOnly,
+                      minLines: 1,
+                      maxLines: 5,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: InputDecoration(
+                        hintText: 'Message #$channelName',
+                        filled: false,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 7, vertical: 12),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                      ),
+                      onChanged: _handleComposerChanged,
+                      onSubmitted: (_) => _send(),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  IconButton.filled(
+                    onPressed: _sending || _composerReadOnly ? null : _send,
+                    style: IconButton.styleFrom(
+                      backgroundColor: KomnivoTheme.cyan,
+                      foregroundColor: KomnivoTheme.background,
+                      fixedSize: const Size(42, 42),
+                    ),
+                    icon: _sending
+                        ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.arrow_upward_rounded),
+                  ),
+                ]),
+              ),
+              const SizedBox(height: 5),
+              Row(children: [
+                const Icon(Icons.keyboard_return_rounded, size: 11, color: KomnivoTheme.muted),
+                const SizedBox(width: 4),
+                const Expanded(child: Text('Enter to send · Keep sensitive information out of public channels',
+                  style: TextStyle(color: KomnivoTheme.muted, fontSize: 8))),
+                Text(_allowAttachments ? 'Attachments on' : 'Text only',
+                  style: const TextStyle(color: KomnivoTheme.muted, fontSize: 8, fontWeight: FontWeight.w700)),
               ]),
-              const SizedBox(height: 3),
-              const Text('Keep personal or sensitive information out of public channels.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
             ]),
           ),
         ),
