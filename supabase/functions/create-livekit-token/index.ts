@@ -52,11 +52,20 @@ Deno.serve(async (req: Request) => {
       if (!membership) return json({ error: "You are not a member of this conversation." }, 403);
     }
 
+    const { data: profile } = await client.from("profiles")
+      .select("display_name,username")
+      .eq("id", user.id)
+      .maybeSingle();
+    const participantName = profile?.display_name?.trim()
+      || profile?.username?.trim()
+      || user.user_metadata?.full_name
+      || "KOMNIVO player";
+
     const roomName = `channel-${channelId}`;
     const token = new AccessToken(apiKey, apiSecret, {
       identity: user.id,
       ttl: "1h",
-      name: user.user_metadata?.full_name ?? "KOMNIVO player",
+      name: participantName,
     });
     token.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true, canPublishData: true });
     return json({ url: livekitUrl, token: await token.toJwt(), room: roomName });
