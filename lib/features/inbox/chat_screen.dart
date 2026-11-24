@@ -406,6 +406,175 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _clearMentionSuggestions() {
+    _mentionDebounce?.cancel();
+    if (!mounted) return;
+    if (_mentionStart == null &&
+        _mentionCandidates.isEmpty &&
+        !_mentionLoading) {
+      return;
+    }
+    setState(() {
+      _mentionStart = null;
+      _mentionEnd = null;
+      _mentionQuery = '';
+      _mentionCandidates = <Map<String, dynamic>>[];
+      _mentionLoading = false;
+      _mentionRequest += 1;
+    });
+  }
+
+  void _handleComposerChanged(String value) {
+    if (!_allowUserMentions || _composerReadOnly || value.isEmpty) {
+      _clearMentionSuggestions();
+      return;
+    }
+    final cursor = _controller.selection.baseOffset;
+    if (cursor < 0 || cursor > value.length) {
+      _clearMentionSuggestions();
+      return;
+    }
+
+    final beforeCursor = value.substring(0, cursor);
+    final match = RegExp(r'(^|[\s(])@([A-Za-z0-9_.-]{1,32})$')
+        .firstMatch(beforeCursor);
+    if (match == null) {
+      _clearMentionSuggestions();
+      return;
+    }
+
+    final query = match.group(2) ?? '';
+    final tokenStart = cursor - query.length - 1;
+    _mentionDebounce?.cancel();
+    final requestId = ++_mentionRequest;
+    setState(() {
+      _mentionStart = tokenStart;
+      _mentionEnd = cursor;
+      _mentionQuery = query;
+      _mentionCandidates = <Map<String, dynamic>>[];
+      _mentionLoading = true;
+    });
+
+    _mentionDebounce = Timer(const Duration(milliseconds: 220), () async {
+      try {
+        final candidates = await KomnivoRepository.instance
+            .channelMentionCandidates(_channelId, query);
+        if (!mounted || requestId != _mentionRequest) return;
+        setState(() {
+          _mentionCandidates = candidates;
+          _mentionLoading = false;
+        });
+      } catch (_) {
+        if (!mounted || requestId != _mentionRequest) return;
+        setState(() {
+          _mentionCandidates = <Map<String, dynamic>>[];
+          _mentionLoading = false;
+        });
+      }
+    });
+  }
+
+  void _insertMention(Map<String, dynamic> candidate) {
+    final username = candidate['username']?.toString().trim() ?? '';
+    final start = _mentionStart;
+    final end = _mentionEnd;
+    final current = _controller.text;
+    if (username.isEmpty || start == null || end == null ||
+        start < 0 || end > current.length || start > end) {
+      _clearMentionSuggestions();
+      return;
+    }
+
+    final insertion = '@$username ';
+    final nextText = current.replaceRange(start, end, insertion);
+    _controller.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: start + insertion.length),
+    );
+    _clearMentionSuggestions();
+  }
+
+  Widget _mentionSuggestionPanel() {
+    if (_mentionStart == null) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxHeight: 210),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: KomnivoTheme.surface,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: KomnivoTheme.line),
+      ),
+      child: _mentionLoading
+          ? const Padding(
+              padding: EdgeInsets.all(13),
+              child: Row(children: [
+                SizedBox(width: 15, height: 15,
+                  child: CircularProgressIndicator(strokeWidth: 1.7)),
+                SizedBox(width: 9),
+                Text('Checking who can access this channel…',
+                  style: TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
+              ]),
+            )
+          : _mentionCandidates.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(13),
+                  child: Text(
+                    'No eligible user found for @$_mentionQuery.',
+                    style: const TextStyle(
+                      color: KomnivoTheme.muted,
+                      fontSize: 10,
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  itemCount: _mentionCandidates.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: KomnivoTheme.line),
+                  itemBuilder: (context, index) {
+                    final candidate = _mentionCandidates[index];
+                    final username = candidate['username']?.toString() ?? '';
+                    final displayName =
+                        candidate['display_name']?.toString() ?? '';
+                    final avatar = candidate['avatar_url']?.toString();
+                    final initials = displayName.isNotEmpty
+                        ? displayName.substring(0, 1).toUpperCase()
+                        : username.substring(0, 1).toUpperCase();
+                    return ListTile(
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      leading: CircleAvatar(
+                        radius: 15,
+                        backgroundImage: avatar != null && avatar.isNotEmpty
+                            ? NetworkImage(avatar)
+                            : null,
+                        child: avatar == null || avatar.isEmpty
+                            ? Text(initials,
+                                style: const TextStyle(fontSize: 10))
+                            : null,
+                      ),
+                      title: Text('@$username',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          )),
+                      subtitle: displayName.isEmpty
+                          ? null
+                          : Text(displayName,
+                              style: const TextStyle(
+                                fontSize: 9,
+                                color: KomnivoTheme.muted,
+                              )),
+                      onTap: () => _insertMention(candidate),
+                    );
+                  },
+                ),
+    );
+  }
+
   Future<void> _pickAttachment() async {
     try {
       final file = await FilePicker.pickFile(
