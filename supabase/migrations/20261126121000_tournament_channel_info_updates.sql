@@ -317,6 +317,7 @@ DECLARE
   v_team_name text;
   v_round_id uuid;
   v_target_users uuid[];
+  v_role_labels text;
   v_body text;
 BEGIN
   SELECT e.id,e.name,g.code,eg.label,eg.round_id,t.name
