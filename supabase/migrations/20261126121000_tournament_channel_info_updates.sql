@@ -219,6 +219,7 @@ DECLARE
   v_open_time text;
   v_close_time text;
   v_target_users uuid[];
+  v_role_labels text;
   v_body text;
 BEGIN
   IF TG_OP='UPDATE' AND OLD.status IS NOT DISTINCT FROM NEW.status THEN
@@ -251,15 +252,20 @@ BEGIN
     WHERE esa.event_id=NEW.id AND esa.scope_type='event'
   ) recipients;
 
+  SELECT string_agg(DISTINCT esa.role_key, ', ' ORDER BY esa.role_key)
+  INTO v_role_labels
+  FROM public.event_staff_assignments esa
+  WHERE esa.event_id=NEW.id AND esa.scope_type='event';
+
   IF NEW.status='published' THEN
     v_body := format('%s %s is now published. Registration opens %s and closes %s. Full tournament details are in #info.',
-      v_game_tag,NEW.name,v_open_time,v_close_time);
+      v_game_tag,NEW.name,v_open_time,v_close_time) || coalesce(E'\\nEvent roles: ' || v_role_labels,'');
   ELSIF NEW.status='registration_open' THEN
     v_body := format('%s Registration is now OPEN for %s. Deadline: %s. Check #info for entry requirements and tournament details.',
-      v_game_tag,NEW.name,v_close_time);
+      v_game_tag,NEW.name,v_close_time) || coalesce(E'\\nEvent roles: ' || v_role_labels,'');
   ELSE
     v_body := format('%s Registration is now CLOSED for %s. The organiser will publish the next operational updates here.',
-      v_game_tag,NEW.name);
+      v_game_tag,NEW.name) || coalesce(E'\\nEvent roles: ' || v_role_labels,'');
   END IF;
 
   PERFORM app_private.enqueue_event_channel_announcement(
@@ -347,10 +353,20 @@ BEGIN
       )
   ) recipients;
 
+  SELECT string_agg(DISTINCT esa.role_key, ', ' ORDER BY esa.role_key)
+  INTO v_role_labels
+  FROM public.event_staff_assignments esa
+  WHERE esa.event_id=v_event_id
+    AND (
+      esa.scope_type='event'
+      OR (esa.scope_type='stage' AND esa.stage_id=v_round_id)
+      OR (esa.scope_type='group' AND esa.group_id=NEW.group_id)
+    );
+
   v_body := format(
     '%s Group assignment: %s has been placed in %s for %s. Your private IDP and slot list are in #%s. Match timings will appear in #schedule after the organiser publishes them.',
     v_tag,v_team_name,v_group_label,v_event_name,v_group_channel
-  );
+  ) || coalesce(E'\\nAssigned event roles: ' || v_role_labels,'');
   PERFORM app_private.enqueue_event_channel_announcement(
     v_event_id,'updates',
     'group_assignment:' || NEW.group_id::text || ':' || NEW.team_id::text,
@@ -363,7 +379,7 @@ $function$;
 REVOKE ALL ON FUNCTION app_private.tournament_group_assignment_channel_update() FROM PUBLIC,anon,authenticated;
 DROP TRIGGER IF EXISTS event_group_teams_tournament_channel_update ON public.event_group_teams;
 CREATE TRIGGER event_group_teams_tournament_channel_update
-AFTER INSERT ON public.event_group_teams
+AFTER INSERT OR UPDATE OF group_id,team_id ON public.event_group_teams
 FOR EACH ROW EXECUTE FUNCTION app_private.tournament_group_assignment_channel_update();
 
 CREATE OR REPLACE FUNCTION app_private.tournament_stage_schedule_channel_update()
@@ -378,6 +394,7 @@ DECLARE
   v_group record;
   v_group_channel text;
   v_target_users uuid[];
+  v_role_labels text;
   v_tag text;
   v_body text;
 BEGIN
@@ -431,10 +448,20 @@ BEGIN
         )
     ) recipients;
 
+    SELECT string_agg(DISTINCT esa.role_key, ', ' ORDER BY esa.role_key)
+    INTO v_role_labels
+    FROM public.event_staff_assignments esa
+    WHERE esa.event_id=NEW.event_id
+      AND (
+        esa.scope_type='event'
+        OR (esa.scope_type='stage' AND esa.stage_id=NEW.id)
+        OR (esa.scope_type='group' AND esa.group_id=v_group.id)
+      );
+
     v_body := format(
       '%s Schedule published for %s · %s. See the official match list in #schedule and your group-specific details in #%s.',
       v_tag,v_event_name,v_group.label,coalesce(v_group_channel,'group IDP channel')
-    );
+    ) || coalesce(E'\\nAssigned event roles: ' || v_role_labels,'');
     PERFORM app_private.enqueue_event_channel_announcement(
       NEW.event_id,'updates',
       'stage_schedule:' || NEW.id::text || ':v' || NEW.schedule_version::text || ':' || v_group.id::text,
