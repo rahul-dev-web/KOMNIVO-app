@@ -830,11 +830,26 @@ Deno.serve(async (req: Request) => {
       const eventId = stringValue(body.event_id);
       if (!eventId) return json({ error: "Event id is required." }, 400);
       const { data: event, error: eventError } = await admin.from("events")
-        .select("id,community_id,organizer_id,status")
+        .select("id,community_id,organizer_id,status,event_config")
         .eq("id", eventId).maybeSingle();
       if (eventError || !event) return json({ error: "Tournament not found." }, 404);
       if (event.community_id !== communityId) return json({ error: "Community scope mismatch." }, 403);
-      const payload = await validatePayload(admin, user.id, communityId, objectValue(body.payload));
+      const incomingPayload = objectValue(body.payload);
+      const incomingConfig = objectValue(incomingPayload.event_config);
+      const savedConfig = objectValue(event.event_config);
+      // The tournament form no longer edits roadmap details. Preserve a roadmap
+      // already configured in Event Operations when saving other draft fields.
+      const mergedConfig = {
+        ...savedConfig,
+        ...incomingConfig,
+        roadmap: Object.prototype.hasOwnProperty.call(incomingConfig, "roadmap")
+          ? incomingConfig.roadmap
+          : (savedConfig.roadmap ?? null),
+      };
+      const payload = await validatePayload(admin, user.id, communityId, {
+        ...incomingPayload,
+        event_config: mergedConfig,
+      });
       const { data: result, error } = await admin.rpc("update_tournament_draft", {
         p_event_id: eventId,
         p_user_id: user.id,
