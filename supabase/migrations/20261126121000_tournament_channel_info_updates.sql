@@ -222,8 +222,10 @@ DECLARE
   v_role_labels text;
   v_body text;
 BEGIN
-  IF TG_OP='UPDATE' AND OLD.status IS NOT DISTINCT FROM NEW.status THEN
-    RETURN NEW;
+  IF TG_OP='UPDATE' THEN
+    IF OLD.status IS NOT DISTINCT FROM NEW.status THEN
+      RETURN NEW;
+    END IF;
   END IF;
   IF NEW.status NOT IN ('published','registration_open','registration_closed') THEN
     RETURN NEW;
@@ -402,10 +404,11 @@ BEGIN
   IF NEW.schedule_published_at IS NULL THEN
     RETURN NEW;
   END IF;
-  IF TG_OP='UPDATE'
-     AND OLD.schedule_version IS NOT DISTINCT FROM NEW.schedule_version
-     AND OLD.schedule_published_at IS NOT DISTINCT FROM NEW.schedule_published_at THEN
-    RETURN NEW;
+  IF TG_OP='UPDATE' THEN
+    IF OLD.schedule_version IS NOT DISTINCT FROM NEW.schedule_version
+       AND OLD.schedule_published_at IS NOT DISTINCT FROM NEW.schedule_published_at THEN
+      RETURN NEW;
+    END IF;
   END IF;
 
   SELECT e.name,g.code INTO v_event_name,v_game_code
