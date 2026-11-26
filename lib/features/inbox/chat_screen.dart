@@ -136,7 +136,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   String _eventInfoLabel(String value) {
-    return value.replaceAll('_', ' ').trim().split(RegExp(r'\\s+'))
+    return value.replaceAll('_', ' ').trim().split(RegExp(r'\s+'))
         .where((part) => part.isNotEmpty)
         .map((part) => part[0].toUpperCase() + part.substring(1).toLowerCase())
         .join(' ');
@@ -227,7 +227,7 @@ class _ChatScreenState extends State<ChatScreen> {
         'The organiser has not added a rules summary yet.';
     final scoringText = scoring.isEmpty
         ? 'Scoring details will be published by the organiser.'
-        : scoring.entries.take(7).map((entry) => _eventInfoLabel(entry.key) + ': ' + entry.value.toString()).join('\\n');
+        : scoring.entries.take(7).map((entry) => _eventInfoLabel(entry.key) + ': ' + entry.value.toString()).join('\n');
     final statusColor = event['status']?.toString() == 'live' ? KomnivoTheme.cyan : KomnivoTheme.accent;
 
     return Container(
@@ -279,6 +279,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Text(stageCount + ' stage(s) configured · stage names pending', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
         const SizedBox(height: 11),
         Wrap(spacing: 8, runSpacing: 8, children: [
+          _eventInfoTextBlock('Prize distribution', config['prize_distribution']?.toString() ?? 'Not announced', Icons.account_balance_wallet_outlined),
           _eventInfoTextBlock('Rules', ruleText, Icons.menu_book_outlined),
           _eventInfoTextBlock('Scoring', scoringText, Icons.leaderboard_outlined),
         ]),
@@ -1466,7 +1467,6 @@ class _ChatScreenState extends State<ChatScreen> {
               onChanged: (_) => setState(() {}),
             ),
           ),
-        if (_isEventInfoChannel && _eventInfo != null) _eventInfoPanel(),
         if (_pollPreviews.isNotEmpty || _scheduledPreviews.isNotEmpty || _pinnedMessageIds.isNotEmpty)
           SizedBox(
             height: 116,
@@ -1500,14 +1500,14 @@ class _ChatScreenState extends State<ChatScreen> {
               if (snapshot.connectionState == ConnectionState.waiting && messages.isEmpty) {
                 if (!_isEventInfoChannel) return const Center(child: CircularProgressIndicator());
                 return ListView(padding: const EdgeInsets.fromLTRB(14, 10, 14, 20), children: [
-                  if (_eventInfo == null) _eventInfoPanel(),
+                  _eventInfoPanel(),
                   const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
                 ]);
               }
               if (messages.isEmpty) {
                 if (_isEventInfoChannel) {
                   return ListView(padding: const EdgeInsets.fromLTRB(14, 10, 14, 20), children: [
-                    if (_eventInfo == null) _eventInfoPanel(),
+                    _eventInfoPanel(),
                     Padding(padding: const EdgeInsets.fromLTRB(8, 12, 8, 10), child: Text(
                       query.isNotEmpty ? 'No matching updates. The tournament details remain available above.' : 'No extra announcements have been posted yet. Tournament details are shown above; operational updates will appear here when published.',
                       style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.4),
@@ -1534,10 +1534,10 @@ class _ChatScreenState extends State<ChatScreen> {
               }
               return ListView.builder(
                 padding: const EdgeInsets.fromLTRB(14, 10, 14, 22),
-                itemCount: messages.length + (_isEventInfoChannel && _eventInfo == null ? 1 : 0),
+                itemCount: messages.length + (_isEventInfoChannel ? 1 : 0),
                 itemBuilder: (context, index) {
-                  if (_isEventInfoChannel && _eventInfo == null && index == 0) return _eventInfoPanel();
-                  final messageIndex = index - (_isEventInfoChannel && _eventInfo == null ? 1 : 0);
+                  if (_isEventInfoChannel && index == 0) return _eventInfoPanel();
+                  final messageIndex = index - (_isEventInfoChannel ? 1 : 0);
                   final message = messages[messageIndex];
                   final mine = message['sender_id'] == _userId;
                   final messageId = message['id']?.toString() ?? '';
