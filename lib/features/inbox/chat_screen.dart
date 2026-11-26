@@ -468,7 +468,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: Text((index + 1).toString(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
                     ),
                     const SizedBox(width: 8),
-                    Text(resolvedStageNames[index], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+                    Flexible(child: Text(resolvedStageNames[index], maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800))),
                   ]),
                 )))
               else
@@ -521,7 +521,7 @@ class _ChatScreenState extends State<ChatScreen> {
     child: Row(mainAxisSize: MainAxisSize.min, children: [
       Icon(icon, size: 12, color: const Color(0xFFB9D9FF)),
       const SizedBox(width: 6),
-      Text(label, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+      Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800))),
     ]),
   );
 
