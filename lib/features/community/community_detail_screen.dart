@@ -35,6 +35,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
   late Map<String, dynamic> _community;
   late Future<_CommunityChannelStructure> _channelsFuture;
   String _channelQuery = '';
+  final Set<String> _collapsedChannelGroupIds = <String>{};
   bool _canManageSettings = false;
   bool _canManageStructure = false;
   bool _canManageRoles = false;
@@ -136,6 +137,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
     if (oldWidget.community['id'] != widget.community['id']) {
       _community = Map<String, dynamic>.from(widget.community);
       _channelsFuture = _loadChannelStructure();
+      _collapsedChannelGroupIds.clear();
       _permissionsLoading = true;
       _canManageSettings = false;
       _canManageStructure = false;
@@ -465,14 +467,72 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
 
   Widget _channelGroup(
     String title,
-    List<Map<String, dynamic>> channels,
-  ) {
+    List<Map<String, dynamic>> channels, {
+    required String groupId,
+  }) {
     if (channels.isEmpty) return const SizedBox.shrink();
+    final compact = widget.embedded && MediaQuery.sizeOf(context).width < 600;
+    final filtering = _channelQuery.trim().isNotEmpty;
+    final collapsed = !filtering && _collapsedChannelGroupIds.contains(groupId);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _sectionTitle(title),
-        ...channels.map(_channelTile),
+        Padding(
+          padding: EdgeInsets.fromLTRB(2, compact ? 8 : 15, 2, compact ? 4 : 7),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: filtering
+                  ? null
+                  : () {
+                      setState(() {
+                        if (collapsed) {
+                          _collapsedChannelGroupIds.remove(groupId);
+                        } else {
+                          _collapsedChannelGroupIds.add(groupId);
+                        }
+                      });
+                    },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 2),
+                child: Row(
+                  children: [
+                    Icon(
+                      collapsed
+                          ? Icons.chevron_right_rounded
+                          : Icons.expand_more_rounded,
+                      color: KomnivoTheme.muted,
+                      size: 19,
+                    ),
+                    const SizedBox(width: 3),
+                    Expanded(
+                      child: Text(
+                        title.toUpperCase(),
+                        style: const TextStyle(
+                          color: KomnivoTheme.muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      channels.length.toString(),
+                      style: const TextStyle(
+                        color: KomnivoTheme.muted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (!collapsed) ...channels.map(_channelTile),
       ],
     );
   }
@@ -689,7 +749,11 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen> {
                 // Display the saved Channel Studio category/channel relationships.
                 // Text, announcement, forum and voice channels stay under their event category.
                 ...channelGroups.map(
-                  (group) => _channelGroup(group.title, group.channels),
+                  (group) => _channelGroup(
+                    group.title,
+                    group.channels,
+                    groupId: group.categoryId ?? '__uncategorized__',
+                  ),
                 ),
               ],
               if (!_canManageStructure)
