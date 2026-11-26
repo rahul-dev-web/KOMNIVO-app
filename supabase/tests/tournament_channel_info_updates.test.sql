@@ -64,6 +64,8 @@ SELECT extensions.ok(
     pg_get_functiondef('app_private.tournament_event_channel_info()'::regprocedure)) > 0
   AND position('prize_pool_amount' IN
     pg_get_functiondef('app_private.tournament_event_channel_info()'::regprocedure)) > 0
+  AND position('prize_distribution' IN
+    pg_get_functiondef('app_private.tournament_event_channel_info()'::regprocedure)) > 0
   AND position('scoring_config' IN
     pg_get_functiondef('app_private.tournament_event_channel_info()'::regprocedure)) > 0,
   'Info posts carry tournament metadata and are deduplicated by the rendered information body'
