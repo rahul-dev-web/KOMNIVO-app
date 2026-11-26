@@ -41,6 +41,10 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _eventRegistrationSubmitted = false;
   Map<String, dynamic>? _eventRegistration;
   String? _eventRegistrationError;
+  bool _eventInfoLoading = false;
+  Map<String, dynamic>? _eventInfo;
+  List<Map<String, dynamic>> _eventInfoStages = <Map<String, dynamic>>[];
+  String? _eventInfoError;
   bool _mentionLoading = false;
   Timer? _mentionDebounce;
   int _mentionRequest = 0;
@@ -70,6 +74,230 @@ class _ChatScreenState extends State<ChatScreen> {
   bool get _isEventRegistrationChannel =>
       _eventId != null && (_normalizedChannelName == 'registration' || _normalizedChannelName == 'test-registration');
   bool get _isTestRegistrationChannel => _normalizedChannelName == 'test-registration';
+  bool get _isEventInfoChannel =>
+      _eventId != null && _eventId!.isNotEmpty &&
+      _normalizedChannelName == 'info' &&
+      widget.channel['stage_id'] == null &&
+      widget.channel['group_id'] == null &&
+      widget.channel['match_id'] == null;
+
+  Future<void> _loadEventInfoChannel() async {
+    if (!_isEventInfoChannel || _eventId == null) return;
+    if (mounted) setState(() {
+      _eventInfoLoading = true;
+      _eventInfoError = null;
+    });
+    try {
+      final client = Supabase.instance.client;
+      final row = await client.from('events').select(
+        'id,name,status,format,starts_at,registration_opens_at,registration_closes_at,capacity,event_config,rules_json,scoring_config,games(name,code)'
+      ).eq('id', _eventId!).maybeSingle();
+      if (row == null) throw Exception('Tournament details are not visible for this account.');
+      var stageRows = <Map<String, dynamic>>[];
+      try {
+        final rows = await client.from('event_rounds')
+            .select('id,name,status,round_number')
+            .eq('event_id', _eventId!)
+            .order('round_number');
+        stageRows = List<Map<String, dynamic>>.from(rows);
+      } catch (_) {
+        // Event metadata remains useful even when stage-level RLS hides draft stages.
+      }
+      if (!mounted) return;
+      setState(() {
+        _eventInfo = Map<String, dynamic>.from(row);
+        _eventInfoStages = stageRows;
+        _eventInfoError = null;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _eventInfoError = error.toString());
+    } finally {
+      if (mounted) setState(() => _eventInfoLoading = false);
+    }
+  }
+
+  Map<String, dynamic> _eventInfoMap(dynamic value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return <String, dynamic>{};
+  }
+
+  String _eventInfoDate(dynamic value) {
+    final raw = value?.toString() ?? '';
+    if (raw.isEmpty) return 'Not announced';
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return raw;
+    final ist = parsed.toUtc().add(const Duration(hours: 5, minutes: 30));
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    final hour = ist.hour % 12 == 0 ? 12 : ist.hour % 12;
+    final minute = ist.minute.toString().padLeft(2, '0');
+    final suffix = ist.hour < 12 ? 'AM' : 'PM';
+    return ist.day.toString().padLeft(2, '0') + ' ' + months[ist.month - 1] + ' ' +
+        ist.year.toString() + ' · ' + hour.toString().padLeft(2, '0') + ':' + minute + ' ' + suffix + ' IST';
+  }
+
+  String _eventInfoLabel(String value) {
+    return value.replaceAll('_', ' ').trim().split(RegExp(r'\\s+'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => part[0].toUpperCase() + part.substring(1).toLowerCase())
+        .join(' ');
+  }
+
+  Widget _eventInfoMetric(String label, String value, IconData icon) => Container(
+    constraints: const BoxConstraints(minWidth: 128, maxWidth: 190),
+    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+    decoration: BoxDecoration(
+      color: KomnivoTheme.surface,
+      borderRadius: BorderRadius.circular(13),
+      border: Border.all(color: KomnivoTheme.line),
+    ),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(icon, color: KomnivoTheme.cyan, size: 16),
+      const SizedBox(width: 8),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label.toUpperCase(), style: const TextStyle(color: KomnivoTheme.muted, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: .7)),
+        const SizedBox(height: 3),
+        Text(value, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+      ])),
+    ]),
+  );
+
+  Widget _eventInfoTimelineRow(String label, dynamic value, IconData icon) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Icon(icon, color: KomnivoTheme.cyan, size: 16),
+      const SizedBox(width: 9),
+      SizedBox(width: 126, child: Text(label, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, fontWeight: FontWeight.w700))),
+      Expanded(child: Text(_eventInfoDate(value), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800))),
+    ]),
+  );
+
+  Widget _eventInfoTextBlock(String title, String body, IconData icon) => Container(
+    constraints: const BoxConstraints(minWidth: 220, maxWidth: 520),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(color: KomnivoTheme.surface, borderRadius: BorderRadius.circular(13), border: Border.all(color: KomnivoTheme.line)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [Icon(icon, size: 15, color: KomnivoTheme.cyan), const SizedBox(width: 7), Text(title.toUpperCase(), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .7))]),
+      const SizedBox(height: 7),
+      SelectableText(body, style: const TextStyle(fontSize: 10, height: 1.45, color: KomnivoTheme.muted)),
+    ]),
+  );
+
+  Widget _eventInfoPanel() {
+    if (_eventInfoLoading && _eventInfo == null) {
+      return const Padding(padding: EdgeInsets.all(18), child: Center(child: CircularProgressIndicator()));
+    }
+    if (_eventInfo == null) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+        padding: const EdgeInsets.all(15),
+        decoration: BoxDecoration(color: KomnivoTheme.surfaceRaised, borderRadius: BorderRadius.circular(16), border: Border.all(color: KomnivoTheme.line)),
+        child: Row(children: [
+          const Icon(Icons.info_outline, color: KomnivoTheme.cyan),
+          const SizedBox(width: 9),
+          Expanded(child: Text(_eventInfoError ?? 'Tournament details are unavailable.', style: const TextStyle(fontSize: 11, color: KomnivoTheme.muted))),
+          IconButton(tooltip: 'Retry loading tournament details', onPressed: _loadEventInfoChannel, icon: const Icon(Icons.refresh)),
+        ]),
+      );
+    }
+
+    final event = _eventInfo!;
+    final config = _eventInfoMap(event['event_config']);
+    final game = _eventInfoMap(event['games']);
+    final rules = _eventInfoMap(event['rules_json']);
+    final scoring = _eventInfoMap(event['scoring_config']);
+    final entryType = config['entry_type']?.toString() ?? 'free';
+    final entry = entryType == 'paid'
+        ? '₹' + (config['entry_fee']?.toString() ?? '—') + ' entry'
+        : 'Free entry';
+    final prize = config['prize_pool_amount']?.toString() ?? '0';
+    final prizeLabel = prize.isEmpty || prize == '0' ? 'Not announced' : '₹' + prize;
+    final gameName = game['name']?.toString() ?? 'Game not set';
+    final gameCode = game['code']?.toString() ?? '';
+    final format = _eventInfoLabel(event['format']?.toString() ?? 'to be announced');
+    final status = _eventInfoLabel(event['status']?.toString() ?? 'draft');
+    final stageNames = config['stage_names'] is List
+        ? (config['stage_names'] as List).map((value) => value.toString().trim()).where((value) => value.isNotEmpty).toList()
+        : <String>[];
+    final resolvedStageNames = stageNames.isNotEmpty
+        ? stageNames
+        : _eventInfoStages.map((stage) => stage['name']?.toString() ?? '').where((name) => name.isNotEmpty).toList();
+    final stageCount = config['stage_count']?.toString() ?? _eventInfoStages.length.toString();
+    final ruleText = rules['summary']?.toString() ?? rules['custom_text']?.toString() ??
+        rules['rules']?.toString() ?? _eventInfoMap(config['rulebook'])['title']?.toString() ??
+        'The organiser has not added a rules summary yet.';
+    final scoringText = scoring.isEmpty
+        ? 'Scoring details will be published by the organiser.'
+        : scoring.entries.take(7).map((entry) => _eventInfoLabel(entry.key) + ': ' + entry.value.toString()).join('\\n');
+    final statusColor = event['status']?.toString() == 'live' ? KomnivoTheme.cyan : KomnivoTheme.accent;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [KomnivoTheme.surfaceRaised, KomnivoTheme.surface], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: KomnivoTheme.cyan.withValues(alpha: .32)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 38, height: 38, decoration: BoxDecoration(color: KomnivoTheme.cyan.withValues(alpha: .13), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.emoji_events_rounded, color: KomnivoTheme.cyan, size: 21)),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('OFFICIAL TOURNAMENT INFORMATION', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: .8)),
+            const SizedBox(height: 3),
+            Text(event['name']?.toString() ?? 'Tournament', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+          ])),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6), decoration: BoxDecoration(color: statusColor.withValues(alpha: .13), borderRadius: BorderRadius.circular(20)), child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 8, fontWeight: FontWeight.w900))),
+          IconButton(tooltip: 'Refresh tournament information', onPressed: _loadEventInfoChannel, icon: const Icon(Icons.refresh, size: 18)),
+        ]),
+        const SizedBox(height: 12),
+        Wrap(spacing: 7, runSpacing: 7, children: [
+          _eventInfoMetric('Game', gameName + (gameCode.isEmpty ? '' : ' · #' + gameCode.toLowerCase()), Icons.sports_esports_outlined),
+          _eventInfoMetric('Format', format, Icons.groups_2_outlined),
+          _eventInfoMetric('Slots', event['capacity']?.toString() ?? '—', Icons.people_alt_outlined),
+          _eventInfoMetric('Entry', entry, Icons.confirmation_number_outlined),
+          _eventInfoMetric('Prize pool', prizeLabel, Icons.military_tech_outlined),
+        ]),
+        const SizedBox(height: 14),
+        const Divider(height: 1, color: KomnivoTheme.line),
+        const SizedBox(height: 11),
+        const Text('TOURNAMENT TIMELINE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .8)),
+        const SizedBox(height: 5),
+        _eventInfoTimelineRow('Registration opens', event['registration_opens_at'], Icons.lock_open_outlined),
+        _eventInfoTimelineRow('Registration closes', event['registration_closes_at'], Icons.lock_outline),
+        _eventInfoTimelineRow('Tournament starts', event['starts_at'], Icons.play_circle_outline),
+        const SizedBox(height: 10),
+        const Text('STAGES', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .8)),
+        const SizedBox(height: 7),
+        if (resolvedStageNames.isNotEmpty)
+          Wrap(spacing: 6, runSpacing: 6, children: List.generate(resolvedStageNames.length, (index) => Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+            decoration: BoxDecoration(color: KomnivoTheme.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: KomnivoTheme.line)),
+            child: Text((index + 1).toString() + '. ' + resolvedStageNames[index], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+          )))
+        else
+          Text(stageCount + ' stage(s) configured · stage names pending', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
+        const SizedBox(height: 11),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          _eventInfoTextBlock('Rules', ruleText, Icons.menu_book_outlined),
+          _eventInfoTextBlock('Scoring', scoringText, Icons.leaderboard_outlined),
+        ]),
+        const SizedBox(height: 10),
+        const Text('This is the official details panel. Operational announcements and changes are posted in #updates.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.4)),
+      ]),
+    );
+  }
+
+  Widget _eventInfoFooter() => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    decoration: const BoxDecoration(color: KomnivoTheme.background, border: Border(top: BorderSide(color: KomnivoTheme.line))),
+    child: const Row(children: [
+      Icon(Icons.verified_outlined, size: 17, color: KomnivoTheme.cyan),
+      SizedBox(width: 8),
+      Expanded(child: Text('Official, organiser-controlled tournament details · Follow #updates for operational notices.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.35))),
+    ]),
+  );
 
   Future<void> _ensureSenderProfiles(List<Map<String, dynamic>> messages) async {
     final ids = messages
@@ -1019,6 +1247,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _loadPins();
     _loadChannelSettings();
     _loadEventRegistrationChannel();
+    _loadEventInfoChannel();
     _loadPolls();
     _loadScheduledAnnouncements();
   }
@@ -1184,12 +1413,12 @@ class _ChatScreenState extends State<ChatScreen> {
       appBar: AppBar(
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Row(children: [
-            Icon(_isEventRegistrationChannel ? Icons.emoji_events_outlined : Icons.tag, color: KomnivoTheme.cyan, size: 18),
+            Icon((_isEventRegistrationChannel || _isEventInfoChannel) ? Icons.emoji_events_outlined : Icons.tag, color: KomnivoTheme.cyan, size: 18),
             const SizedBox(width: 6),
             Flexible(child: Text(channelName, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900))),
           ]),
           Text(
-            _isTestRegistrationChannel ? 'TEST ENTRY · ISOLATED' : _isEventRegistrationChannel ? 'TOURNAMENT REGISTRATION' : 'LIVE COMMUNITY CHAT',
+            _isTestRegistrationChannel ? 'TEST ENTRY · ISOLATED' : _isEventRegistrationChannel ? 'TOURNAMENT REGISTRATION' : _isEventInfoChannel ? 'OFFICIAL TOURNAMENT INFORMATION' : 'LIVE COMMUNITY CHAT',
             style: const TextStyle(color: KomnivoTheme.muted, fontSize: 8, fontWeight: FontWeight.w800, letterSpacing: 1),
           ),
         ]),
@@ -1237,6 +1466,7 @@ class _ChatScreenState extends State<ChatScreen> {
               onChanged: (_) => setState(() {}),
             ),
           ),
+        if (_isEventInfoChannel && _eventInfo != null) _eventInfoPanel(),
         if (_pollPreviews.isNotEmpty || _scheduledPreviews.isNotEmpty || _pinnedMessageIds.isNotEmpty)
           SizedBox(
             height: 116,
@@ -1268,9 +1498,22 @@ class _ChatScreenState extends State<ChatScreen> {
                   : allMessages.where((message) => (message['body'] ?? '').toString().toLowerCase().contains(query)).toList();
 
               if (snapshot.connectionState == ConnectionState.waiting && messages.isEmpty) {
-                return const Center(child: CircularProgressIndicator());
+                if (!_isEventInfoChannel) return const Center(child: CircularProgressIndicator());
+                return ListView(padding: const EdgeInsets.fromLTRB(14, 10, 14, 20), children: [
+                  if (_eventInfo == null) _eventInfoPanel(),
+                  const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+                ]);
               }
               if (messages.isEmpty) {
+                if (_isEventInfoChannel) {
+                  return ListView(padding: const EdgeInsets.fromLTRB(14, 10, 14, 20), children: [
+                    if (_eventInfo == null) _eventInfoPanel(),
+                    Padding(padding: const EdgeInsets.fromLTRB(8, 12, 8, 10), child: Text(
+                      query.isNotEmpty ? 'No matching updates. The tournament details remain available above.' : 'No extra announcements have been posted yet. Tournament details are shown above; operational updates will appear here when published.',
+                      style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.4),
+                    )),
+                  ]);
+                }
                 return EmptyState(
                   title: query.isNotEmpty
                       ? 'No matching messages'
@@ -1290,10 +1533,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 );
               }
               return ListView.builder(
-                padding: const EdgeInsets.fromLTRB(14, 16, 14, 22),
-                itemCount: messages.length,
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 22),
+                itemCount: messages.length + (_isEventInfoChannel && _eventInfo == null ? 1 : 0),
                 itemBuilder: (context, index) {
-                  final message = messages[index];
+                  if (_isEventInfoChannel && _eventInfo == null && index == 0) return _eventInfoPanel();
+                  final messageIndex = index - (_isEventInfoChannel && _eventInfo == null ? 1 : 0);
+                  final message = messages[messageIndex];
                   final mine = message['sender_id'] == _userId;
                   final messageId = message['id']?.toString() ?? '';
                   final replyCount = allMessages.where(
@@ -1325,9 +1570,11 @@ class _ChatScreenState extends State<ChatScreen> {
               color: KomnivoTheme.background,
               border: Border(top: BorderSide(color: KomnivoTheme.line)),
             ),
-            child: _isEventRegistrationChannel
-                ? _eventRegistrationChannelFooter()
-                : _composerReadOnly
+            child: _isEventInfoChannel
+                ? _eventInfoFooter()
+                : _isEventRegistrationChannel
+                    ? _eventRegistrationChannelFooter()
+                    : _composerReadOnly
                     ? _lockedChatFooter()
                     : Column(children: [
               if (_replyTo != null)
