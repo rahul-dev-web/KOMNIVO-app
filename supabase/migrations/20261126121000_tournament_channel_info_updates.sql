@@ -383,7 +383,7 @@ $function$;
 REVOKE ALL ON FUNCTION app_private.tournament_group_assignment_channel_update() FROM PUBLIC,anon,authenticated;
 DROP TRIGGER IF EXISTS event_group_teams_tournament_channel_update ON public.event_group_teams;
 CREATE TRIGGER event_group_teams_tournament_channel_update
-AFTER INSERT OR UPDATE OF group_id,team_id ON public.event_group_teams
+AFTER INSERT OR UPDATE ON public.event_group_teams
 FOR EACH ROW EXECUTE FUNCTION app_private.tournament_group_assignment_channel_update();
 
 CREATE OR REPLACE FUNCTION app_private.tournament_stage_schedule_channel_update()
@@ -480,5 +480,5 @@ $function$;
 REVOKE ALL ON FUNCTION app_private.tournament_stage_schedule_channel_update() FROM PUBLIC,anon,authenticated;
 DROP TRIGGER IF EXISTS event_rounds_tournament_schedule_channel_update ON public.event_rounds;
 CREATE TRIGGER event_rounds_tournament_schedule_channel_update
-AFTER INSERT OR UPDATE OF schedule_published_at,schedule_version ON public.event_rounds
+AFTER INSERT OR UPDATE ON public.event_rounds
 FOR EACH ROW EXECUTE FUNCTION app_private.tournament_stage_schedule_channel_update();
