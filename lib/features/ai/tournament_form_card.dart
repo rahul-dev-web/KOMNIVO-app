@@ -11,6 +11,32 @@ import '../../core/komnivo_theme.dart';
 
 /// Converts a picked wall-clock time to an explicit India Standard Time
 /// ISO-8601 timestamp. It does not depend on the device timezone.
+String? validateTournamentStageCount(String? value) {
+  final count = int.tryParse(value?.trim() ?? '');
+  return count == null || count < 1 || count > 16
+      ? 'Enter 1 to 16 stages'
+      : null;
+}
+
+List<String> parseTournamentStageNames(String raw, int stageCount) {
+  final names = raw
+      .split('\n')
+      .map((value) => value.trim())
+      .where((value) => value.isNotEmpty)
+      .toList();
+  if (names.isEmpty) return names;
+  if (names.length != stageCount) {
+    throw const FormatException('Enter exactly one name per stage, or leave stage names blank for Coming soon.');
+  }
+  if (names.any((name) => name.length > 60)) {
+    throw const FormatException('Each stage name must be 60 characters or fewer.');
+  }
+  if (names.map((name) => name.toLowerCase()).toSet().length != names.length) {
+    throw const FormatException('Stage names must be unique.');
+  }
+  return names;
+}
+
 String formatKOMNIVOIstTimestamp(DateTime date, TimeOfDay time) {
   String two(int value) => value.toString().padLeft(2, '0');
   return '${date.year}-${two(date.month)}-${two(date.day)}T'
@@ -399,14 +425,15 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
     }
 
     final stageCount = int.tryParse(_stageCount.text.trim());
-    if (stageCount == null || stageCount < 1 || stageCount > 16) {
+    if (validateTournamentStageCount(_stageCount.text) != null || stageCount == null) {
       _showError('Stage count must be a whole number from 1 to 16.');
       return;
     }
-    final stageNames = _stageNames.text
-        .split('\n').map((value) => value.trim()).where((value) => value.isNotEmpty).toList();
-    if (stageNames.isNotEmpty && stageNames.length != stageCount) {
-      _showError('Enter exactly one name per stage, or leave stage names blank for Coming soon.');
+    late final List<String> stageNames;
+    try {
+      stageNames = parseTournamentStageNames(_stageNames.text, stageCount);
+    } on FormatException catch (error) {
+      _showError(error.message);
       return;
     }
 
@@ -793,11 +820,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                               controller: _stageCount,
                               keyboardType: TextInputType.number,
                               decoration: _decoration('Stage count', helper: 'Required · 1–16'),
-                              validator: (value) {
-                                final number = int.tryParse(value?.trim() ?? '');
-                                return number == null || number < 1 || number > 16
-                                    ? 'Enter 1 to 16 stages' : null;
-                              },
+                              validator: validateTournamentStageCount,
                             ),
                             const SizedBox(height: 10),
                             TextField(
