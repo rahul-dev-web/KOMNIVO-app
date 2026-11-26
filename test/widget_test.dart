@@ -47,57 +47,22 @@ void main() {
     );
   });
 
-  test('Tournament roadmap remains unset until the organiser configures every field', () {
-    expect(
-      buildTournamentRoadmap(
-        groupSize: '',
-        qualifiersPerGroup: '',
-        nextRoundTeamCount: '',
-        qualifiedTeamCount: '',
-        directInvites: '',
-      ),
-      isNull,
-    );
+  test('Tournament form validates stage count and optional stage names', () {
+    expect(validateTournamentStageCount('1'), isNull);
+    expect(validateTournamentStageCount('16'), isNull);
+    expect(validateTournamentStageCount('0'), isNotNull);
+    expect(validateTournamentStageCount('17'), isNotNull);
+    expect(validateTournamentStageCount('abc'), isNotNull);
 
-    expect(
-      buildTournamentRoadmap(
-        groupSize: '12',
-        qualifiersPerGroup: '4',
-        nextRoundTeamCount: '16',
-        qualifiedTeamCount: '12',
-        directInvites: '4',
-      ),
-      {
-        'group_size': 12,
-        'qualifiers_per_group': 4,
-        'next_round_team_count': 16,
-        'qualified_team_count': 12,
-        'direct_invites': 4,
-      },
-    );
-  });
-
-  test('Tournament roadmap rejects partially completed or inconsistent values', () {
-    expect(
-      () => buildTournamentRoadmap(
-        groupSize: '12',
-        qualifiersPerGroup: '4',
-        nextRoundTeamCount: '',
-        qualifiedTeamCount: '12',
-        directInvites: '4',
-      ),
-      throwsFormatException,
-    );
-    expect(
-      () => buildTournamentRoadmap(
-        groupSize: '12',
-        qualifiersPerGroup: '4',
-        nextRoundTeamCount: '15',
-        qualifiedTeamCount: '12',
-        directInvites: '4',
-      ),
-      throwsFormatException,
-    );
+    expect(parseTournamentStageNames('', 3), isEmpty);
+    expect(parseTournamentStageNames('Qualifier\nSemi Final\nFinal', 3),
+      ['Qualifier', 'Semi Final', 'Final']);
+    expect(() => parseTournamentStageNames('Qualifier\nFinal', 3),
+      throwsFormatException);
+    expect(() => parseTournamentStageNames('Qualifier\nqualifier', 2),
+      throwsFormatException);
+    expect(() => parseTournamentStageNames('${'x' * 61}', 1),
+      throwsFormatException);
   });
 
   testWidgets('Organizer AI quick actions are visible and open their actions',
