@@ -129,7 +129,7 @@ class _EventMatchesScreenState extends State<EventMatchesScreen> {
                     const SizedBox(height: 12),
                     Text(
                       registrationType == 'test'
-                          ? 'Test entries do not reserve real slots or affect public participants and standings.'
+                          ? 'Test-only: linked but unverified Free Fire UIDs are accepted while the test switch is on. This does not reserve real slots or affect public participants and standings.'
                           : 'This submits a real tournament registration for the selected team.',
                       style: const TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.4),
                     ),
@@ -266,6 +266,11 @@ class _EventMatchesScreenState extends State<EventMatchesScreen> {
             label: const Text('Test registration'),
           ),
         ]),
+        const SizedBox(height: 8),
+        const Text(
+          'Testing only: Free Fire ownership proof is bypassed for this isolated submission. Required UIDs must still be linked; real registration remains verification-gated.',
+          style: TextStyle(color: KomnivoTheme.muted, fontSize: 10, height: 1.35),
+        ),
         if (!_realRegistrationOpen && _testRegistrationOpen) ...[
           const SizedBox(height: 8),
           const Text('Real registration has not opened yet. You can submit a test entry before the deadline.',
