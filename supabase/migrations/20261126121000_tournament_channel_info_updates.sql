@@ -271,7 +271,7 @@ BEGIN
   END IF;
 
   PERFORM app_private.enqueue_event_channel_announcement(
-    NEW.id,'updates','event_status:' || NEW.status,v_body,coalesce(v_target_users,ARRAY[]::uuid[])
+    NEW.id,'updates','event_status:' || NEW.status || ':' || md5(v_body),v_body,coalesce(v_target_users,ARRAY[]::uuid[])
   );
 
   IF NEW.status='registration_closed' THEN
