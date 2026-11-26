@@ -140,8 +140,8 @@ SELECT extensions.ok(
 );
 
 SELECT extensions.ok(
-  position('info',' IN
-    pg_get_functiondef('app_private.enqueue_event_channel_announcement(uuid,text,text,text,uuid[])'::regprocedure)) = 0
+  position('p_channel_name NOT IN' IN
+    pg_get_functiondef('app_private.enqueue_event_channel_announcement(uuid,text,text,text,uuid[])'::regprocedure)) > 0
   AND position('@everyone' IN
     pg_get_functiondef('app_private.enqueue_event_channel_announcement(uuid,text,text,text,uuid[])'::regprocedure)) = 0
   AND position('@here' IN
