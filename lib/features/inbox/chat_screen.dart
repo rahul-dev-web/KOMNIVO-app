@@ -142,49 +142,109 @@ class _ChatScreenState extends State<ChatScreen> {
         .join(' ');
   }
 
-  Widget _eventInfoMetric(String label, String value, IconData icon) => Container(
-    constraints: const BoxConstraints(minWidth: 128, maxWidth: 190),
-    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-    decoration: BoxDecoration(
-      color: KomnivoTheme.surface,
-      borderRadius: BorderRadius.circular(13),
-      border: Border.all(color: KomnivoTheme.line),
-    ),
-    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(icon, color: KomnivoTheme.cyan, size: 16),
-      const SizedBox(width: 8),
+  Widget _eventInfoSectionTitle(String title, String subtitle, IconData icon) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Row(children: [
+      Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: [KomnivoTheme.accent.withValues(alpha: .22), KomnivoTheme.cyan.withValues(alpha: .12)]),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: KomnivoTheme.cyan, size: 16),
+      ),
+      const SizedBox(width: 9),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label.toUpperCase(), style: const TextStyle(color: KomnivoTheme.muted, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: .7)),
-        const SizedBox(height: 3),
-        Text(value, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+        Text(title, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: .8)),
+        const SizedBox(height: 2),
+        Text(subtitle, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9)),
       ])),
     ]),
   );
 
+  Widget _eventInfoMetric(String label, String value, IconData icon) => Container(
+    constraints: const BoxConstraints(minWidth: 126, maxWidth: 220),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [KomnivoTheme.surfaceRaised, KomnivoTheme.surface],
+      ),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: KomnivoTheme.line),
+    ),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(
+        width: 31,
+        height: 31,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: [KomnivoTheme.accent.withValues(alpha: .2), KomnivoTheme.cyan.withValues(alpha: .12)]),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: KomnivoTheme.cyan, size: 17),
+      ),
+      const SizedBox(height: 10),
+      Text(label.toUpperCase(), style: const TextStyle(color: KomnivoTheme.muted, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: .8)),
+      const SizedBox(height: 4),
+      Text(value, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, height: 1.2)),
+    ]),
+  );
+
   Widget _eventInfoTimelineRow(String label, dynamic value, IconData icon) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 5),
-    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(icon, color: KomnivoTheme.cyan, size: 16),
-      const SizedBox(width: 9),
-      SizedBox(width: 126, child: Text(label, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10, fontWeight: FontWeight.w700))),
-      Expanded(child: Text(_eventInfoDate(value), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800))),
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          color: KomnivoTheme.cyan.withValues(alpha: .12),
+          shape: BoxShape.circle,
+          border: Border.all(color: KomnivoTheme.cyan.withValues(alpha: .25)),
+        ),
+        child: Icon(icon, color: KomnivoTheme.cyan, size: 15),
+      ),
+      const SizedBox(width: 10),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: const TextStyle(color: KomnivoTheme.muted, fontSize: 9, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 3),
+        Text(_eventInfoDate(value), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+      ])),
     ]),
   );
 
   Widget _eventInfoTextBlock(String title, String body, IconData icon) => Container(
     constraints: const BoxConstraints(minWidth: 220, maxWidth: 520),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(color: KomnivoTheme.surface, borderRadius: BorderRadius.circular(13), border: Border.all(color: KomnivoTheme.line)),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [KomnivoTheme.surfaceRaised, KomnivoTheme.surface],
+      ),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: KomnivoTheme.line),
+    ),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [Icon(icon, size: 15, color: KomnivoTheme.cyan), const SizedBox(width: 7), Text(title.toUpperCase(), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .7))]),
-      const SizedBox(height: 7),
-      SelectableText(body, style: const TextStyle(fontSize: 10, height: 1.45, color: KomnivoTheme.muted)),
+      Row(children: [
+        Container(
+          width: 29,
+          height: 29,
+          decoration: BoxDecoration(color: KomnivoTheme.accent.withValues(alpha: .14), borderRadius: BorderRadius.circular(9)),
+          child: Icon(icon, size: 15, color: KomnivoTheme.cyan),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Text(title.toUpperCase(), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .8))),
+      ]),
+      const SizedBox(height: 10),
+      SelectableText(body, style: const TextStyle(fontSize: 11, height: 1.5, color: KomnivoTheme.muted)),
     ]),
   );
 
   Widget _eventInfoPanel() {
     if (_eventInfoLoading && _eventInfo == null) {
-      return const Padding(padding: EdgeInsets.all(18), child: Center(child: CircularProgressIndicator()));
+      return const Padding(padding: EdgeInsets.all(22), child: Center(child: CircularProgressIndicator()));
     }
     if (_eventInfo == null) {
       return Container(
@@ -207,14 +267,16 @@ class _ChatScreenState extends State<ChatScreen> {
     final scoring = _eventInfoMap(event['scoring_config']);
     final entryType = config['entry_type']?.toString() ?? 'free';
     final entry = entryType == 'paid'
-        ? '₹' + (config['entry_fee']?.toString() ?? '—') + ' entry'
-        : 'Free entry';
+        ? '₹' + (config['entry_fee']?.toString() ?? '—')
+        : 'Free';
     final prize = config['prize_pool_amount']?.toString() ?? '0';
     final prizeLabel = prize.isEmpty || prize == '0' ? 'Not announced' : '₹' + prize;
+    final prizeDistribution = config['prize_distribution']?.toString().trim() ?? '';
     final gameName = game['name']?.toString() ?? 'Game not set';
     final gameCode = game['code']?.toString() ?? '';
     final format = _eventInfoLabel(event['format']?.toString() ?? 'to be announced');
     final status = _eventInfoLabel(event['status']?.toString() ?? 'draft');
+    final rawStatus = event['status']?.toString() ?? 'draft';
     final stageNames = config['stage_names'] is List
         ? (config['stage_names'] as List).map((value) => value.toString().trim()).where((value) => value.isNotEmpty).toList()
         : <String>[];
@@ -228,66 +290,240 @@ class _ChatScreenState extends State<ChatScreen> {
     final scoringText = scoring.isEmpty
         ? 'Scoring details will be published by the organiser.'
         : scoring.entries.take(7).map((entry) => _eventInfoLabel(entry.key) + ': ' + entry.value.toString()).join('\n');
-    final statusColor = event['status']?.toString() == 'live' ? KomnivoTheme.cyan : KomnivoTheme.accent;
+    final statusColor = rawStatus == 'live' || rawStatus == 'registration_open'
+        ? KomnivoTheme.cyan
+        : rawStatus == 'completed'
+            ? KomnivoTheme.muted
+            : KomnivoTheme.accent;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [KomnivoTheme.surfaceRaised, KomnivoTheme.surface], begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: KomnivoTheme.cyan.withValues(alpha: .32)),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF151D30), Color(0xFF0A0E18), Color(0xFF101727)],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: KomnivoTheme.accent.withValues(alpha: .25)),
+        boxShadow: [
+          BoxShadow(color: KomnivoTheme.accent.withValues(alpha: .09), blurRadius: 24, offset: const Offset(0, 8)),
+          BoxShadow(color: Colors.black.withValues(alpha: .2), blurRadius: 16, offset: const Offset(0, 6)),
+        ],
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(width: 38, height: 38, decoration: BoxDecoration(color: KomnivoTheme.cyan.withValues(alpha: .13), borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.emoji_events_rounded, color: KomnivoTheme.cyan, size: 21)),
-          const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('OFFICIAL TOURNAMENT INFORMATION', style: TextStyle(color: KomnivoTheme.cyan, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: .8)),
-            const SizedBox(height: 3),
-            Text(event['name']?.toString() ?? 'Tournament', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-          ])),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6), decoration: BoxDecoration(color: statusColor.withValues(alpha: .13), borderRadius: BorderRadius.circular(20)), child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 8, fontWeight: FontWeight.w900))),
-          IconButton(tooltip: 'Refresh tournament information', onPressed: _loadEventInfoChannel, icon: const Icon(Icons.refresh, size: 18)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(23),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Stack(children: [
+            Positioned(
+              right: -34,
+              top: -55,
+              child: Container(
+                width: 174,
+                height: 174,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: KomnivoTheme.cyan.withValues(alpha: .07)),
+              ),
+            ),
+            Positioned(
+              right: 55,
+              bottom: -78,
+              child: Container(
+                width: 150,
+                height: 150,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: KomnivoTheme.accent.withValues(alpha: .08)),
+              ),
+            ),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 15),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF39265F), Color(0xFF253B60), Color(0xFF18243A)],
+                ),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .1),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(color: Colors.white.withValues(alpha: .14)),
+                    ),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.verified_rounded, color: Color(0xFF8ED8FF), size: 12),
+                      SizedBox(width: 5),
+                      Text('OFFICIAL TOURNAMENT', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: .8)),
+                    ]),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                    decoration: BoxDecoration(color: statusColor.withValues(alpha: .18), borderRadius: BorderRadius.circular(30), border: Border.all(color: statusColor.withValues(alpha: .42))),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Container(width: 6, height: 6, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
+                      const SizedBox(width: 5),
+                      Text(status.toUpperCase(), style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: .6)),
+                    ]),
+                  ),
+                  const SizedBox(width: 3),
+                  IconButton(
+                    tooltip: 'Refresh tournament information',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _loadEventInfoChannel,
+                    style: IconButton.styleFrom(backgroundColor: Colors.white.withValues(alpha: .09), foregroundColor: Colors.white, minimumSize: const Size(32, 32)),
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                  ),
+                ]),
+                const SizedBox(height: 17),
+                Text(event['name']?.toString() ?? 'Tournament',
+                  maxLines: 3, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 23, height: 1.08, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -.35)),
+                const SizedBox(height: 9),
+                Wrap(spacing: 7, runSpacing: 7, children: [
+                  _eventInfoHeroTag(Icons.sports_esports_rounded, gameName + (gameCode.isEmpty ? '' : ' · #' + gameCode.toLowerCase())),
+                  _eventInfoHeroTag(Icons.groups_2_rounded, format),
+                ]),
+                const SizedBox(height: 15),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(13, 12, 13, 12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [Colors.black.withValues(alpha: .23), Colors.black.withValues(alpha: .12)]),
+                    borderRadius: BorderRadius.circular(17),
+                    border: Border.all(color: Colors.white.withValues(alpha: .13)),
+                  ),
+                  child: Row(children: [
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('TOTAL PRIZE POOL', style: TextStyle(color: Color(0xFFC9D8F4), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1.1)),
+                      const SizedBox(height: 5),
+                      Text(prizeLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 25, fontWeight: FontWeight.w900, letterSpacing: -.5)),
+                      const SizedBox(height: 3),
+                      Text(prizeDistribution.isEmpty ? 'Prize distribution by organiser' : prizeDistribution,
+                        maxLines: 2, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Color(0xFFC1CBE0), fontSize: 9, height: 1.35)),
+                    ])),
+                    const SizedBox(width: 10),
+                    Container(
+                      width: 51,
+                      height: 51,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [Color(0xFF9A83FF), Color(0xFF66A8F2)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [BoxShadow(color: KomnivoTheme.cyan.withValues(alpha: .18), blurRadius: 15, offset: const Offset(0, 5))],
+                      ),
+                      child: const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 27),
+                    ),
+                  ]),
+                ),
+              ]),
+            ),
+          ]),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 15, 14, 15),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _eventInfoSectionTitle('TOURNAMENT SNAPSHOT', 'The essentials at a glance', Icons.auto_awesome_rounded),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                _eventInfoMetric('Entry fee', entry, Icons.confirmation_number_rounded),
+                _eventInfoMetric('Team / Player slots', event['capacity']?.toString() ?? '—', Icons.people_alt_rounded),
+                _eventInfoMetric('Game', gameName, Icons.sports_esports_rounded),
+                _eventInfoMetric('Format', format, Icons.groups_rounded),
+              ]),
+              const SizedBox(height: 18),
+              _eventInfoSectionTitle('IMPORTANT DATES', 'Keep these tournament dates handy', Icons.calendar_month_rounded),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(12, 7, 12, 7),
+                decoration: BoxDecoration(
+                  color: KomnivoTheme.surface.withValues(alpha: .8),
+                  borderRadius: BorderRadius.circular(17),
+                  border: Border.all(color: KomnivoTheme.line),
+                ),
+                child: Column(children: [
+                  _eventInfoTimelineRow('Registration opens', event['registration_opens_at'], Icons.lock_open_rounded),
+                  Divider(height: 1, color: KomnivoTheme.line.withValues(alpha: .8)),
+                  _eventInfoTimelineRow('Registration closes', event['registration_closes_at'], Icons.lock_rounded),
+                  Divider(height: 1, color: KomnivoTheme.line.withValues(alpha: .8)),
+                  _eventInfoTimelineRow('Tournament starts', event['starts_at'], Icons.flag_rounded),
+                ]),
+              ),
+              const SizedBox(height: 18),
+              _eventInfoSectionTitle('TOURNAMENT STAGES', 'How the competition is structured', Icons.account_tree_rounded),
+              if (resolvedStageNames.isNotEmpty)
+                Wrap(spacing: 7, runSpacing: 7, children: List.generate(resolvedStageNames.length, (index) => Container(
+                  padding: const EdgeInsets.fromLTRB(9, 9, 12, 9),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [KomnivoTheme.accent.withValues(alpha: .15), KomnivoTheme.surfaceRaised]),
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(color: KomnivoTheme.accent.withValues(alpha: .22)),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 25,
+                      height: 25,
+                      decoration: const BoxDecoration(gradient: KomnivoTheme.brandGradient, shape: BoxShape.circle),
+                      alignment: Alignment.center,
+                      child: Text((index + 1).toString(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900)),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(resolvedStageNames[index], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+                  ]),
+                )))
+              else
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: KomnivoTheme.surface, borderRadius: BorderRadius.circular(13), border: Border.all(color: KomnivoTheme.line)),
+                  child: Row(children: [
+                    const Icon(Icons.hourglass_empty_rounded, color: KomnivoTheme.muted, size: 17),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(stageCount + ' stage(s) configured · names to be announced', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10))),
+                  ]),
+                ),
+              const SizedBox(height: 18),
+              _eventInfoSectionTitle('RULES & SCORING', 'Know what counts before you compete', Icons.menu_book_rounded),
+              Wrap(spacing: 9, runSpacing: 9, children: [
+                _eventInfoTextBlock('Prize distribution', prizeDistribution.isEmpty ? 'Not announced by the organiser yet.' : prizeDistribution, Icons.workspace_premium_rounded),
+                _eventInfoTextBlock('Tournament rules', ruleText, Icons.gavel_rounded),
+                _eventInfoTextBlock('Scoring system', scoringText, Icons.leaderboard_rounded),
+              ]),
+              const SizedBox(height: 14),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+                decoration: BoxDecoration(
+                  color: KomnivoTheme.cyan.withValues(alpha: .07),
+                  borderRadius: BorderRadius.circular(13),
+                  border: Border.all(color: KomnivoTheme.cyan.withValues(alpha: .16)),
+                ),
+                child: const Row(children: [
+                  Icon(Icons.campaign_rounded, color: KomnivoTheme.cyan, size: 16),
+                  SizedBox(width: 8),
+                  Expanded(child: Text('Follow #updates for official group assignments, schedule releases and tournament announcements.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.4))),
+                ]),
+              ),
+            ]),
+          ),
         ]),
-        const SizedBox(height: 12),
-        Wrap(spacing: 7, runSpacing: 7, children: [
-          _eventInfoMetric('Game', gameName + (gameCode.isEmpty ? '' : ' · #' + gameCode.toLowerCase()), Icons.sports_esports_outlined),
-          _eventInfoMetric('Format', format, Icons.groups_2_outlined),
-          _eventInfoMetric('Slots', event['capacity']?.toString() ?? '—', Icons.people_alt_outlined),
-          _eventInfoMetric('Entry', entry, Icons.confirmation_number_outlined),
-          _eventInfoMetric('Prize pool', prizeLabel, Icons.military_tech_outlined),
-        ]),
-        const SizedBox(height: 14),
-        const Divider(height: 1, color: KomnivoTheme.line),
-        const SizedBox(height: 11),
-        const Text('TOURNAMENT TIMELINE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .8)),
-        const SizedBox(height: 5),
-        _eventInfoTimelineRow('Registration opens', event['registration_opens_at'], Icons.lock_open_outlined),
-        _eventInfoTimelineRow('Registration closes', event['registration_closes_at'], Icons.lock_outline),
-        _eventInfoTimelineRow('Tournament starts', event['starts_at'], Icons.play_circle_outline),
-        const SizedBox(height: 10),
-        const Text('STAGES', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: .8)),
-        const SizedBox(height: 7),
-        if (resolvedStageNames.isNotEmpty)
-          Wrap(spacing: 6, runSpacing: 6, children: List.generate(resolvedStageNames.length, (index) => Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-            decoration: BoxDecoration(color: KomnivoTheme.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: KomnivoTheme.line)),
-            child: Text((index + 1).toString() + '. ' + resolvedStageNames[index], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
-          )))
-        else
-          Text(stageCount + ' stage(s) configured · stage names pending', style: const TextStyle(color: KomnivoTheme.muted, fontSize: 10)),
-        const SizedBox(height: 11),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          _eventInfoTextBlock('Prize distribution', config['prize_distribution']?.toString() ?? 'Not announced', Icons.account_balance_wallet_outlined),
-          _eventInfoTextBlock('Rules', ruleText, Icons.menu_book_outlined),
-          _eventInfoTextBlock('Scoring', scoringText, Icons.leaderboard_outlined),
-        ]),
-        const SizedBox(height: 10),
-        const Text('This is the official details panel. Operational announcements and changes are posted in #updates.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 9, height: 1.4)),
-      ]),
+      ),
     );
   }
+
+  Widget _eventInfoHeroTag(IconData icon, String label) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: .09),
+      borderRadius: BorderRadius.circular(30),
+      border: Border.all(color: Colors.white.withValues(alpha: .13)),
+    ),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 12, color: const Color(0xFFB9D9FF)),
+      const SizedBox(width: 6),
+      Text(label, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+    ]),
+  );
 
   Widget _eventInfoFooter() => Container(
     width: double.infinity,
