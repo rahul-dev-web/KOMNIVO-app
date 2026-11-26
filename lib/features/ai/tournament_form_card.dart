@@ -17,51 +17,6 @@ String formatKOMNIVOIstTimestamp(DateTime date, TimeOfDay time) {
       '${two(time.hour)}:${two(time.minute)}:00+05:30';
 }
 
-/// Builds an optional roadmap. A wholly empty roadmap is deliberately null;
-/// a partially completed roadmap is rejected rather than guessed.
-Map<String, dynamic>? buildTournamentRoadmap({
-  required String groupSize,
-  required String qualifiersPerGroup,
-  required String nextRoundTeamCount,
-  required String qualifiedTeamCount,
-  required String directInvites,
-}) {
-  final values = [
-    groupSize.trim(),
-    qualifiersPerGroup.trim(),
-    nextRoundTeamCount.trim(),
-    qualifiedTeamCount.trim(),
-    directInvites.trim(),
-  ];
-  if (values.every((value) => value.isEmpty)) return null;
-  if (values.any((value) => value.isEmpty)) {
-    throw const FormatException('Complete every roadmap field or leave the roadmap unset for Coming soon.');
-  }
-  final parsed = values.map(int.tryParse).toList();
-  if (parsed.any((value) => value == null)) {
-    throw const FormatException('Roadmap values must be whole numbers.');
-  }
-  final group = parsed[0]!;
-  final qualifiers = parsed[1]!;
-  final nextRound = parsed[2]!;
-  final qualified = parsed[3]!;
-  final invited = parsed[4]!;
-  if (group < 2 || group > 24 || qualifiers < 1 || qualifiers > group ||
-      nextRound < 1 || qualified < 0 || invited < 0 ||
-      qualified + invited != nextRound) {
-    throw const FormatException(
-      'Qualified teams plus direct invites must equal the next-round team count.',
-    );
-  }
-  return {
-    'group_size': group,
-    'qualifiers_per_group': qualifiers,
-    'next_round_team_count': nextRound,
-    'qualified_team_count': qualified,
-    'direct_invites': invited,
-  };
-}
-
 Map<String, dynamic> _asMap(dynamic value) => value is Map
     ? Map<String, dynamic>.from(value)
     : <String, dynamic>{};
@@ -99,11 +54,6 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
   final _stageNames = TextEditingController();
   final _rules = TextEditingController();
   final _scoring = TextEditingController();
-  final _groupSize = TextEditingController();
-  final _qualifiers = TextEditingController();
-  final _nextRound = TextEditingController();
-  final _qualified = TextEditingController();
-  final _invites = TextEditingController();
   final _prizePool = TextEditingController(text: '0');
   final _prizeDistribution = TextEditingController();
   final _entryFee = TextEditingController();
@@ -133,7 +83,6 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _loadingRulebooks = false;
-  bool _showRoadmap = false;
   String? _loadError;
 
   static const _modes = <String, String>{
@@ -155,7 +104,6 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
     final event = widget.event;
     if (event == null) return;
     final config = _asMap(event['event_config']);
-    final roadmap = _asMap(config['roadmap']);
     _name.text = event['name']?.toString() ?? '';
     _slots.text = event['capacity']?.toString() ?? '';
     _format = _modes.containsKey(event['format']?.toString())
@@ -165,12 +113,6 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
     _stageNames.text = (config['stage_names'] is List)
         ? (config['stage_names'] as List).map((value) => value.toString()).join('\n')
         : '';
-    _groupSize.text = roadmap['group_size']?.toString() ?? '';
-    _qualifiers.text = roadmap['qualifiers_per_group']?.toString() ?? '';
-    _nextRound.text = roadmap['next_round_team_count']?.toString() ?? '';
-    _qualified.text = roadmap['qualified_team_count']?.toString() ?? '';
-    _invites.text = roadmap['direct_invites']?.toString() ?? '';
-    _showRoadmap = roadmap.isNotEmpty;
     _prizePool.text = config['prize_pool_amount']?.toString() ?? '0';
     _prizeDistribution.text = config['prize_distribution']?.toString() ?? '';
     _entryType = config['entry_type']?.toString() == 'paid' ? 'paid' : 'free';
@@ -330,11 +272,6 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
     _stageNames.dispose();
     _rules.dispose();
     _scoring.dispose();
-    _groupSize.dispose();
-    _qualifiers.dispose();
-    _nextRound.dispose();
-    _qualified.dispose();
-    _invites.dispose();
     _prizePool.dispose();
     _prizeDistribution.dispose();
     _entryFee.dispose();
@@ -473,20 +410,6 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
       return;
     }
 
-    Map<String, dynamic>? roadmap;
-    try {
-      roadmap = buildTournamentRoadmap(
-        groupSize: _groupSize.text,
-        qualifiersPerGroup: _qualifiers.text,
-        nextRoundTeamCount: _nextRound.text,
-        qualifiedTeamCount: _qualified.text,
-        directInvites: _invites.text,
-      );
-    } on FormatException catch (error) {
-      _showError(error.message);
-      return;
-    }
-
     final slots = int.tryParse(_slots.text.trim());
     if (slots == null || slots < 1 || slots > 1000) {
       _showError('Slots must be a whole number from 1 to 1000.');
@@ -585,7 +508,6 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
           'schema_version': 1,
           'stage_count': stageCount,
           'stage_names': stageNames,
-          'roadmap': roadmap,
           'prize_pool_amount': prize,
           'prize_pool_currency': 'INR',
           'prize_distribution': distribution,
@@ -863,7 +785,7 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                             border: Border.all(color: KomnivoTheme.line),
                           ),
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            const Text('STAGES & ROADMAP', style: TextStyle(
+                            const Text('TOURNAMENT STAGES', style: TextStyle(
                               color: KomnivoTheme.cyan, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: .7,
                             )),
                             const SizedBox(height: 10),
@@ -893,20 +815,12 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                                 padding: EdgeInsets.only(top: 6),
                                 child: Text('Coming soon · Stage names can be completed later.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
                               ),
-                            const Divider(height: 22),
-                            SwitchListTile.adaptive(
-                              contentPadding: EdgeInsets.zero,
-                              title: const Text('Configure roadmap now'),
-                              subtitle: const Text('Group size, qualifiers and direct invites'),
-                              value: _showRoadmap,
-                              onChanged: _saving ? null : (value) => setState(() => _showRoadmap = value),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Detailed groups, qualification slots and invited teams will be configured later in the tournament Roadmap.',
+                              style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35),
                             ),
-                            if (_showRoadmap) ...[
-                              Row(children: [
-                                Expanded(child: TextField(controller: _groupSize, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, decoration: _decoration('Teams per group'))),
-                                const SizedBox(width: 8),
-                                Expanded(child: TextField(controller: _qualifiers, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, decoration: _decoration('Qualify per group'))),
-                              ]),
+                          ]),
                               const SizedBox(height: 8),
                               TextField(controller: _nextRound, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, decoration: _decoration('Next-round team count')),
                               const SizedBox(height: 8),
