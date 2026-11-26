@@ -821,25 +821,6 @@ class _TournamentFormScreenState extends State<TournamentFormScreen> {
                               style: TextStyle(color: KomnivoTheme.muted, fontSize: 11, height: 1.35),
                             ),
                           ]),
-                              const SizedBox(height: 8),
-                              TextField(controller: _nextRound, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, decoration: _decoration('Next-round team count')),
-                              const SizedBox(height: 8),
-                              Row(children: [
-                                Expanded(child: TextField(controller: _qualified, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, decoration: _decoration('Qualified teams'))),
-                                const SizedBox(width: 8),
-                                Expanded(child: TextField(controller: _invites, onChanged: (_) => setState(() {}), keyboardType: TextInputType.number, decoration: _decoration('Direct invites')),
-                                ),
-                              ]),
-                              if ([
-                                _groupSize,_qualifiers,_nextRound,_qualified,_invites,
-                              ].every((controller) => controller.text.trim().isEmpty))
-                                const Padding(
-                                  padding: EdgeInsets.only(top: 7),
-                                  child: Text('Coming soon · Leave every roadmap field blank to complete this later.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
-                                ),
-                            ] else
-                              const Text('Coming soon · Leave the roadmap unset and complete it when your bracket is decided.', style: TextStyle(color: KomnivoTheme.muted, fontSize: 11)),
-                          ]),
                         ),
                         const SizedBox(height: 12),
                         Container(
