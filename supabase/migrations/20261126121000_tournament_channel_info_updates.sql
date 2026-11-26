@@ -170,7 +170,7 @@ BEGIN
   END;
 
   v_body := format(
-    E'%s TOURNAMENT INFORMATION\n\nTournament: %s\nGame: %s (%s)\nFormat: %s\nSlots: %s\nPrize pool: ₹%s\nEntry: %s\nRegistration opens: %s\nRegistration closes: %s\nTournament starts: %s\nStages: %s\nRules: %s\nScoring: %s\n\nOfficial lifecycle and operational announcements will appear in #updates.',
+    E'%s TOURNAMENT INFORMATION\n\nTournament: %s\nGame: %s (%s)\nFormat: %s\nSlots: %s\nPrize pool: ₹%s\nPrize distribution: %s\nEntry: %s\nRegistration opens: %s\nRegistration closes: %s\nTournament starts: %s\nStages: %s\nRules: %s\nScoring: %s\n\nOfficial lifecycle and operational announcements will appear in #updates.',
     v_game_tag,
     NEW.name,
     v_game_name,
@@ -178,6 +178,7 @@ BEGIN
     upper(replace(NEW.format,'_',' ')),
     NEW.capacity,
     coalesce(v_config->>'prize_pool_amount','0'),
+    coalesce(nullif(v_config->>'prize_distribution',''),'To be announced'),
     CASE
       WHEN coalesce(v_config->>'entry_type','free')='paid'
         THEN 'Paid · ₹' || coalesce(v_config->>'entry_fee','')
